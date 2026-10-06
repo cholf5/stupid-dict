@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/StupidDict.App/StupidDict.App.csproj" />
+    <Project Path="src/StupidDict.Core/StupidDict.Core.csproj" />
+    <Project Path="src/StupidDict.DataBuilder/StupidDict.DataBuilder.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/StupidDict.App.Tests/StupidDict.App.Tests.csproj" />
+    <Project Path="tests/StupidDict.Core.Tests/StupidDict.Core.Tests.csproj" />
+  </Folder>
+</Solution>
