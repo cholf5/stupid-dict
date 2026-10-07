@@ -30,12 +30,17 @@
         <Grid ColumnDefinitions="70,*" RowDefinitions="Auto,Auto" RowSpacing="10">
           <TextBlock FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
                      Text="{Binding ThemeLabel, Source={x:Static loc:Translations.Instance}}" />
-          <!-- 选项顺序对应 AppTheme：0 跟随系统 / 1 日间 / 2 夜间 -->
+          <!-- 选项顺序对应 AppTheme：0 跟随系统 / 1 日间 / 2 夜间；选项实例由
+               code-behind 提供（ItemsSource 先于 SelectedIndex 就位），模板绑
+               OptionItem.Label 让文案随语言刷新——直接绑 Translations 的
+               ComboBoxItem.Content 会被选中框快照，切语言不回显 -->
           <ComboBox Name="ThemeComboBox" Grid.Column="1" MinWidth="200"
-                    HorizontalAlignment="Left" SelectedIndex="0">
-            <ComboBoxItem Content="{Binding FollowSystem, Source={x:Static loc:Translations.Instance}}" />
-            <ComboBoxItem Content="{Binding ThemeLight, Source={x:Static loc:Translations.Instance}}" />
-            <ComboBoxItem Content="{Binding ThemeDark, Source={x:Static loc:Translations.Instance}}" />
+                    HorizontalAlignment="Left">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="s:OptionItem">
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
           </ComboBox>
         </Grid>
         <Grid ColumnDefinitions="70,*" RowDefinitions="Auto,Auto" RowSpacing="10">
@@ -43,10 +48,12 @@
                      Text="{Binding LanguageLabel, Source={x:Static loc:Translations.Instance}}" />
           <!-- 选项顺序对应 AppLanguage：0 跟随系统 / 1 简体中文 / 2 English -->
           <ComboBox Name="LanguageComboBox" Grid.Column="1" MinWidth="200"
-                    HorizontalAlignment="Left" SelectedIndex="0">
-            <ComboBoxItem Content="{Binding FollowSystem, Source={x:Static loc:Translations.Instance}}" />
-            <ComboBoxItem Content="{Binding LangChinese, Source={x:Static loc:Translations.Instance}}" />
-            <ComboBoxItem Content="{Binding LangEnglish, Source={x:Static loc:Translations.Instance}}" />
+                    HorizontalAlignment="Left">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="s:OptionItem">
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
           </ComboBox>
         </Grid>
       </StackPanel>

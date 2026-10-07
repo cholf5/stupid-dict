@@ -785,6 +785,59 @@ public class HeadlessWindowTests
         }
     }
 
+    [AvaloniaFact]
+    public void LanguageSwitchRefreshesSettingsComboOptionsAndKeepsSelection()
+    {
+        var settings = new AppSettings { Language = AppLanguage.SimplifiedChinese };
+        var savePath = Path.Combine(Path.GetTempPath(), "stupiddict-uitests",
+            Guid.NewGuid().ToString("N"), "settings.json");
+        App.WireSettings(settings, savePath);
+        try
+        {
+            var settingsWindow = new SettingsWindow(settings);
+            settingsWindow.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            var themeCombo = settingsWindow.FindControl<ComboBox>("ThemeComboBox")!;
+            var languageCombo = settingsWindow.FindControl<ComboBox>("LanguageComboBox")!;
+            Assert.Equal(0, themeCombo.SelectedIndex);
+            Assert.Equal((int)AppLanguage.SimplifiedChinese, languageCombo.SelectedIndex);
+            Assert.Contains("跟随系统", ComboTexts(themeCombo));
+            Assert.Contains("简体中文", ComboTexts(languageCombo));
+
+            // 走真实链路：选择 English → 共享设置 → App.WireSettings → Translations.SetLanguage
+            languageCombo.SelectedIndex = (int)AppLanguage.English;
+            Dispatcher.UIThread.RunJobs();
+
+            // 两个下拉框的显示文本都要跟着换语言；选中索引原位保持。
+            // 曾有 bug：Avalonia 11.3 ComboBox 选中框对选中项 Content 做快照，
+            // 语言切换后主题框仍停留在「跟随系统」。
+            Assert.Equal(0, themeCombo.SelectedIndex);
+            Assert.Contains("System", ComboTexts(themeCombo));
+            Assert.Equal((int)AppLanguage.English, languageCombo.SelectedIndex);
+            Assert.Contains("English", ComboTexts(languageCombo));
+
+            // 下拉列表经 ItemTemplate 渲染选项实例，弹层在 PopupRoot 里进不了
+            // ComboBox 视觉树，所以选项文案按 Label 断言（同 inpaint 的回归测试）
+            Assert.Equal(["System", "Light", "Dark"],
+                themeCombo.ItemsSource!.Cast<OptionItem>().Select(o => o.Label).ToList());
+
+            languageCombo.SelectedIndex = (int)AppLanguage.SimplifiedChinese;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Contains("跟随系统", ComboTexts(themeCombo));
+            Assert.Contains("简体中文", ComboTexts(languageCombo));
+
+            settingsWindow.Close();
+        }
+        finally
+        {
+            Translations.Instance.SetLanguage(AppLanguage.SimplifiedChinese);
+        }
+    }
+
+    private static List<string?> ComboTexts(ComboBox combo) =>
+        combo.GetVisualDescendants().OfType<TextBlock>().Select(b => b.Text).ToList();
+
     private static List<string?> ResultLabels(Window window) =>
         window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
             .OfType<TextBlock>().Select(b => b.Text).ToList();

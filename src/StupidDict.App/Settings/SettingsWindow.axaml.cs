@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using StupidDict.App.Localization;
+using System.ComponentModel;
 using System.Diagnostics;
 
 namespace StupidDict.App.Settings;
@@ -10,6 +11,11 @@ public partial class SettingsWindow : Window
 {
     private readonly AppSettings _settings;
     private readonly UpdateChecker? _updateChecker;
+
+    // 选项实例一次创建、跨语言复用，顺序与枚举下标一一对应；ItemsSource 全程不换
+    // （重建会异步清空选区并把旧选中项经双向绑定推回），切语言只更新 Label
+    private readonly OptionItem[] _themeOptions;
+    private readonly OptionItem[] _languageOptions;
 
     /// <summary>带修饰键的键帽随平台：macOS ⌘，其余 Ctrl（与 OnPreviewKeyDown 的双认一致）。</summary>
     public static string ModKeycap => OperatingSystem.IsMacOS() ? "⌘" : "Ctrl";
@@ -25,10 +31,16 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         _settings = settings;
         _updateChecker = updateChecker;
+        var t = Translations.Instance;
+        _themeOptions = [new(t.FollowSystem), new(t.ThemeLight), new(t.ThemeDark)];
+        _languageOptions = [new(t.FollowSystem), new(t.LangChinese), new(t.LangEnglish)];
+        ThemeComboBox.ItemsSource = _themeOptions;
+        LanguageComboBox.ItemsSource = _languageOptions;
         ThemeComboBox.SelectedIndex = (int)settings.Theme;
         ThemeComboBox.SelectionChanged += OnThemeSelectionChanged;
         LanguageComboBox.SelectedIndex = (int)settings.Language;
         LanguageComboBox.SelectionChanged += OnLanguageSelectionChanged;
+        Translations.Instance.PropertyChanged += OnTranslationsPropertyChanged;
     }
 
     protected override void OnOpened(EventArgs e)
@@ -57,6 +69,25 @@ public partial class SettingsWindow : Window
                 Close();
                 break;
         }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        // Translations 是进程级单例，解订避免关闭后的窗口被事件钉住不释放
+        Translations.Instance.PropertyChanged -= OnTranslationsPropertyChanged;
+    }
+
+    /// <summary>语言切换后更新选项文案；选项实例与 ItemsSource 全程不变，选区无扰。</summary>
+    private void OnTranslationsPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        var t = Translations.Instance;
+        _themeOptions[0].Label = t.FollowSystem;
+        _themeOptions[1].Label = t.ThemeLight;
+        _themeOptions[2].Label = t.ThemeDark;
+        _languageOptions[0].Label = t.FollowSystem;
+        _languageOptions[1].Label = t.LangChinese;
+        _languageOptions[2].Label = t.LangEnglish;
     }
 
     private void OnThemeSelectionChanged(object? sender, SelectionChangedEventArgs e)
