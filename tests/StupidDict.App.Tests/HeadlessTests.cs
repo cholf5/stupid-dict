@@ -4,10 +4,12 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using StupidDict.App;
 using StupidDict.App.Assets;
+using StupidDict.App.Settings;
 using StupidDict.App.Speech;
 using StupidDict.Core.Application;
 using StupidDict.Core.Dictionary;
@@ -472,6 +474,80 @@ public class HeadlessWindowTests
         WaitUntil(() => !window.FindControl<Border>("AudioPackPanel")!.IsVisible);
         Assert.True(Directory.Exists(Path.Combine(locations.AudioDirectory, "uk")));
         Assert.True(File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
+    }
+
+    [AvaloniaFact]
+    public void ThemeSwitchAppliesVariantAndReRendersResults()
+    {
+        using var service = CreateService();
+        var settings = new AppSettings();
+        App.ApplyTheme(AppTheme.Dark);
+        try
+        {
+            var window = new MainWindow(service, settings: settings, autoDownload: false);
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(ThemeVariant.Dark, window.ActualThemeVariant);
+
+            var searchBox = window.FindControl<TextBox>("SearchBox")!;
+            searchBox.Text = "cat";
+            PressEnter(searchBox);
+            WaitUntil(() => Headword(window) == "cat");
+            SaveScreenshot(window, "stupiddict-dark.png");
+
+            App.ApplyTheme(AppTheme.Light);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(ThemeVariant.Light, window.ActualThemeVariant);
+
+            // The result page is built in code, so the variant switch must have
+            // replayed its render: same content, no stale or missing children.
+            Assert.Equal("cat", Headword(window));
+            SaveScreenshot(window, "stupiddict-light.png");
+        }
+        finally
+        {
+            App.ApplyTheme(AppTheme.System);
+        }
+    }
+
+    [AvaloniaFact]
+    public void SettingsButtonOpensWindowAndThemeChoiceAppliesAndPersists()
+    {
+        using var service = CreateService();
+        var settings = new AppSettings();
+        var savePath = Path.Combine(Path.GetTempPath(), "stupiddict-uitests",
+            Guid.NewGuid().ToString("N"), "settings.json");
+        App.WireSettings(settings, savePath);
+        try
+        {
+            var window = new MainWindow(service, settings: settings, autoDownload: false);
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            RaiseClick(window.FindControl<Button>("SettingsButton")!);
+            Dispatcher.UIThread.RunJobs();
+            var settingsWindow = Assert.IsType<SettingsWindow>(Assert.Single(window.OwnedWindows));
+            Assert.Equal("设置", settingsWindow.Title);
+
+            var combo = settingsWindow.FindControl<ComboBox>("ThemeComboBox")!;
+            Assert.Equal((int)AppTheme.System, combo.SelectedIndex);
+
+            combo.SelectedIndex = (int)AppTheme.Dark;
+            Assert.Equal(AppTheme.Dark, settings.Theme);
+            Assert.Equal(ThemeVariant.Dark, Application.Current!.RequestedThemeVariant);
+            Assert.Equal(AppTheme.Dark, SettingsService.Load(savePath).Theme);
+            Dispatcher.UIThread.RunJobs();
+            SaveScreenshot(settingsWindow, "stupiddict-settings-dark.png");
+
+            // Reopening focuses the existing window instead of stacking a copy.
+            RaiseClick(window.FindControl<Button>("SettingsButton")!);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Single(window.OwnedWindows);
+        }
+        finally
+        {
+            App.ApplyTheme(AppTheme.System);
+        }
     }
 
     /// <summary>An isolated data layout so asset downloads never touch the user profile.</summary>

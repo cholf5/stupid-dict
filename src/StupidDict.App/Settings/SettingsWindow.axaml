@@ -1,0 +1,45 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="StupidDict.App.Settings.SettingsWindow"
+        Title="设置"
+        Width="380" SizeToContent="Height"
+        CanResize="False" WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource WindowBackground}">
+
+  <StackPanel Margin="20" Spacing="12">
+
+    <TextBlock Text="外观" Classes="label" Margin="4,0,0,0" />
+
+    <Border CornerRadius="10" Background="{DynamicResource CardBackground}"
+            BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="14,10">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock Text="主题" FontSize="14" Foreground="{DynamicResource TextBody}" />
+          <TextBlock Text="跟随系统、日间或夜间，更改立即生效"
+                     FontSize="12" Classes="hint" Margin="0,2,0,0" />
+        </StackPanel>
+        <!-- 选项顺序对应 AppTheme：0 跟随系统 / 1 日间 / 2 夜间 -->
+        <ComboBox Name="ThemeComboBox" Grid.Column="1" MinWidth="110"
+                  VerticalAlignment="Center" SelectedIndex="0">
+          <ComboBoxItem Content="跟随系统" />
+          <ComboBoxItem Content="日间" />
+          <ComboBoxItem Content="夜间" />
+        </ComboBox>
+      </Grid>
+    </Border>
+
+    <TextBlock Text="关于" Classes="label" Margin="4,8,0,0" />
+
+    <Border CornerRadius="10" Background="{DynamicResource CardBackground}"
+            BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="14,10">
+      <StackPanel Spacing="2">
+        <TextBlock Text="Stupid Dict" FontSize="14" FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextTitle}" />
+        <TextBlock Name="VersionText" FontSize="12" Classes="hint" />
+        <TextBlock Text="完全离线的英汉词典。查询不联网，联网只发生在首次下载词典与发音包的时候。"
+                   FontSize="12" Classes="hint" TextWrapping="Wrap" Margin="0,4,0,0" />
+      </StackPanel>
+    </Border>
+
+  </StackPanel>
+</Window>

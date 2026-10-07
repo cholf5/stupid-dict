@@ -1,10 +1,157 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="StupidDict.App.App"
-             RequestedThemeVariant="Light">
+             RequestedThemeVariant="Default">
 
   <Application.Styles>
     <FluentTheme />
+
+    <!-- Shared control styles: window chrome stays paper-quiet in both themes,
+         so every surface resolves from the theme dictionaries below. -->
+    <Style Selector="Button.chip">
+      <Setter Property="Background" Value="{DynamicResource ChipBackground}" />
+      <Setter Property="Foreground" Value="{DynamicResource ChipText}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Padding" Value="13,5" />
+      <Setter Property="FontSize" Value="13" />
+    </Style>
+    <Style Selector="Button.chip:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource ChipHover}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextStrong}" />
+    </Style>
+    <Style Selector="Button.chip:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource ChipPressed}" />
+    </Style>
+
+    <Style Selector="Button.suggest">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextBody}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="7" />
+      <Setter Property="Padding" Value="12,7" />
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+    </Style>
+    <Style Selector="Button.suggest:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource SuggestHover}" />
+    </Style>
+    <Style Selector="Button.suggest:selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource ChipBackground}" />
+    </Style>
+
+    <Style Selector="Button.nav">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextNav}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="7" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Width" Value="26" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource ChipBackground}" />
+    </Style>
+    <Style Selector="Button.nav:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource ChipHover}" />
+    </Style>
+    <Style Selector="Button.nav:disabled">
+      <Setter Property="Foreground" Value="{DynamicResource TextFaint}" />
+    </Style>
+    <Style Selector="Button.nav:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <Style Selector="Button.spk">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="9" />
+      <Setter Property="Padding" Value="7,2" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="MinHeight" Value="18" />
+    </Style>
+    <Style Selector="Button.spk:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource ChipBackground}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextTitle}" />
+    </Style>
+    <Style Selector="Button.spk:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource ChipHover}" />
+    </Style>
+
+    <Style Selector="TextBlock.hint">
+      <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+    </Style>
+    <Style Selector="TextBlock.label">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+    </Style>
+
+    <Style Selector="TextBlock.wordlink">
+      <Setter Property="Foreground" Value="{DynamicResource WordLink}" />
+      <Setter Property="TextDecorations" Value="Underline" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="TextBlock.wordlink:pointerover">
+      <Setter Property="Foreground" Value="{DynamicResource WordLinkHover}" />
+    </Style>
   </Application.Styles>
+
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="WindowBackground" Color="#F7F7F4" />
+          <SolidColorBrush x:Key="CardBackground" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="CardBorder" Color="#E4E3DC" />
+          <SolidColorBrush x:Key="AudioBarBackground" Color="#EFEFE9" />
+          <SolidColorBrush x:Key="TextTitle" Color="#403F38" />
+          <SolidColorBrush x:Key="TextStrong" Color="#211F1A" />
+          <SolidColorBrush x:Key="TextBody" Color="#2B2A24" />
+          <SolidColorBrush x:Key="TextSecondary" Color="#55534B" />
+          <SolidColorBrush x:Key="TextMuted" Color="#9C9A91" />
+          <SolidColorBrush x:Key="TextFaint" Color="#C9C8C0" />
+          <SolidColorBrush x:Key="TextNav" Color="#6B6A61" />
+          <SolidColorBrush x:Key="ChipBackground" Color="#ECECE7" />
+          <SolidColorBrush x:Key="ChipHover" Color="#E0E0D9" />
+          <SolidColorBrush x:Key="ChipPressed" Color="#D5D5CD" />
+          <SolidColorBrush x:Key="ChipText" Color="#3F3E38" />
+          <SolidColorBrush x:Key="SuggestHover" Color="#F0F0EA" />
+          <SolidColorBrush x:Key="WordLink" Color="#3E6D9C" />
+          <SolidColorBrush x:Key="WordLinkHover" Color="#2A5375" />
+          <SolidColorBrush x:Key="ErrorForeground" Color="#8A3B33" />
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="WindowBackground" Color="#201F1C" />
+          <SolidColorBrush x:Key="CardBackground" Color="#2A2926" />
+          <SolidColorBrush x:Key="CardBorder" Color="#3B3A34" />
+          <SolidColorBrush x:Key="AudioBarBackground" Color="#2A2926" />
+          <SolidColorBrush x:Key="TextTitle" Color="#E8E6DC" />
+          <SolidColorBrush x:Key="TextStrong" Color="#F2F0E7" />
+          <SolidColorBrush x:Key="TextBody" Color="#DEDCD2" />
+          <SolidColorBrush x:Key="TextSecondary" Color="#B7B5AB" />
+          <SolidColorBrush x:Key="TextMuted" Color="#918F86" />
+          <SolidColorBrush x:Key="TextFaint" Color="#5D5B54" />
+          <SolidColorBrush x:Key="TextNav" Color="#AAA89E" />
+          <SolidColorBrush x:Key="ChipBackground" Color="#38372F" />
+          <SolidColorBrush x:Key="ChipHover" Color="#44423A" />
+          <SolidColorBrush x:Key="ChipPressed" Color="#504E45" />
+          <SolidColorBrush x:Key="ChipText" Color="#D2D0C6" />
+          <SolidColorBrush x:Key="SuggestHover" Color="#333230" />
+          <SolidColorBrush x:Key="WordLink" Color="#82ABD3" />
+          <SolidColorBrush x:Key="WordLinkHover" Color="#A9C7E4" />
+          <SolidColorBrush x:Key="ErrorForeground" Color="#D98B7E" />
+        </ResourceDictionary>
+
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
 
 </Application>

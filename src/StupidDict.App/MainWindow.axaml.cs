@@ -8,6 +8,7 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using StupidDict.App.Assets;
+using StupidDict.App.Settings;
 using StupidDict.App.Speech;
 using StupidDict.Core.Application;
 using StupidDict.Core.Dictionary;
@@ -34,18 +35,30 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _dictionaryDownloadCts;
     private CancellationTokenSource? _audioPackCts;
     private readonly bool _autoDownload;
+    private readonly AppSettings _settings;
+    private SettingsWindow? _settingsWindow;
+
+    /// <summary>
+    /// Rebuilds the currently rendered result page with fresh palette values;
+    /// XAML styles recolor themselves via DynamicResource, but the result page
+    /// is built in code, so a theme switch replays its render closure.
+    /// </summary>
+    private Action? _rebuildResults;
 
     public MainWindow() : this(new DictionaryService(AppPaths.DictionaryDatabasePath, AppPaths.HistoryDatabasePath))
     {
     }
 
     public MainWindow(DictionaryService service, ISpeechPlayer? speechPlayer = null,
-        IAssetDownloader? downloader = null, AppLocations? locations = null, bool autoDownload = true)
+        IAssetDownloader? downloader = null, AppLocations? locations = null, bool autoDownload = true,
+        AppSettings? settings = null)
     {
         InitializeComponent();
         _service = service;
         _locations = locations ?? AppLocations.Default;
         _autoDownload = autoDownload;
+        // Tests pass no settings: never read the user's real settings file.
+        _settings = settings ?? new AppSettings();
         _speech = speechPlayer ?? SpeechPlayback.Create(_locations.AudioDirectory);
         _downloader = downloader ?? new AssetDownloadService();
         _dictionaryAvailable = File.Exists(service.DictionaryPath);
@@ -54,6 +67,7 @@ public partial class MainWindow : Window
         SearchBox.KeyDown += OnSearchBoxKeyDown;
         SearchBox.TextChanged += OnSearchTextChanged;
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+        ActualThemeVariantChanged += OnActualThemeVariantChanged;
 
         ShowEmptyState();
         RefreshRecents();
@@ -90,6 +104,10 @@ public partial class MainWindow : Window
             case Key.OemCloseBrackets when cmdCtrl:
                 e.Handled = true;
                 Navigate(_navigator.GoForward());
+                break;
+            case Key.OemComma when cmdCtrl:
+                e.Handled = true;
+                OpenSettings();
                 break;
             case Key.Escape:
                 e.Handled = true;
@@ -300,6 +318,27 @@ public partial class MainWindow : Window
         RefreshRecents();
     }
 
+    private void OnSettingsClick(object? sender, RoutedEventArgs e) => OpenSettings();
+
+    /// <summary>Single-instance, non-modal, owned by the main window.</summary>
+    private void OpenSettings()
+    {
+        if (_settingsWindow is { } open)
+        {
+            open.Activate();
+            return;
+        }
+        _settingsWindow = new SettingsWindow(_settings);
+        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Show(this);
+    }
+
+    private void OnActualThemeVariantChanged(object? sender, EventArgs e)
+    {
+        if (ResultsPanel.IsVisible)
+            _rebuildResults?.Invoke();
+    }
+
     private void OnNavBackClick(object? sender, RoutedEventArgs e) => Navigate(_navigator.GoBack());
 
     private void OnNavForwardClick(object? sender, RoutedEventArgs e) => Navigate(_navigator.GoForward());
@@ -334,6 +373,7 @@ public partial class MainWindow : Window
         DictionaryDownloadPanel.IsVisible = !_dictionaryAvailable;
         ResultsPanel.IsVisible = false;
         ResultsPanel.Children.Clear();
+        _rebuildResults = null;
     }
 
     private void RefreshRecents()
@@ -558,6 +598,7 @@ public partial class MainWindow : Window
         HintPanel.IsVisible = false;
         ResultsPanel.IsVisible = true;
         ResultsPanel.Children.Clear();
+        _rebuildResults = () => RenderResult(result);
 
         if (result.IsChineseQuery)
             RenderChineseResult(result);
@@ -569,23 +610,23 @@ public partial class MainWindow : Window
     {
         if (result.Primary is not { } entry)
         {
-            ResultsPanel.Children.Add(Text($"没有找到 “{result.Query}”", 20, FontWeight.SemiBold, "#403F38", margin: new Thickness(2, 8, 0, 0)));
+            ResultsPanel.Children.Add(Text($"没有找到 “{result.Query}”", 20, FontWeight.SemiBold, Palette.TextTitle, margin: new Thickness(2, 8, 0, 0)));
             if (result.WordSuggestions.Count > 0)
             {
-                ResultsPanel.Children.Add(Text("你是不是要找", fontSize: 12, color: "#9C9A91", margin: new Thickness(2, 18, 0, 8)));
+                ResultsPanel.Children.Add(Text("你是不是要找", fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 18, 0, 8)));
                 ResultsPanel.Children.Add(BuildChips(result.WordSuggestions.Select(w => w.Word)));
             }
             else
             {
-                ResultsPanel.Children.Add(Text("试试更短的拼写，或换个说法。", fontSize: 14, color: "#8B897F", margin: new Thickness(2, 10, 0, 0)));
+                ResultsPanel.Children.Add(Text("试试更短的拼写，或换个说法。", fontSize: 14, brushKey: Palette.TextMuted, margin: new Thickness(2, 10, 0, 0)));
             }
             return;
         }
 
-        ResultsPanel.Children.Add(Text(entry.Word, 30, FontWeight.SemiBold, "#211F1A", margin: new Thickness(2, 0, 0, 0)));
+        ResultsPanel.Children.Add(Text(entry.Word, 30, FontWeight.SemiBold, Palette.TextStrong, margin: new Thickness(2, 0, 0, 0)));
 
         if (result.WordFormNote is { } note)
-            ResultsPanel.Children.Add(Text($"{result.Query} → {note}", fontSize: 13, color: "#9C9A91", margin: new Thickness(2, 4, 0, 0)));
+            ResultsPanel.Children.Add(Text($"{result.Query} → {note}", fontSize: 13, brushKey: Palette.TextMuted, margin: new Thickness(2, 4, 0, 0)));
 
         ResultsPanel.Children.Add(BuildPhoneticsLine(entry, margin: new Thickness(2, 4, 0, 0)));
 
@@ -593,14 +634,14 @@ public partial class MainWindow : Window
         {
             var chinese = new StackPanel { Spacing = 5, Margin = new Thickness(2, 14, 0, 0) };
             foreach (var line in SplitLines(entry.Chinese))
-                chinese.Children.Add(Text(line, 16, color: "#2B2A24"));
+                chinese.Children.Add(Text(line, 16, brushKey: Palette.TextBody));
             ResultsPanel.Children.Add(chinese);
         }
 
         if (entry.English.Length > 0)
         {
-            ResultsPanel.Children.Add(Text("英英释义", fontSize: 12, color: "#9C9A91", margin: new Thickness(2, 18, 0, 5)));
-            ResultsPanel.Children.Add(Text(entry.English, fontSize: 14, color: "#55534B", margin: new Thickness(2, 0, 0, 0), lineHeight: 22));
+            ResultsPanel.Children.Add(Text("英英释义", fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 18, 0, 5)));
+            ResultsPanel.Children.Add(Text(entry.English, fontSize: 14, brushKey: Palette.TextSecondary, margin: new Thickness(2, 0, 0, 0), lineHeight: 22));
         }
 
         RenderThesaurus(result);
@@ -610,7 +651,7 @@ public partial class MainWindow : Window
     {
         if (result.Synonyms.Count > 0)
         {
-            ResultsPanel.Children.Add(Text("近义词", fontSize: 12, color: "#9C9A91", margin: new Thickness(2, 18, 0, 5)));
+            ResultsPanel.Children.Add(Text("近义词", fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 18, 0, 5)));
             foreach (var line in result.Synonyms)
                 ResultsPanel.Children.Add(BuildLinkText(PosLineSegments(line), fontSize: 15,
                     margin: new Thickness(2, 0, 0, 0)));
@@ -618,7 +659,7 @@ public partial class MainWindow : Window
 
         if (result.Antonyms.Count > 0)
         {
-            ResultsPanel.Children.Add(Text("反义词", fontSize: 12, color: "#9C9A91", margin: new Thickness(2, 14, 0, 5)));
+            ResultsPanel.Children.Add(Text("反义词", fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 14, 0, 5)));
             foreach (var line in result.Antonyms)
                 ResultsPanel.Children.Add(BuildLinkText(PosLineSegments(line), fontSize: 15,
                     margin: new Thickness(2, 0, 0, 0)));
@@ -626,7 +667,7 @@ public partial class MainWindow : Window
 
         if (result.RelatedWords.Count > 0)
         {
-            ResultsPanel.Children.Add(Text("联想词", fontSize: 12, color: "#9C9A91", margin: new Thickness(2, 14, 0, 5)));
+            ResultsPanel.Children.Add(Text("联想词", fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 14, 0, 5)));
             List<LinkSegment> segments = [];
             foreach (var related in result.RelatedWords)
             {
@@ -654,27 +695,27 @@ public partial class MainWindow : Window
     {
         if (result.Primary is null && result.ChineseMatches.Count == 0)
         {
-            ResultsPanel.Children.Add(Text($"没有找到 “{result.Query}”", 20, FontWeight.SemiBold, "#403F38", margin: new Thickness(2, 8, 0, 0)));
+            ResultsPanel.Children.Add(Text($"没有找到 “{result.Query}”", 20, FontWeight.SemiBold, Palette.TextTitle, margin: new Thickness(2, 8, 0, 0)));
             return;
         }
 
-        ResultsPanel.Children.Add(Text(result.Query, 30, FontWeight.SemiBold, "#211F1A", margin: new Thickness(2, 0, 0, 0)));
+        ResultsPanel.Children.Add(Text(result.Query, 30, FontWeight.SemiBold, Palette.TextStrong, margin: new Thickness(2, 0, 0, 0)));
 
         if (result.Primary is { } primary)
         {
             var wordLine = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(2, 8, 0, 0) };
-            wordLine.Children.Add(Text(primary.Word, 20, FontWeight.SemiBold, "#2B2A24", verticalCenter: true));
+            wordLine.Children.Add(Text(primary.Word, 20, FontWeight.SemiBold, Palette.TextBody, verticalCenter: true));
             wordLine.Children.Add(BuildPhoneticsLine(primary));
             ResultsPanel.Children.Add(wordLine);
 
             if (primary.English.Length > 0)
-                ResultsPanel.Children.Add(Text(primary.English, fontSize: 14, color: "#55534B", margin: new Thickness(2, 6, 0, 0), lineHeight: 22));
+                ResultsPanel.Children.Add(Text(primary.English, fontSize: 14, brushKey: Palette.TextSecondary, margin: new Thickness(2, 6, 0, 0), lineHeight: 22));
 
             if (primary.Chinese.Length > 0)
             {
                 var chinese = new StackPanel { Spacing = 5, Margin = new Thickness(2, 12, 0, 0) };
                 foreach (var line in SplitLines(primary.Chinese))
-                    chinese.Children.Add(Text(line, 16, color: "#2B2A24"));
+                    chinese.Children.Add(Text(line, 16, brushKey: Palette.TextBody));
                 ResultsPanel.Children.Add(chinese);
             }
         }
@@ -685,7 +726,7 @@ public partial class MainWindow : Window
             .ToList();
         if (others.Count > 0)
         {
-            ResultsPanel.Children.Add(Text(result.Primary is null ? "相关词条" : "其他词条", fontSize: 12, color: "#9C9A91", margin: new Thickness(2, 18, 0, 8)));
+            ResultsPanel.Children.Add(Text(result.Primary is null ? "相关词条" : "其他词条", fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 18, 0, 8)));
             ResultsPanel.Children.Add(BuildChips(others.Select(m => m.Entry.Word)));
         }
     }
@@ -695,8 +736,9 @@ public partial class MainWindow : Window
         HintPanel.IsVisible = false;
         ResultsPanel.IsVisible = true;
         ResultsPanel.Children.Clear();
-        ResultsPanel.Children.Add(Text($"查询 “{query}” 时出错", 20, FontWeight.SemiBold, "#8A3B33", margin: new Thickness(2, 8, 0, 0)));
-        ResultsPanel.Children.Add(Text(ex.Message, fontSize: 13, color: "#8B897F", margin: new Thickness(2, 8, 0, 0)));
+        _rebuildResults = () => RenderError(query, ex);
+        ResultsPanel.Children.Add(Text($"查询 “{query}” 时出错", 20, FontWeight.SemiBold, Palette.ErrorForeground, margin: new Thickness(2, 8, 0, 0)));
+        ResultsPanel.Children.Add(Text(ex.Message, fontSize: 13, brushKey: Palette.TextMuted, margin: new Thickness(2, 8, 0, 0)));
     }
 
     private WrapPanel BuildChips(IEnumerable<string> items)
@@ -727,9 +769,9 @@ public partial class MainWindow : Window
     {
         var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = margin ?? new Thickness(0) };
         if (entry.Phonetic.Length > 0)
-            line.Children.Add(Text("英 " + FormatPhonetic(entry.Phonetic), fontSize: 14, color: "#8B897F", mono: true, verticalCenter: true));
+            line.Children.Add(Text("英 " + FormatPhonetic(entry.Phonetic), fontSize: 14, brushKey: Palette.TextMuted, mono: true, verticalCenter: true));
         if (entry.UsPhonetic.Length > 0)
-            line.Children.Add(Text("美 " + FormatPhonetic(entry.UsPhonetic), fontSize: 14, color: "#8B897F", mono: true, verticalCenter: true));
+            line.Children.Add(Text("美 " + FormatPhonetic(entry.UsPhonetic), fontSize: 14, brushKey: Palette.TextMuted, mono: true, verticalCenter: true));
         line.Children.Add(SpeakerButton(entry.Word, SpeechAccent.British));
         line.Children.Add(SpeakerButton(entry.Word, SpeechAccent.American));
         return line;
@@ -762,6 +804,7 @@ public partial class MainWindow : Window
 
     private static string[] SplitLines(string value) =>
         value.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
 
     /// <summary>
     /// Double-clicking a word in any result text looks it up. The handler must
@@ -819,7 +862,7 @@ public partial class MainWindow : Window
     /// even IndexOutOfRangeException inside GlyphRun.FindNearestCharacterHit).
     /// </summary>
     private SelectableTextBlock BuildLinkText(IReadOnlyList<LinkSegment> segments, double fontSize,
-        string color = "#55534B", Thickness? margin = null)
+        string brushKey = Palette.TextSecondary, Thickness? margin = null)
     {
         var inlines = new InlineCollection();
         foreach (var segment in segments)
@@ -833,7 +876,7 @@ public partial class MainWindow : Window
         return new SelectableTextBlock
         {
             FontSize = fontSize,
-            Foreground = Brush.Parse(color),
+            Foreground = Palette.Get(brushKey, ActualThemeVariant),
             TextWrapping = TextWrapping.Wrap,
             Margin = margin ?? new Thickness(0),
             LineHeight = 22,
@@ -863,7 +906,7 @@ public partial class MainWindow : Window
     }
 
     private SelectableTextBlock Text(string value, double fontSize, FontWeight weight = FontWeight.Normal,
-        string color = "#2B2A24", bool mono = false, Thickness? margin = null,
+        string brushKey = Palette.TextBody, bool mono = false, Thickness? margin = null,
         double? lineHeight = null, bool verticalCenter = false)
     {
         var block = new SelectableTextBlock
@@ -872,7 +915,7 @@ public partial class MainWindow : Window
             FontSize = fontSize,
             FontWeight = weight,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = Brush.Parse(color),
+            Foreground = Palette.Get(brushKey, ActualThemeVariant),
             Margin = margin ?? new Thickness(0),
             VerticalAlignment = verticalCenter ? Avalonia.Layout.VerticalAlignment.Center : Avalonia.Layout.VerticalAlignment.Top,
         };

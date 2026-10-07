@@ -6,120 +6,35 @@
         Title="Stupid Dict"
         Width="780" Height="560"
         MinWidth="560" MinHeight="440"
-        Background="#F7F7F4">
+        Background="{DynamicResource WindowBackground}">
 
   <Window.Styles>
     <Style Selector="TextBox#SearchBox">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="FontSize" Value="18" />
       <Setter Property="Padding" Value="2,11" />
-      <Setter Property="CaretBrush" Value="#211F1A" />
+      <Setter Property="CaretBrush" Value="{DynamicResource TextStrong}" />
     </Style>
     <Style Selector="TextBox#SearchBox /template/ Border#PART_BorderElement">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="MinHeight" Value="0" />
     </Style>
-
-    <Style Selector="Button.chip">
-      <Setter Property="Background" Value="#ECECE7" />
-      <Setter Property="Foreground" Value="#3F3E38" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="CornerRadius" Value="14" />
-      <Setter Property="Padding" Value="13,5" />
-      <Setter Property="FontSize" Value="13" />
-    </Style>
-    <Style Selector="Button.chip:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#E0E0D9" />
-      <Setter Property="Foreground" Value="#211F1A" />
-    </Style>
-    <Style Selector="Button.chip:pressed /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#D5D5CD" />
-    </Style>
-
-    <Style Selector="Button.suggest">
+    <!-- Fluent paints a focused background and ring on the same part; on the
+         dark theme that reads as a black slab inside the paper card. The caret
+         is the focus indication for this borderless search box. -->
+    <Style Selector="TextBox#SearchBox:focus /template/ Border#PART_BorderElement">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="#2B2A24" />
+      <Setter Property="BorderBrush" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="CornerRadius" Value="7" />
-      <Setter Property="Padding" Value="12,7" />
-      <Setter Property="FontSize" Value="15" />
-      <Setter Property="HorizontalAlignment" Value="Stretch" />
-      <Setter Property="HorizontalContentAlignment" Value="Left" />
-    </Style>
-    <Style Selector="Button.suggest:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#F0F0EA" />
-    </Style>
-    <Style Selector="Button.suggest:selected /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#ECECE7" />
-    </Style>
-
-    <Style Selector="Button.nav">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="#6B6A61" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="CornerRadius" Value="7" />
-      <Setter Property="Padding" Value="0" />
-      <Setter Property="Width" Value="26" />
-      <Setter Property="Height" Value="26" />
-      <Setter Property="FontSize" Value="15" />
-      <Setter Property="VerticalAlignment" Value="Center" />
-    </Style>
-    <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#ECECE7" />
-    </Style>
-    <Style Selector="Button.nav:pressed /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#E0E0D9" />
-    </Style>
-    <Style Selector="Button.nav:disabled">
-      <Setter Property="Foreground" Value="#C9C8C0" />
-    </Style>
-    <Style Selector="Button.nav:disabled /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="Transparent" />
-    </Style>
-
-    <Style Selector="Button.spk">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="#8B897F" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="CornerRadius" Value="9" />
-      <Setter Property="Padding" Value="7,2" />
-      <Setter Property="FontSize" Value="10" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="VerticalAlignment" Value="Center" />
-      <Setter Property="MinHeight" Value="18" />
-    </Style>
-    <Style Selector="Button.spk:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#ECECE7" />
-      <Setter Property="Foreground" Value="#403F38" />
-    </Style>
-    <Style Selector="Button.spk:pressed /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#E0E0D9" />
-    </Style>
-
-    <Style Selector="TextBlock.hint">
-      <Setter Property="Foreground" Value="#9C9A91" />
-    </Style>
-    <Style Selector="TextBlock.label">
-      <Setter Property="FontSize" Value="12" />
-      <Setter Property="Foreground" Value="#9C9A91" />
-    </Style>
-
-    <Style Selector="TextBlock.wordlink">
-      <Setter Property="Foreground" Value="#3E6D9C" />
-      <Setter Property="TextDecorations" Value="Underline" />
-      <Setter Property="Cursor" Value="Hand" />
-    </Style>
-    <Style Selector="TextBlock.wordlink:pointerover">
-      <Setter Property="Foreground" Value="#2A5375" />
     </Style>
   </Window.Styles>
 
   <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
 
     <Border Grid.Row="0" Margin="18,18,18,6"
-            CornerRadius="10" Background="White"
-            BorderBrush="#E4E3DC" BorderThickness="1">
+            CornerRadius="10" Background="{DynamicResource CardBackground}"
+            BorderBrush="{DynamicResource CardBorder}" BorderThickness="1">
       <TextBox Name="SearchBox"
                Watermark="输入单词或中文，按 Enter 查询">
         <TextBox.InnerLeftContent>
@@ -131,12 +46,16 @@
             <TextBlock Text="🔍" Margin="10,0,4,0" VerticalAlignment="Center" FontSize="15" />
           </StackPanel>
         </TextBox.InnerLeftContent>
+        <TextBox.InnerRightContent>
+          <Button Name="SettingsButton" Classes="nav" Content="⚙" Margin="0,0,8,0"
+                  ToolTip.Tip="设置 (⌘,)" Click="OnSettingsClick" />
+        </TextBox.InnerRightContent>
       </TextBox>
     </Border>
 
     <Border Grid.Row="1" Name="SuggestPanel" IsVisible="False"
-            Margin="18,6,18,0" CornerRadius="10" Background="White"
-            BorderBrush="#E4E3DC" BorderThickness="1" Padding="6">
+            Margin="18,6,18,0" CornerRadius="10" Background="{DynamicResource CardBackground}"
+            BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="6">
       <ScrollViewer MaxHeight="280">
         <ItemsControl Name="SuggestList">
           <ItemsControl.ItemTemplate>
@@ -154,10 +73,10 @@
                     HorizontalAlignment="Center" VerticalAlignment="Center"
                     Spacing="10" Margin="0,0,0,60">
           <TextBlock Text="Stupid Dict" FontSize="24" FontWeight="SemiBold"
-                     Foreground="#403F38" HorizontalAlignment="Center" />
+                     Foreground="{DynamicResource TextTitle}" HorizontalAlignment="Center" />
           <TextBlock Name="HintText" Text="输入单词或中文，按 Enter 查询"
                      FontSize="14" HorizontalAlignment="Center" Classes="hint" />
-          <TextBlock Text="完全离线 · 无账号 · 无设置" FontSize="12"
+          <TextBlock Text="完全离线 · 无账号 · 零配置" FontSize="12"
                      HorizontalAlignment="Center" Classes="hint" Opacity="0.8" />
         </StackPanel>
 
@@ -165,7 +84,7 @@
                     HorizontalAlignment="Center" VerticalAlignment="Center"
                     Spacing="10" Margin="0,0,0,60">
           <TextBlock Text="Stupid Dict" FontSize="24" FontWeight="SemiBold"
-                     Foreground="#403F38" HorizontalAlignment="Center" />
+                     Foreground="{DynamicResource TextTitle}" HorizontalAlignment="Center" />
           <TextBlock Name="DictionaryDownloadStatus"
                      Text="首次使用需要词典数据（约 600 MB）。直接下载，或导入本地已有文件。"
                      FontSize="14" HorizontalAlignment="Center" Classes="hint"
@@ -205,7 +124,7 @@
     </StackPanel>
 
     <Border Grid.Row="4" Name="AudioPackPanel" IsVisible="False"
-            Background="#EFEFE9" Padding="20,7">
+            Background="{DynamicResource AudioBarBackground}" Padding="20,7">
       <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
         <TextBlock Name="AudioPackStatus" VerticalAlignment="Center" FontSize="12"
                    Classes="hint" TextTrimming="CharacterEllipsis" />

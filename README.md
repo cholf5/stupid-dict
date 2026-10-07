@@ -2,9 +2,9 @@
 
 A stupidly simple offline English-Chinese dictionary for Windows, macOS and Linux.
 
-**No account. No settings. No dictionary management. Just type and search.**
+**No account. No dictionary management. Just type and search.**
 
-输入一个词，立即告诉你它是什么意思。不登录，不联网，不选词典，不配置任何东西。
+输入一个词，立即告诉你它是什么意思。不登录，不联网，不选词典；唯一的设置是日间 / 夜间主题。
 
 ## 功能
 
@@ -17,6 +17,7 @@ A stupidly simple offline English-Chinese dictionary for Windows, macOS and Linu
 - **最近搜索**：本地保存最近 30 条，去重、点击即查，没有管理界面
 - **双击取词**：结果里的英文文本可直接双击，双击哪个单词就查哪个单词，连续点连续查；中文释义不响应（中文没有空格分词，命中无意义）
 - **前进 / 后退**：搜索框旁的 `← / →` 在查询历史里前后翻，查过的词整页缓存，后退不重新查询、不写最近搜索
+- **日间 / 夜间模式**：搜索框右侧的 `⚙`（或 `Ctrl/Cmd + ,`）打开设置，主题可选跟随系统、日间或夜间，选择保存在本地；这是应用唯一的设置
 - **完全离线**：查询全部在本地完成，断网不影响任何功能
 
 匹配顺序：`Exact → Normalized Exact → Word Form（cats → cat）→ Prefix → Fuzzy`。未命中时给出“你是不是要找”的建议，但绝不替你做决定。
@@ -31,6 +32,7 @@ A stupidly simple offline English-Chinese dictionary for Windows, macOS and Linu
 | `Ctrl/Cmd + V` | 粘贴 |
 | `↑ / ↓` | 浏览补全候选；输入框为空时进入最近搜索 |
 | `Ctrl/Cmd + [` / `Ctrl/Cmd + ]` | 后退 / 前进（查询历史） |
+| `Ctrl/Cmd + ,` | 打开设置 |
 | `Ctrl/Cmd + K` | 聚焦搜索框 |
 
 ## 架构
@@ -161,6 +163,6 @@ MIT（以 ECDICT 上游仓库对其代码与数据的整体授权声明为准）
 
 ## 明确不做的功能
 
-登录、注册、云同步、生词本、课程、词典选择、设置界面、AI、在线翻译、在线发音（发音只用离线音频包和系统语音）、划词、浏览器插件、移动端、广告、订阅——都不做。
+登录、注册、云同步、生词本、课程、词典选择、AI、在线翻译、在线发音（发音只用离线音频包和系统语音）、划词、浏览器插件、移动端、广告、订阅——都不做。
 
-没有 Settings。如果以后真的出现一个必须配置的东西，优先考虑自动决定，而不是增加设置项。
+设置只有一项：外观主题（跟随系统 / 日间 / 夜间）。这曾是刻意不做设置界面的项目，但夜间阅读是离线词典的真实需求，于是为它开了一个例外。原则不变：以后再出现必须配置的东西，优先自动决定，而不是增加设置项。
