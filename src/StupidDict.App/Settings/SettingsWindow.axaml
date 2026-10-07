@@ -25,35 +25,40 @@
   <TabControl Name="SettingsTabs">
 
     <TabItem Header="{Binding SectionGeneral, Source={x:Static loc:Translations.Instance}}">
-      <StackPanel Margin="16,14" Spacing="14">
-        <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto" RowSpacing="14">
-          <StackPanel Grid.Row="0" Grid.Column="0" VerticalAlignment="Center">
-            <TextBlock FontSize="14" Foreground="{DynamicResource TextBody}"
+      <StackPanel Margin="16,14" Spacing="16">
+        <!-- 每个 setting 一组：标题行 Grid 的行高由 32px 的 ComboBox 决定，
+             label 垂直居中后与下拉框中心严格对齐；hint 整宽放组下方。 -->
+        <StackPanel Spacing="5">
+          <Grid ColumnDefinitions="280,*" ColumnSpacing="16">
+            <TextBlock FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
                        Text="{Binding ThemeLabel, Source={x:Static loc:Translations.Instance}}" />
-            <TextBlock FontSize="12" Classes="hint" Margin="0,2,0,0"
-                       Text="{Binding ThemeHint, Source={x:Static loc:Translations.Instance}}" />
-          </StackPanel>
-          <!-- 选项顺序对应 AppTheme：0 跟随系统 / 1 日间 / 2 夜间 -->
-          <ComboBox Name="ThemeComboBox" Grid.Row="0" Grid.Column="1" MinWidth="200"
-                    HorizontalAlignment="Left" VerticalAlignment="Center" SelectedIndex="0">
-            <ComboBoxItem Content="{Binding FollowSystem, Source={x:Static loc:Translations.Instance}}" />
-            <ComboBoxItem Content="{Binding ThemeLight, Source={x:Static loc:Translations.Instance}}" />
-            <ComboBoxItem Content="{Binding ThemeDark, Source={x:Static loc:Translations.Instance}}" />
-          </ComboBox>
-          <StackPanel Grid.Row="1" Grid.Column="0" VerticalAlignment="Center">
-            <TextBlock FontSize="14" Foreground="{DynamicResource TextBody}"
+            <!-- 选项顺序对应 AppTheme：0 跟随系统 / 1 日间 / 2 夜间 -->
+            <ComboBox Name="ThemeComboBox" Grid.Column="1" MinWidth="200"
+                      HorizontalAlignment="Left" SelectedIndex="0">
+              <ComboBoxItem Content="{Binding FollowSystem, Source={x:Static loc:Translations.Instance}}" />
+              <ComboBoxItem Content="{Binding ThemeLight, Source={x:Static loc:Translations.Instance}}" />
+              <ComboBoxItem Content="{Binding ThemeDark, Source={x:Static loc:Translations.Instance}}" />
+            </ComboBox>
+          </Grid>
+          <!-- 长文案（英文 LanguageHint 约 440px）必须在宽度内换行，防溢出 -->
+          <TextBlock FontSize="12" Classes="hint" TextWrapping="Wrap"
+                     Text="{Binding ThemeHint, Source={x:Static loc:Translations.Instance}}" />
+        </StackPanel>
+        <StackPanel Spacing="5">
+          <Grid ColumnDefinitions="280,*" ColumnSpacing="16">
+            <TextBlock FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
                        Text="{Binding LanguageLabel, Source={x:Static loc:Translations.Instance}}" />
-            <TextBlock FontSize="12" Classes="hint" Margin="0,2,0,0"
-                       Text="{Binding LanguageHint, Source={x:Static loc:Translations.Instance}}" />
-          </StackPanel>
-          <!-- 选项顺序对应 AppLanguage：0 跟随系统 / 1 简体中文 / 2 English -->
-          <ComboBox Name="LanguageComboBox" Grid.Row="1" Grid.Column="1" MinWidth="200"
-                    HorizontalAlignment="Left" VerticalAlignment="Center" SelectedIndex="0">
-            <ComboBoxItem Content="{Binding FollowSystem, Source={x:Static loc:Translations.Instance}}" />
-            <ComboBoxItem Content="{Binding LangChinese, Source={x:Static loc:Translations.Instance}}" />
-            <ComboBoxItem Content="{Binding LangEnglish, Source={x:Static loc:Translations.Instance}}" />
-          </ComboBox>
-        </Grid>
+            <!-- 选项顺序对应 AppLanguage：0 跟随系统 / 1 简体中文 / 2 English -->
+            <ComboBox Name="LanguageComboBox" Grid.Column="1" MinWidth="200"
+                      HorizontalAlignment="Left" SelectedIndex="0">
+              <ComboBoxItem Content="{Binding FollowSystem, Source={x:Static loc:Translations.Instance}}" />
+              <ComboBoxItem Content="{Binding LangChinese, Source={x:Static loc:Translations.Instance}}" />
+              <ComboBoxItem Content="{Binding LangEnglish, Source={x:Static loc:Translations.Instance}}" />
+            </ComboBox>
+          </Grid>
+          <TextBlock FontSize="12" Classes="hint" TextWrapping="Wrap"
+                     Text="{Binding LanguageHint, Source={x:Static loc:Translations.Instance}}" />
+        </StackPanel>
       </StackPanel>
     </TabItem>
 
