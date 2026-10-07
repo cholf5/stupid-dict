@@ -75,7 +75,7 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(PickerTitle)] = "选择 dictionary.zip 或 dictionary.db",
         [nameof(FileTypeDictionary)] = "词典数据",
         [nameof(SettingsTitle)] = "设置",
-        [nameof(SectionAppearance)] = "外观",
+        [nameof(SectionGeneral)] = "通用",
         [nameof(ThemeLabel)] = "主题",
         [nameof(ThemeHint)] = "跟随系统、日间或夜间，更改立即生效",
         [nameof(FollowSystem)] = "跟随系统",
@@ -85,8 +85,19 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(LanguageHint)] = "跟随系统、简体中文或 English，更改立即生效",
         [nameof(LangChinese)] = "简体中文",
         [nameof(LangEnglish)] = "English",
+        [nameof(SectionShortcuts)] = "快捷键",
+        [nameof(ShortcutLookup)] = "查你输入的词；有选中候选时查该候选",
+        [nameof(ShortcutEscape)] = "关闭候选列表；再按清空输入",
+        [nameof(ShortcutArrows)] = "浏览补全候选；输入为空时浏览最近搜索",
+        [nameof(ShortcutBackForward)] = "后退 / 前进（查询历史）",
+        [nameof(ShortcutFocusSearch)] = "聚焦搜索框",
+        [nameof(ShortcutSettings)] = "打开设置",
         [nameof(SectionAbout)] = "关于",
         [nameof(AboutBlurb)] = "完全离线的英汉词典。查询不联网，联网只发生在首次下载词典与发音包的时候。",
+        [nameof(AuthorLabel)] = "作者",
+        [nameof(AuthorName)] = "周尔复",
+        [nameof(LicenseLabel)] = "开源许可",
+        [nameof(RepoLabel)] = "仓库地址",
         [nameof(CheckUpdate)] = "检查更新",
         [nameof(OpenReleasePage)] = "打开发布页",
         [nameof(CheckingUpdate)] = "正在检查更新…",
@@ -146,7 +157,7 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(PickerTitle)] = "Choose dictionary.zip or dictionary.db",
         [nameof(FileTypeDictionary)] = "Dictionary data",
         [nameof(SettingsTitle)] = "Settings",
-        [nameof(SectionAppearance)] = "Appearance",
+        [nameof(SectionGeneral)] = "General",
         [nameof(ThemeLabel)] = "Theme",
         [nameof(ThemeHint)] = "Follow the system, light or dark; changes apply immediately",
         [nameof(FollowSystem)] = "System",
@@ -155,8 +166,19 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(LanguageLabel)] = "Language",
         [nameof(LanguageHint)] = "Follow the system, Simplified Chinese or English; changes apply immediately",
         [nameof(LangChinese)] = "Simplified Chinese",
+        [nameof(SectionShortcuts)] = "Shortcuts",
+        [nameof(ShortcutLookup)] = "Look up what you typed; the selected suggestion, if one is chosen",
+        [nameof(ShortcutEscape)] = "Close the suggestion list; press again to clear the box",
+        [nameof(ShortcutArrows)] = "Browse suggestions; recent searches when the box is empty",
+        [nameof(ShortcutBackForward)] = "Back / Forward (lookup history)",
+        [nameof(ShortcutFocusSearch)] = "Focus the search box",
+        [nameof(ShortcutSettings)] = "Open settings",
         [nameof(SectionAbout)] = "About",
         [nameof(AboutBlurb)] = "A fully offline English-Chinese dictionary. Lookups never touch the network; the network is only used for the first dictionary and pronunciation pack download.",
+        [nameof(AuthorLabel)] = "Author",
+        [nameof(AuthorName)] = "Cholf",
+        [nameof(LicenseLabel)] = "License",
+        [nameof(RepoLabel)] = "Repository",
         [nameof(CheckUpdate)] = "Check for updates",
         [nameof(OpenReleasePage)] = "Open release page",
         [nameof(CheckingUpdate)] = "Checking for updates…",
@@ -273,7 +295,7 @@ public sealed class Translations : INotifyPropertyChanged
     // ---- 设置窗口 ----
 
     public string SettingsTitle => Get();
-    public string SectionAppearance => Get();
+    public string SectionGeneral => Get();
     public string ThemeLabel => Get();
     public string ThemeHint => Get();
     public string FollowSystem => Get();
@@ -283,13 +305,21 @@ public sealed class Translations : INotifyPropertyChanged
     public string LanguageHint => Get();
     public string LangChinese => Get();
     public string LangEnglish => Get();
+    public string SectionShortcuts => Get();
+    public string ShortcutLookup => Get();
+    public string ShortcutEscape => Get();
+    public string ShortcutArrows => Get();
+    public string ShortcutBackForward => Get();
+    public string ShortcutFocusSearch => Get();
+    public string ShortcutSettings => Get();
     public string SectionAbout => Get();
     public string AboutBlurb => Get();
+    public string AuthorLabel => Get();
+    public string AuthorName => Get();
+    public string LicenseLabel => Get();
+    public string RepoLabel => Get();
     public string CheckUpdate => Get();
     public string OpenReleasePage => Get();
-
-    /// <summary>{0} 为三段版本号。</summary>
-    public string VersionFormat => Get();
 
     // ---- 检查更新（瞬态结果行不经此刷新，保持出现时的语言）----
 

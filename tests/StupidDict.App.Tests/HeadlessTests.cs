@@ -578,6 +578,11 @@ public class HeadlessWindowTests
         settingsWindow.Show();
         Dispatcher.UIThread.RunJobs();
 
+        // The update controls live on the About tab; tab content is
+        // instantiated on selection only.
+        settingsWindow.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = 2;
+        Dispatcher.UIThread.RunJobs();
+
         RaiseClick(settingsWindow.FindControl<Button>("CheckUpdateButton")!);
 
         // The fake handler completes synchronously, so the status text has
@@ -644,6 +649,34 @@ public class HeadlessWindowTests
     private static List<string?> ResultLabels(Window window) =>
         window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
             .OfType<TextBlock>().Select(b => b.Text).ToList();
+
+    [AvaloniaFact]
+    public void SettingsTabsRenderShortcutsAndAbout()
+    {
+        Translations.Instance.SetLanguage(AppLanguage.SimplifiedChinese);
+        var settingsWindow = new SettingsWindow(new AppSettings());
+        settingsWindow.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var tabs = settingsWindow.FindControl<TabControl>("SettingsTabs")!;
+        tabs.SelectedIndex = 1;
+        Dispatcher.UIThread.RunJobs();
+        var keycaps = settingsWindow.GetVisualDescendants().OfType<TextBlock>()
+            .Where(b => b.Parent is Border).Select(b => b.Text).ToList();
+        // The modifier keycap follows the platform (⌘ on macOS, Ctrl elsewhere).
+        Assert.Contains(SettingsWindow.BackForwardKeycap, keycaps);
+        Assert.Contains("Enter", keycaps);
+
+        tabs.SelectedIndex = 2;
+        Dispatcher.UIThread.RunJobs();
+        var about = settingsWindow.GetVisualDescendants().OfType<TextBlock>()
+            .Select(b => b.Text).ToList();
+        Assert.Contains("周尔复", about);
+        Assert.Contains(SettingsWindow.AppVersion, about);
+        Assert.Equal("MIT", about[about.IndexOf("开源许可") + 1]);
+        SaveScreenshot(settingsWindow, "stupiddict-settings-about.png");
+        settingsWindow.Close();
+    }
 
     /// <summary>An isolated data layout so asset downloads never touch the user profile.</summary>
     private static AppLocations NewLocations(out string dictionaryPath, out string historyPath, out string audioPath)

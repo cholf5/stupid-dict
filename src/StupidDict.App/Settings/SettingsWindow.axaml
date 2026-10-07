@@ -1,76 +1,154 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="using:StupidDict.App.Localization"
+        xmlns:u="using:StupidDict.App"
+        xmlns:s="using:StupidDict.App.Settings"
         x:Class="StupidDict.App.Settings.SettingsWindow"
         Title="{Binding SettingsTitle, Source={x:Static loc:Translations.Instance}}"
-        Width="380" SizeToContent="Height"
+        Width="560" SizeToContent="Height"
         CanResize="False" WindowStartupLocation="CenterOwner"
         Background="{DynamicResource WindowBackground}">
 
-  <StackPanel Margin="20" Spacing="12">
+  <Window.Styles>
+    <Style Selector="Border.keycap">
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Padding" Value="10,1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CardBorder}" />
+    </Style>
+  </Window.Styles>
 
-    <TextBlock Text="{Binding SectionAppearance, Source={x:Static loc:Translations.Instance}}"
-               Classes="label" Margin="4,0,0,0" />
+  <!-- 页签内容按选中实例化：未选中页签的控件不在可视树（绑定仍活跃），
+       测试取未选中页签的控件须先切页签。 -->
+  <TabControl Name="SettingsTabs">
 
-    <Border CornerRadius="10" Background="{DynamicResource CardBackground}"
-            BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="14,10">
-      <StackPanel Spacing="12">
-        <Grid ColumnDefinitions="*,Auto">
-          <StackPanel VerticalAlignment="Center">
-            <TextBlock Text="{Binding ThemeLabel, Source={x:Static loc:Translations.Instance}}"
-                       FontSize="14" Foreground="{DynamicResource TextBody}" />
-            <TextBlock Text="{Binding ThemeHint, Source={x:Static loc:Translations.Instance}}"
-                       FontSize="12" Classes="hint" Margin="0,2,0,0" />
+    <TabItem Header="{Binding SectionGeneral, Source={x:Static loc:Translations.Instance}}">
+      <StackPanel Margin="16,14" Spacing="14">
+        <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto" RowSpacing="14">
+          <StackPanel Grid.Row="0" Grid.Column="0" VerticalAlignment="Center">
+            <TextBlock FontSize="14" Foreground="{DynamicResource TextBody}"
+                       Text="{Binding ThemeLabel, Source={x:Static loc:Translations.Instance}}" />
+            <TextBlock FontSize="12" Classes="hint" Margin="0,2,0,0"
+                       Text="{Binding ThemeHint, Source={x:Static loc:Translations.Instance}}" />
           </StackPanel>
           <!-- 选项顺序对应 AppTheme：0 跟随系统 / 1 日间 / 2 夜间 -->
-          <ComboBox Name="ThemeComboBox" Grid.Column="1" MinWidth="110"
-                    VerticalAlignment="Center" SelectedIndex="0">
+          <ComboBox Name="ThemeComboBox" Grid.Row="0" Grid.Column="1" MinWidth="200"
+                    HorizontalAlignment="Left" VerticalAlignment="Center" SelectedIndex="0">
             <ComboBoxItem Content="{Binding FollowSystem, Source={x:Static loc:Translations.Instance}}" />
             <ComboBoxItem Content="{Binding ThemeLight, Source={x:Static loc:Translations.Instance}}" />
             <ComboBoxItem Content="{Binding ThemeDark, Source={x:Static loc:Translations.Instance}}" />
           </ComboBox>
-        </Grid>
-        <Grid ColumnDefinitions="*,Auto">
-          <StackPanel VerticalAlignment="Center">
-            <TextBlock Text="{Binding LanguageLabel, Source={x:Static loc:Translations.Instance}}"
-                       FontSize="14" Foreground="{DynamicResource TextBody}" />
-            <TextBlock Text="{Binding LanguageHint, Source={x:Static loc:Translations.Instance}}"
-                       FontSize="12" Classes="hint" Margin="0,2,0,0" />
+          <StackPanel Grid.Row="1" Grid.Column="0" VerticalAlignment="Center">
+            <TextBlock FontSize="14" Foreground="{DynamicResource TextBody}"
+                       Text="{Binding LanguageLabel, Source={x:Static loc:Translations.Instance}}" />
+            <TextBlock FontSize="12" Classes="hint" Margin="0,2,0,0"
+                       Text="{Binding LanguageHint, Source={x:Static loc:Translations.Instance}}" />
           </StackPanel>
           <!-- 选项顺序对应 AppLanguage：0 跟随系统 / 1 简体中文 / 2 English -->
-          <ComboBox Name="LanguageComboBox" Grid.Column="1" MinWidth="110"
-                    VerticalAlignment="Center" SelectedIndex="0">
+          <ComboBox Name="LanguageComboBox" Grid.Row="1" Grid.Column="1" MinWidth="200"
+                    HorizontalAlignment="Left" VerticalAlignment="Center" SelectedIndex="0">
             <ComboBoxItem Content="{Binding FollowSystem, Source={x:Static loc:Translations.Instance}}" />
             <ComboBoxItem Content="{Binding LangChinese, Source={x:Static loc:Translations.Instance}}" />
             <ComboBoxItem Content="{Binding LangEnglish, Source={x:Static loc:Translations.Instance}}" />
           </ComboBox>
         </Grid>
       </StackPanel>
-    </Border>
+    </TabItem>
 
-    <TextBlock Text="{Binding SectionAbout, Source={x:Static loc:Translations.Instance}}"
-               Classes="label" Margin="4,8,0,0" />
-
-    <Border CornerRadius="10" Background="{DynamicResource CardBackground}"
-            BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="14,10">
-      <StackPanel Spacing="2">
-        <TextBlock Text="Stupid Dict" FontSize="14" FontWeight="SemiBold"
-                   Foreground="{DynamicResource TextTitle}" />
-        <TextBlock Name="VersionText" FontSize="12" Classes="hint" />
-        <TextBlock Text="{Binding AboutBlurb, Source={x:Static loc:Translations.Instance}}"
-                   FontSize="12" Classes="hint" TextWrapping="Wrap" Margin="0,4,0,0" />
-        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-          <Button Name="CheckUpdateButton" Classes="chip"
-                  Content="{Binding CheckUpdate, Source={x:Static loc:Translations.Instance}}"
-                  Click="OnCheckUpdateClick" />
-          <Button Name="OpenReleaseButton" Classes="chip"
-                  Content="{Binding OpenReleasePage, Source={x:Static loc:Translations.Instance}}"
-                  IsVisible="False" Click="OnOpenReleaseClick" />
-        </StackPanel>
-        <TextBlock Name="UpdateStatusText" FontSize="12" Classes="hint"
-                   TextWrapping="Wrap" Margin="0,6,0,0" />
+    <TabItem Header="{Binding SectionShortcuts, Source={x:Static loc:Translations.Instance}}">
+      <StackPanel Margin="16,14" Spacing="14">
+        <!-- 只读参考列表：左列键帽、右列动作；键名语言无关，带修饰键的键帽随平台（macOS ⌘、其余 Ctrl） -->
+        <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
+          <Border Grid.Row="0" Grid.Column="0" Classes="keycap">
+            <TextBlock Text="Enter" />
+          </Border>
+          <TextBlock Grid.Row="0" Grid.Column="1" VerticalAlignment="Center"
+                     Text="{Binding ShortcutLookup, Source={x:Static loc:Translations.Instance}}" />
+          <Border Grid.Row="1" Grid.Column="0" Classes="keycap">
+            <TextBlock Text="Esc" />
+          </Border>
+          <TextBlock Grid.Row="1" Grid.Column="1" VerticalAlignment="Center"
+                     Text="{Binding ShortcutEscape, Source={x:Static loc:Translations.Instance}}" />
+          <Border Grid.Row="2" Grid.Column="0" Classes="keycap">
+            <TextBlock Text="↑ / ↓" />
+          </Border>
+          <TextBlock Grid.Row="2" Grid.Column="1" VerticalAlignment="Center"
+                     Text="{Binding ShortcutArrows, Source={x:Static loc:Translations.Instance}}" />
+          <Border Grid.Row="3" Grid.Column="0" Classes="keycap">
+            <TextBlock Text="{x:Static s:SettingsWindow.BackForwardKeycap}" />
+          </Border>
+          <TextBlock Grid.Row="3" Grid.Column="1" VerticalAlignment="Center"
+                     Text="{Binding ShortcutBackForward, Source={x:Static loc:Translations.Instance}}" />
+          <Border Grid.Row="4" Grid.Column="0" Classes="keycap">
+            <TextBlock Text="{x:Static s:SettingsWindow.FocusSearchKeycap}" />
+          </Border>
+          <TextBlock Grid.Row="4" Grid.Column="1" VerticalAlignment="Center"
+                     Text="{Binding ShortcutFocusSearch, Source={x:Static loc:Translations.Instance}}" />
+          <Border Grid.Row="5" Grid.Column="0" Classes="keycap">
+            <TextBlock Text="{x:Static s:SettingsWindow.SettingsKeycap}" />
+          </Border>
+          <TextBlock Grid.Row="5" Grid.Column="1" VerticalAlignment="Center"
+                     Text="{Binding ShortcutSettings, Source={x:Static loc:Translations.Instance}}" />
+        </Grid>
       </StackPanel>
-    </Border>
+    </TabItem>
 
-  </StackPanel>
+    <TabItem Header="{Binding SectionAbout, Source={x:Static loc:Translations.Instance}}">
+      <StackPanel Margin="16,14" Spacing="12">
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <TextBlock FontWeight="Bold" FontSize="18" VerticalAlignment="Center" Text="Stupid Dict" />
+          <TextBlock VerticalAlignment="Center" Classes="hint"
+                     Text="{x:Static s:SettingsWindow.AppVersion}" />
+        </StackPanel>
+        <TextBlock TextWrapping="Wrap"
+                   Text="{Binding AboutBlurb, Source={x:Static loc:Translations.Instance}}" />
+        <Separator />
+        <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
+          <TextBlock Grid.Row="0" VerticalAlignment="Center"
+                     Text="{Binding AuthorLabel, Source={x:Static loc:Translations.Instance}}" />
+          <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="6">
+            <TextBlock VerticalAlignment="Center" FontWeight="SemiBold"
+                       Text="{Binding AuthorName, Source={x:Static loc:Translations.Instance}}" />
+            <!-- 图标：GitHub octicon mark-github 与 X 官方 logo，均为公开品牌图标路径 -->
+            <Button Padding="6" Tag="https://github.com/cholf5" Click="OnOpenLink" ToolTip.Tip="GitHub">
+              <Path Width="16" Height="16" Stretch="Uniform"
+                    Fill="{Binding $parent[Button].Foreground}"
+                    Data="F0 M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+            </Button>
+            <Button Padding="6" Tag="https://x.com/cholf5" Click="OnOpenLink" ToolTip.Tip="X (Twitter)">
+              <Path Width="16" Height="16" Stretch="Uniform"
+                    Fill="{Binding $parent[Button].Foreground}"
+                    Data="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" />
+            </Button>
+          </StackPanel>
+          <TextBlock Grid.Row="1" VerticalAlignment="Center"
+                     Text="{Binding LicenseLabel, Source={x:Static loc:Translations.Instance}}" />
+          <TextBlock Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Text="MIT" />
+          <TextBlock Grid.Row="2" VerticalAlignment="Center"
+                     Text="{Binding RepoLabel, Source={x:Static loc:Translations.Instance}}" />
+          <!-- HyperlinkButton 点击时自动经系统浏览器打开，无需 code-behind -->
+          <HyperlinkButton Grid.Row="2" Grid.Column="1" VerticalAlignment="Center" Padding="0"
+                           Content="https://github.com/cholf5/stupid-dict"
+                           NavigateUri="https://github.com/cholf5/stupid-dict" />
+        </Grid>
+        <!-- 检查更新：结果写在状态行（瞬态，不随语言刷新）；发现新版本时才出现跳转按钮 -->
+        <Separator />
+        <StackPanel Spacing="8">
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Button Name="CheckUpdateButton" Classes="chip"
+                    Content="{Binding CheckUpdate, Source={x:Static loc:Translations.Instance}}"
+                    Click="OnCheckUpdateClick" />
+            <Button Name="OpenReleaseButton" Classes="chip"
+                    Content="{Binding OpenReleasePage, Source={x:Static loc:Translations.Instance}}"
+                    Tag="{x:Static u:UpdateChecker.ReleasesPageUrl}"
+                    IsVisible="False" Click="OnOpenLink" />
+          </StackPanel>
+          <TextBlock Name="UpdateStatusText" TextWrapping="Wrap" Classes="hint" />
+        </StackPanel>
+      </StackPanel>
+    </TabItem>
+
+  </TabControl>
 </Window>
