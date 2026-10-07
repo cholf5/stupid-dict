@@ -12,7 +12,9 @@ internal static class TestDatabase
         string Translation = "",
         string Definition = "",
         int Freq = 0,
-        string Exchange = "");
+        string Exchange = "",
+        string[]? Syn = null,
+        string[]? Ant = null);
 
     public static (string DictionaryPath, string HistoryPath) Create(params Row[] rows)
     {
@@ -32,6 +34,13 @@ internal static class TestDatabase
                 foreach (var pair in row.Exchange.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                     if (pair.Length > 2 && pair[1] == ':')
                         db.InsertWordForm(pair[2..].ToLowerInvariant(), wordId);
+                foreach (var (kind, lines) in new[] { ("syn", row.Syn), ("ant", row.Ant) })
+                    foreach (var line in lines ?? [])
+                    {
+                        var separator = line.IndexOf(':');
+                        if (separator <= 0) continue;
+                        db.InsertSynGroup(wordId, kind, line[..separator], line[(separator + 1)..]);
+                    }
             }
             db.CommitTransaction();
         }

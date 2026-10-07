@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using System.Text.RegularExpressions;
 
 namespace StupidDict.Core.Dictionary;
 
@@ -9,13 +10,27 @@ namespace StupidDict.Core.Dictionary;
 public sealed class DictionaryStore
 {
     private const string EntryColumns = "word, phonetic, pos, translation, definition, freq, bnc, tag";
+    private const int RelatedWordLimit = 10;
 
     private static readonly string CommonalitySql =
         "CASE WHEN freq > 0 THEN freq WHEN bnc > 0 THEN bnc ELSE 999999 END";
 
-    private readonly Lazy<DictionaryDatabase> _database;
+    private static readonly Regex PosPrefixRegex = new(@"^[a-zA-Z]+\.\s*", RegexOptions.Compiled);
 
-    internal DictionaryStore(Lazy<DictionaryDatabase> database) => _database = database;
+    private readonly Lazy<DictionaryDatabase> _database;
+    private readonly Lazy<bool> _hasThesaurus;
+
+    internal DictionaryStore(Lazy<DictionaryDatabase> database)
+    {
+        _database = database;
+        // Dictionaries built before the thesaurus data existed lack the table;
+        // the sections then stay hidden instead of failing every lookup.
+        _hasThesaurus = new Lazy<bool>(() =>
+        {
+            using var cmd = Command("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'syn_group'");
+            return cmd.ExecuteScalar() is not null;
+        });
+    }
 
     public DictionaryEntry? FindWord(string word)
     {
@@ -99,6 +114,83 @@ public sealed class DictionaryStore
         while (reader.Read())
             words.Add(new CommonWord(reader.GetString(0), reader.GetInt32(1)));
         return words;
+    }
+
+    /// <summary>
+    /// 近义词 / 反义词 / 联想词 of a headword (matched by word_lower), or null when
+    /// the dictionary carries no thesaurus data or the word has none. Related
+    /// words are the synonym/antonym pool ranked by corpus frequency, glossed
+    /// from the word table.
+    /// </summary>
+    public Thesaurus? GetThesaurus(string lower)
+    {
+        if (!_hasThesaurus.Value) return null;
+
+        using var cmd = Command("""
+            SELECT g.kind, g.pos, g.words
+            FROM syn_group g JOIN word w ON w.id = g.word_id
+            WHERE w.word_lower = $lower
+            ORDER BY g.rowid
+            """);
+        cmd.Parameters.AddWithValue("$lower", lower);
+
+        List<SynonymLine> synonyms = [];
+        List<SynonymLine> antonyms = [];
+        var pool = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var reader = cmd.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                var words = reader.GetString(2)
+                    .Split(", ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                foreach (var word in words) pool.Add(word);
+                var line = new SynonymLine(reader.GetString(1), words);
+                if (reader.GetString(0) == "syn") synonyms.Add(line);
+                else antonyms.Add(line);
+            }
+        }
+
+        if (synonyms.Count == 0 && antonyms.Count == 0) return null;
+        return new Thesaurus(synonyms, antonyms, FindRelatedWords(pool));
+    }
+
+    private List<RelatedWord> FindRelatedWords(HashSet<string> candidates)
+    {
+        if (candidates.Count == 0) return [];
+
+        using var cmd = Command($"""
+            SELECT word, translation, {CommonalitySql} AS commonality
+            FROM word WHERE word_lower IN ({string.Join(",", candidates.Select((_, i) => $"$c{i}"))})
+            """);
+        var i = 0;
+        foreach (var candidate in candidates)
+            cmd.Parameters.AddWithValue($"$c{i++}", candidate.ToLowerInvariant());
+
+        List<(string Word, string Gloss, int Commonality)> matches = [];
+        using (var reader = cmd.ExecuteReader())
+        {
+            while (reader.Read())
+                matches.Add((reader.GetString(0), FirstGloss(reader.IsDBNull(1) ? "" : reader.GetString(1)),
+                    reader.GetInt32(2)));
+        }
+
+        return matches
+            .OrderBy(m => m.Commonality)
+            .ThenBy(m => m.Word, StringComparer.Ordinal)
+            .Take(RelatedWordLimit)
+            .Select(m => new RelatedWord(m.Word, m.Gloss))
+            .ToList();
+    }
+
+    /// <summary>The short gloss shown after a related word: first sense line, POS prefix stripped.</summary>
+    internal static string FirstGloss(string translation)
+    {
+        var line = translation.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault() ?? "";
+        line = PosPrefixRegex.Replace(line, "").Split('；')[0].TrimEnd('。', '，', '…', ';', ' ');
+        // ECDICT glosses separate senses with both full- and half-width commas.
+        var chunks = line.Split([',', '，'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return string.Join("，", chunks.Take(2));
     }
 
     private SqliteCommand Command(string text) => _database.Value.CreateCommand(text);

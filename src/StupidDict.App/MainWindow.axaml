@@ -85,6 +85,15 @@
       <Setter Property="FontSize" Value="12" />
       <Setter Property="Foreground" Value="#9C9A91" />
     </Style>
+
+    <Style Selector="TextBlock.wordlink">
+      <Setter Property="Foreground" Value="#3E6D9C" />
+      <Setter Property="TextDecorations" Value="Underline" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="TextBlock.wordlink:pointerover">
+      <Setter Property="Foreground" Value="#2A5375" />
+    </Style>
   </Window.Styles>
 
   <Grid RowDefinitions="Auto,Auto,*,Auto">

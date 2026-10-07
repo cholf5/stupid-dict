@@ -9,6 +9,7 @@ A stupidly simple offline English-Chinese dictionary for Windows, macOS and Linu
 ## 功能
 
 - **英文 → 中文 + 英英**：词头、音标、词性、中文释义为主，英英释义为辅
+- **近义词 / 反义词 / 联想词**：查到的英文词下方给出按词性分组的近义、反义和常用联想词，词与中文注释里的英文词都是链接，单击直接查词（数据来自 WordNet，见「词典数据」）
 - **中文 → 英文 + 英英**：输入中文词，直接给出对应英文单词和释义
 - **输入即补全**：输入英文时按前缀列出候选词，输入的词本身是词条时永远置顶，`↑ / ↓` 选中、`Enter` 确认。1–2 个字母只列常用词（内存索引，微秒级），3 个字母起覆盖全部词头；`Enter` 不选中就永远查你输入的词
 - **精确查询优先**：`Enter` 的语义是“查询我输入的词”，永远优先精确匹配，不会跳到模糊搜索认为“更相关”的词
@@ -77,11 +78,17 @@ curl -L -o stardict.db.zip \
   https://github.com/skywind3000/ECDICT/releases/download/1.0.28/ecdict-sqlite-28.zip
 unzip stardict.db.zip
 
-# 生成优化后的 dictionary.db（340 万词条 + 中文反向索引 + 词形映射）
-dotnet run --project src/StupidDict.DataBuilder -- stardict.db
+# 下载 WordNet 3.0 数据库文件（近义词/反义词/联想词的来源，约 30 MB）
+curl -L -o wordnet.zip \
+  https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/corpora/wordnet.zip
+unzip wordnet.zip
+
+# 生成优化后的 dictionary.db（340 万词条 + 中文反向索引 + 词形映射 + 词库扩展）
+dotnet run --project src/StupidDict.DataBuilder -- \
+  stardict.db --wordnet wordnet/wordnet
 ```
 
-也支持 CSV 源：`dotnet run --project src/StupidDict.DataBuilder -- ecdict.csv`。
+也支持 CSV 源：`dotnet run --project src/StupidDict.DataBuilder -- ecdict.csv`。省略 `--wordnet` 也能构建，但近义词/反义词/联想词板块为空；旧 `dictionary.db` 没有这部分数据时应用照常工作，只是不显示这三个板块。
 
 ## License
 
@@ -93,6 +100,9 @@ MIT（以 ECDICT 上游仓库对其代码与数据的整体授权声明为准）
 
 **Dictionary Data Source**
 [ECDICT](https://github.com/skywind3000/ECDICT)（发布版 `1.0.28`），由该上游项目汇总自公开语料（cdict、WordNet、BNC 词频等）。
+
+**Thesaurus Data**
+[WordNet 3.0](https://wordnet.princeton.edu/)（Princeton University），按其许可声明使用。近义词取自同义词集（synset）共现词、名词/动词的上位词与形容词的 similar-to 卫星集，反义词取自反义指针指向的同义词集；联想词为前两者按语料词频排序的前 10 个，中文注释取自词条本身的释义。
 
 > 注意：代码的 MIT 许可不自动延伸到词典数据。词典数据的再分发以上游 ECDICT 仓库的授权声明为准；如你的分发场景需要更严格的授权确认，请先核实上游声明。
 

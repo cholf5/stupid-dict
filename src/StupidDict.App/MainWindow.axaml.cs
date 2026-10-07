@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -360,6 +361,52 @@ public partial class MainWindow : Window
             ResultsPanel.Children.Add(Text("英英释义", fontSize: 12, color: "#9C9A91", margin: new Thickness(2, 18, 0, 5)));
             ResultsPanel.Children.Add(Text(entry.English, fontSize: 14, color: "#55534B", margin: new Thickness(2, 0, 0, 0), lineHeight: 22));
         }
+
+        RenderThesaurus(result);
+    }
+
+    private void RenderThesaurus(LookupResult result)
+    {
+        if (result.Synonyms.Count > 0)
+        {
+            ResultsPanel.Children.Add(Text("近义词", fontSize: 12, color: "#9C9A91", margin: new Thickness(2, 18, 0, 5)));
+            foreach (var line in result.Synonyms)
+                ResultsPanel.Children.Add(BuildLinkText(PosLineSegments(line), fontSize: 15,
+                    margin: new Thickness(2, 0, 0, 0)));
+        }
+
+        if (result.Antonyms.Count > 0)
+        {
+            ResultsPanel.Children.Add(Text("反义词", fontSize: 12, color: "#9C9A91", margin: new Thickness(2, 14, 0, 5)));
+            foreach (var line in result.Antonyms)
+                ResultsPanel.Children.Add(BuildLinkText(PosLineSegments(line), fontSize: 15,
+                    margin: new Thickness(2, 0, 0, 0)));
+        }
+
+        if (result.RelatedWords.Count > 0)
+        {
+            ResultsPanel.Children.Add(Text("联想词", fontSize: 12, color: "#9C9A91", margin: new Thickness(2, 14, 0, 5)));
+            List<LinkSegment> segments = [];
+            foreach (var related in result.RelatedWords)
+            {
+                segments.Add(new LinkSegment(related.Word, related.Word));
+                if (related.Gloss.Length > 0)
+                    segments.Add(new LinkSegment(related.Gloss, null));
+                segments.Add(new LinkSegment(";", null));
+            }
+            ResultsPanel.Children.Add(BuildLinkText(segments, fontSize: 15, margin: new Thickness(2, 0, 0, 0)));
+        }
+    }
+
+    private static List<LinkSegment> PosLineSegments(SynonymLine line)
+    {
+        List<LinkSegment> segments = [new LinkSegment(line.Pos + " ", null)];
+        foreach (var word in line.Words)
+        {
+            if (segments.Count > 1) segments.Add(new LinkSegment(", ", null));
+            segments.Add(new LinkSegment(word, word));
+        }
+        return segments;
     }
 
     private void RenderChineseResult(LookupResult result)
@@ -478,6 +525,60 @@ public partial class MainWindow : Window
     }
 
     private static bool IsWordChar(char c) => char.IsLetter(c) || c is '\'' or '-';
+
+    /// <summary>One piece of a link line: plain text, or a clickable word link.</summary>
+    private sealed record LinkSegment(string Text, string? Target);
+
+    /// <summary>
+    /// A wrapping text line mixing plain runs and single-click word links. Link
+    /// words are real controls embedded via InlineUIContainer: character
+    /// hit-testing on a multi-run SelectableTextBlock proved unreliable in
+    /// Avalonia 11.3 (clicks resolving to neighbouring characters, occasionally
+    /// even IndexOutOfRangeException inside GlyphRun.FindNearestCharacterHit).
+    /// </summary>
+    private SelectableTextBlock BuildLinkText(IReadOnlyList<LinkSegment> segments, double fontSize,
+        string color = "#55534B", Thickness? margin = null)
+    {
+        var inlines = new InlineCollection();
+        foreach (var segment in segments)
+        {
+            if (segment.Target is { } target)
+                inlines.Add(CreateLinkInline(target, fontSize));
+            else
+                inlines.Add(new Run(segment.Text));
+        }
+
+        return new SelectableTextBlock
+        {
+            FontSize = fontSize,
+            Foreground = Brush.Parse(color),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = margin ?? new Thickness(0),
+            LineHeight = 22,
+            Inlines = inlines,
+        };
+    }
+
+    private InlineUIContainer CreateLinkInline(string word, double fontSize)
+    {
+        // The Border is the click surface: hit testing on an inline TextBlock
+        // only covers its currently shaped glyphs (and desyncs inside
+        // InlineUIContainer), so clicks in glyph gaps used to fall through.
+        var link = new TextBlock { Text = word, FontSize = fontSize, Classes = { "wordlink" } };
+        var surface = new Border
+        {
+            Background = Brushes.Transparent,
+            Child = link,
+            Cursor = new Cursor(StandardCursorType.Hand),
+        };
+        surface.PointerPressed += (_, e) =>
+        {
+            e.Handled = true;
+            SetQueryText(word);
+            RunSearch(word);
+        };
+        return new InlineUIContainer { Child = surface };
+    }
 
     private SelectableTextBlock Text(string value, double fontSize, FontWeight weight = FontWeight.Normal,
         string color = "#2B2A24", bool mono = false, Thickness? margin = null,

@@ -9,19 +9,35 @@ using StupidDict.Core.Dictionary;
 if (args.Length < 1)
 {
     Console.Error.WriteLine("""
-        用法: dotnet run --project src/StupidDict.DataBuilder -- <ECDICT 源文件> [输出 dictionary.db]
+        用法: dotnet run --project src/StupidDict.DataBuilder -- <ECDICT 源文件> [输出 dictionary.db] [--wordnet <WordNet dict 目录>]
 
         源文件支持:
           * ECDICT 官方发布包中的 stardict.db（推荐，收词约 340 万）
           * ECDICT 的 ecdict.csv / ecdict.mini.csv
+
+        --wordnet 指向 WordNet 的 dict 目录（含 index.noun / data.noun 等），
+        提供后生成近义词/反义词/联想词；省略则这些板块为空。
 
         输出默认写入用户词典目录（应用启动时自动查找同一位置）。
         """);
     return 1;
 }
 
-var source = Path.GetFullPath(args[0]);
-var output = args.Length > 1 ? Path.GetFullPath(args[1]) : DefaultOutputPath();
+var wordnetDir = (string?)null;
+List<string> positional = [];
+for (var i = 0; i < args.Length; i++)
+{
+    if (args[i] == "--wordnet" && i + 1 < args.Length) wordnetDir = Path.GetFullPath(args[++i]);
+    else positional.Add(args[i]);
+}
+if (wordnetDir is { } wn && !Directory.Exists(wn))
+{
+    Console.Error.WriteLine($"WordNet 目录不存在: {wn}");
+    return 1;
+}
+
+var source = Path.GetFullPath(positional[0]);
+var output = positional.Count > 1 ? Path.GetFullPath(positional[1]) : DefaultOutputPath();
 if (!File.Exists(source))
 {
     Console.Error.WriteLine($"源文件不存在: {source}");
@@ -84,6 +100,22 @@ using (var db = DictionaryDatabase.Create(output))
     db.SetMeta("built_at", DateTime.UtcNow.ToString("o"));
     db.SetMeta("entries", entries.ToString());
     db.CommitTransaction();
+
+    if (wordnetDir is { } dir)
+    {
+        Console.WriteLine("正在生成近义词/反义词（WordNet）...");
+        db.BeginTransaction();
+        var (thesaurusWords, thesaurusLines) = WordNetThesaurus.Build(db, dir);
+        db.SetMeta("wordnet_dir", dir);
+        db.SetMeta("thesaurus_words", thesaurusWords.ToString());
+        db.SetMeta("thesaurus_lines", thesaurusLines.ToString());
+        db.CommitTransaction();
+        Console.WriteLine($"词库扩展: {thesaurusWords:N0} 词头，{thesaurusLines:N0} 行");
+    }
+    else
+    {
+        Console.Error.WriteLine("提示: 未提供 --wordnet，近义词/反义词/联想词板块将为空。");
+    }
 }
 
 var sizeMb = new FileInfo(output).Length / 1024.0 / 1024.0;

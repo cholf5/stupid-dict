@@ -21,6 +21,9 @@ public sealed class EnglishChineseDictionary
     /// <summary>Resolves an inflected form ("cats") to its base word ("cat").</summary>
     public DictionaryEntry? FindByWordForm(string lower) => _store.FindByWordForm(lower);
 
+    /// <summary>近义词 / 反义词 / 联想词 of a headword, or null when unavailable.</summary>
+    public Thesaurus? GetThesaurus(string lower) => _store.GetThesaurus(lower);
+
     /// <summary>Headwords starting with the query, common words first.</summary>
     public List<DictionaryEntry> FindPrefix(string lower, int limit) => _store.FindPrefix(lower, limit);
 

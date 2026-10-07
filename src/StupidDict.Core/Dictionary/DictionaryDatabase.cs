@@ -71,6 +71,15 @@ public sealed class DictionaryDatabase : IDisposable
             );
             CREATE INDEX idx_word_form ON word_form (inflected);
 
+            -- thesaurus lines from WordNet ("近义词 / 反义词"), one row per POS line
+            CREATE TABLE syn_group (
+                word_id INTEGER NOT NULL,
+                kind    TEXT NOT NULL,
+                pos     TEXT NOT NULL,
+                words   TEXT NOT NULL
+            );
+            CREATE INDEX idx_syn_group_word ON syn_group (word_id);
+
             CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             """);
         schema.ExecuteNonQuery();
@@ -131,6 +140,27 @@ public sealed class DictionaryDatabase : IDisposable
         cmd.Parameters.AddWithValue("$inflected", inflected);
         cmd.Parameters.AddWithValue("$word_id", wordId);
         cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>One POS line of the thesaurus ("syn" or "ant"), e.g. ("syn", "adj.", "great, nice").</summary>
+    public void InsertSynGroup(long wordId, string kind, string pos, string words)
+    {
+        using var cmd = CreateCommand("""
+            INSERT INTO syn_group (word_id, kind, pos, words) VALUES ($word_id, $kind, $pos, $words)
+            """);
+        cmd.Parameters.AddWithValue("$word_id", wordId);
+        cmd.Parameters.AddWithValue("$kind", kind);
+        cmd.Parameters.AddWithValue("$pos", pos);
+        cmd.Parameters.AddWithValue("$words", words);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>Returns the headword id for a normalized (lowercase) word, or null.</summary>
+    public long? FindWordId(string lower)
+    {
+        using var cmd = CreateCommand("SELECT id FROM word WHERE word_lower = $lower LIMIT 1");
+        cmd.Parameters.AddWithValue("$lower", lower);
+        return cmd.ExecuteScalar() as long?;
     }
 
     public void SetMeta(string key, string value)

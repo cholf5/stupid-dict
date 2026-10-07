@@ -307,6 +307,44 @@ public class HeadlessWindowTests
         WaitUntil(() => Headword(window) == "catch");
     }
 
+    [AvaloniaFact]
+    public void SynonymSectionsRenderAndClickLooksUp()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        // Wait for the deferred TextChanged to schedule completion, then close
+        // it with Enter — otherwise the suggest panel pops over the results and
+        // swallows the link click below.
+        WaitUntil(() => window.FindControl<Border>("SuggestPanel")!.IsVisible);
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "cat");
+
+        var labels = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
+            .OfType<TextBlock>().Select(b => b.Text).ToList();
+        Assert.Contains("近义词", labels);
+        Assert.Contains("反义词", labels);
+        Assert.Contains("联想词", labels);
+
+        // The synonym line reads "n. tiger" — links are inline controls, so the
+        // whole word is the hit area and a plain click on its center looks it up.
+        var link = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
+            .OfType<TextBlock>()
+            .First(b => b.Classes.Contains("wordlink"));
+        var point = link.TranslatePoint(new Point(link.Bounds.Center.X, link.Bounds.Center.Y), window)!.Value;
+        window.MouseDown(point, MouseButton.Left);
+        window.MouseUp(point, MouseButton.Left);
+
+        WaitUntil(() => Headword(window) == link.Text);
+        Assert.Equal(link.Text, searchBox.Text);
+        Assert.True(window.FindControl<Button>("NavBackButton")!.IsEnabled);
+        SaveScreenshot(window, "stupiddict-thesaurus.png");
+    }
+
     private static string? Headword(Window window) =>
         (window.FindControl<StackPanel>("ResultsPanel")!.Children.FirstOrDefault() as TextBlock)?.Text;
 
@@ -353,7 +391,11 @@ public class HeadlessWindowTests
             {
                 db.InsertZhTerm("猫", cat);
                 db.InsertWordForm("cats", cat);
+                db.InsertSynGroup(cat, "syn", "n.", "tiger");
+                db.InsertSynGroup(cat, "ant", "adj.", "doglike");
             }
+            var tiger = db.InsertWord("tiger", "ˈtaɪɡər", "n:80", "n. 老虎", "", 900, 0, "zk gk");
+            if (tiger >= 0) db.InsertZhTerm("老虎", tiger);
             db.InsertWord("catch", "", "", "v. 抓住", "", 900, 0, "gk");
             db.CommitTransaction();
         }

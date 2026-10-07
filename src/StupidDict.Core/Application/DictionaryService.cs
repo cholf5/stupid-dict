@@ -94,6 +94,10 @@ public sealed class DictionaryService : IDisposable
         if (primary is not null)
             History.Add(query);
 
+        var thesaurus = primary is not null
+            ? _englishChinese.GetThesaurus(primary.Word.ToLowerInvariant())
+            : null;
+
         return new LookupResult
         {
             Query = query,
@@ -102,6 +106,9 @@ public sealed class DictionaryService : IDisposable
             Primary = primary,
             WordFormNote = wordFormNote,
             WordSuggestions = suggestions,
+            Synonyms = thesaurus?.Synonyms ?? [],
+            Antonyms = thesaurus?.Antonyms ?? [],
+            RelatedWords = thesaurus?.RelatedWords ?? [],
         };
     }
 
