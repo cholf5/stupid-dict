@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.TextFormatting;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using StupidDict.App.Assets;
@@ -65,7 +66,11 @@ public partial class MainWindow : Window
         _downloader = downloader ?? new AssetDownloadService();
         _dictionaryAvailable = File.Exists(service.DictionaryPath);
 
-        Opened += (_, _) => SearchBox.Focus();
+        Opened += (_, _) =>
+        {
+            SearchBox.Focus();
+            UpdateSearchBoxLineMetrics();
+        };
         SearchBox.KeyDown += OnSearchBoxKeyDown;
         SearchBox.TextChanged += OnSearchTextChanged;
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
@@ -365,8 +370,45 @@ public partial class MainWindow : Window
 
     private void OnTranslationsChanged(object? sender, PropertyChangedEventArgs e)
     {
+        UpdateSearchBoxLineMetrics();
         if (ResultsPanel.IsVisible)
             _rebuildResults?.Invoke();
+    }
+
+    private static double? _cjkLineHeight;
+    private static double _cjkLineHeightFontSize;
+
+    /// <summary>
+    /// The empty caret line is laid out with the primary font's (Inter)
+    /// metrics, but a CJK watermark is shaped through the platform's CJK
+    /// fallback font, whose line metrics are much taller — the caret then
+    /// floats above the placeholder text (English watermarks use the primary
+    /// font and align on their own). Give the caret the fallback font's
+    /// natural line height so it covers the placeholder glyphs exactly like
+    /// it does while typing CJK.
+    /// </summary>
+    private void UpdateSearchBoxLineMetrics()
+    {
+        SearchBox.LineHeight = DictionaryService.IsChineseQuery(Translations.Instance.SearchWatermark)
+            ? MeasureCjkLineHeight(SearchBox.FontSize) ?? double.NaN
+            : double.NaN;
+    }
+
+    private static double? MeasureCjkLineHeight(double fontSize)
+    {
+        if (_cjkLineHeight.HasValue && _cjkLineHeightFontSize == fontSize)
+            return _cjkLineHeight;
+        double? lineHeight = null;
+        if (FontManager.Current.TryMatchCharacter('输', FontStyle.Normal, FontWeight.Normal,
+                FontStretch.Normal, null, null, out var typeface))
+        {
+            using var layout = new TextLayout("输", typeface, fontSize, Brushes.Black,
+                TextAlignment.Left, TextWrapping.NoWrap);
+            lineHeight = layout.Height;
+        }
+        _cjkLineHeight = lineHeight;
+        _cjkLineHeightFontSize = fontSize;
+        return lineHeight;
     }
 
     private void OnNavBackClick(object? sender, RoutedEventArgs e) => Navigate(_navigator.GoBack());

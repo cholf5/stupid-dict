@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -51,6 +52,41 @@ public class HeadlessWindowTests
         Dispatcher.UIThread.RunJobs();
 
         Assert.True(window.FindControl<TextBox>("SearchBox")!.IsFocused);
+    }
+
+    [AvaloniaFact]
+    public void SearchBoxLineHeightFollowsWatermarkScript()
+    {
+        // The CJK watermark only misaligns with the caret when a CJK fallback
+        // font exists to shape it; on a system without one there is nothing to
+        // correct, so both branches must be accepted here.
+        var hasCjkFallback = FontManager.Current.TryMatchCharacter('输', FontStyle.Normal,
+            FontWeight.Normal, FontStretch.Normal, null, null, out _);
+
+        using var service = CreateService();
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        var lineHeight = searchBox.LineHeight;
+        if (hasCjkFallback)
+            Assert.True(lineHeight > 18, $"zh LineHeight={lineHeight}, expected CJK fallback line height");
+        else
+            Assert.True(double.IsNaN(lineHeight), $"zh LineHeight={lineHeight}, expected NaN");
+
+        SaveScreenshot(window, "stupiddict-caret-zh.png");
+
+        Translations.Instance.SetLanguage(AppLanguage.English);
+        try
+        {
+            Assert.True(double.IsNaN(searchBox.LineHeight),
+                $"en LineHeight={searchBox.LineHeight}, expected NaN");
+        }
+        finally
+        {
+            Translations.Instance.SetLanguage(AppLanguage.SimplifiedChinese);
+        }
     }
 
     [AvaloniaFact]
