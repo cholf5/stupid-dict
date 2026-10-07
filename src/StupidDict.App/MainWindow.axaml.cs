@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     private static readonly TimeSpan SuggestDebounce = TimeSpan.FromMilliseconds(120);
 
     private readonly DictionaryService _service;
+    private readonly LookupNavigator _navigator = new();
     private readonly bool _dictionaryAvailable;
     private CancellationTokenSource? _suggestDebounce;
     private List<string> _suggestions = [];
@@ -41,6 +42,7 @@ public partial class MainWindow : Window
 
         ShowEmptyState();
         RefreshRecents();
+        UpdateNavButtons();
         if (!_dictionaryAvailable)
             HintText.Text = "未找到词典数据 dictionary.db — 先运行 dotnet run --project src/StupidDict.DataBuilder";
         else
@@ -49,12 +51,21 @@ public partial class MainWindow : Window
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
+        var cmdCtrl = (e.KeyModifiers & (KeyModifiers.Meta | KeyModifiers.Control)) != 0;
         switch (e.Key)
         {
-            case Key.K when (e.KeyModifiers & (KeyModifiers.Meta | KeyModifiers.Control)) != 0:
+            case Key.K when cmdCtrl:
                 e.Handled = true;
                 SearchBox.Focus();
                 SearchBox.SelectAll();
+                break;
+            case Key.OemOpenBrackets when cmdCtrl:
+                e.Handled = true;
+                Navigate(_navigator.GoBack());
+                break;
+            case Key.OemCloseBrackets when cmdCtrl:
+                e.Handled = true;
+                Navigate(_navigator.GoForward());
                 break;
             case Key.Escape:
                 e.Handled = true;
@@ -252,7 +263,36 @@ public partial class MainWindow : Window
         if (generation != _searchGeneration) return;
 
         RenderResult(result);
+        _navigator.Push(result);
+        UpdateNavButtons();
         RefreshRecents();
+    }
+
+    private void OnNavBackClick(object? sender, RoutedEventArgs e) => Navigate(_navigator.GoBack());
+
+    private void OnNavForwardClick(object? sender, RoutedEventArgs e) => Navigate(_navigator.GoForward());
+
+    private void Navigate(LookupResult? result)
+    {
+        if (result is null) return;
+        RenderResult(result);
+        ShowQueryInSearchBox(result.Query);
+        UpdateNavButtons();
+    }
+
+    private void UpdateNavButtons()
+    {
+        NavBackButton.IsEnabled = _navigator.CanGoBack;
+        NavForwardButton.IsEnabled = _navigator.CanGoForward;
+    }
+
+    /// <summary>Mirrors the navigated page into the search box without taking focus.</summary>
+    private void ShowQueryInSearchBox(string query)
+    {
+        if (SearchBox.Text != query)
+            _suppressSuggest = true;
+        SearchBox.Text = query;
+        SearchBox.CaretIndex = query.Length;
     }
 
     private void ShowEmptyState()
@@ -394,11 +434,56 @@ public partial class MainWindow : Window
     private static string[] SplitLines(string value) =>
         value.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    private static TextBlock Text(string value, double fontSize, FontWeight weight = FontWeight.Normal,
+    /// <summary>
+    /// Double-clicking a word in any result text looks it up. The handler must
+    /// see through the block's own selection handling (it claims PointerPressed
+    /// to start a drag selection), hence handledEventsToo. Pressing runs before
+    /// the built-in selection update, so the tapped word is found by hit-testing
+    /// the layout, then highlighted via SelectionStart/End — no built-in
+    /// double-click word selection exists in Avalonia 11.
+    /// </summary>
+    private void OnResultTextPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.ClickCount != 2 || sender is not SelectableTextBlock block) return;
+        var tapped = HitTestWord(block, e.GetPosition(block));
+        if (tapped is not { } word) return;
+        block.SelectionStart = word.Start;
+        block.SelectionEnd = word.End;
+        SetQueryText(word.Text);
+        RunSearch(word.Text);
+    }
+
+    private static (string Text, int Start, int End)? HitTestWord(SelectableTextBlock block, Point position)
+    {
+        var text = block.Text;
+        if (string.IsNullOrEmpty(text) || block.TextLayout is not { } layout) return null;
+
+        var hit = layout.HitTestPoint(position);
+        if (!hit.IsInside) return null;
+
+        // A trailing hit resolves to the boundary after a character, so the
+        // character under the pointer is the one just before it.
+        var boundary = hit.CharacterHit.FirstCharacterIndex + hit.CharacterHit.TrailingLength;
+        var index = Math.Clamp(hit.IsTrailing ? boundary - 1 : boundary, 0, text.Length - 1);
+        if (!IsWordChar(text[index])) return null;
+
+        var start = index;
+        while (start > 0 && IsWordChar(text[start - 1])) start--;
+        var end = index + 1;
+        while (end < text.Length && IsWordChar(text[end])) end++;
+
+        var word = text[start..end].Trim('\'', '-');
+        if (word.Length == 0 || DictionaryService.IsChineseQuery(word)) return null;
+        return (word, start, end);
+    }
+
+    private static bool IsWordChar(char c) => char.IsLetter(c) || c is '\'' or '-';
+
+    private SelectableTextBlock Text(string value, double fontSize, FontWeight weight = FontWeight.Normal,
         string color = "#2B2A24", bool mono = false, Thickness? margin = null,
         double? lineHeight = null, bool verticalCenter = false)
     {
-        var block = new TextBlock
+        var block = new SelectableTextBlock
         {
             Text = value,
             FontSize = fontSize,
@@ -410,6 +495,8 @@ public partial class MainWindow : Window
         };
         if (mono) block.FontFamily = new FontFamily("Menlo, Consolas, DejaVu Sans Mono");
         if (lineHeight is { } height) block.LineHeight = height;
+        block.AddHandler(InputElement.PointerPressedEvent, OnResultTextPointerPressed,
+            RoutingStrategies.Bubble, handledEventsToo: true);
         return block;
     }
 }

@@ -3,7 +3,9 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using StupidDict.App;
 using StupidDict.Core.Application;
 using StupidDict.Core.Dictionary;
@@ -174,6 +176,167 @@ public class HeadlessWindowTests
         // An explicit selection replaces the query; the first suggestion wins.
         Assert.Equal(firstSuggestion, searchBox.Text);
         Assert.False(window.FindControl<Border>("SuggestPanel")!.IsVisible);
+    }
+
+    [AvaloniaFact]
+    public void DoubleClickWordInResultLooksItUp()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "猫";
+        PressEnter(searchBox);
+        WaitUntil(() => window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+
+        // The Chinese result lists the English headword "cat"; double-clicking
+        // it must run the English lookup, mirror the word into the box, and
+        // leave the previous page one step back in history.
+        var catLine = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
+            .OfType<SelectableTextBlock>().First(b => b.Text == "cat");
+        var point = catLine.TranslatePoint(new Point(6, catLine.Bounds.Center.Y), window)!.Value;
+        DoubleClick(window, point);
+        WaitUntil(() => Headword(window) == "cat");
+
+        Assert.Equal("cat", searchBox.Text);
+        Assert.True(window.FindControl<Button>("NavBackButton")!.IsEnabled);
+        SaveScreenshot(window, "stupiddict-doubleclick.png");
+    }
+
+    [AvaloniaFact]
+    public void DoubleClickingHeadwordDoesNotDuplicateHistory()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "cat");
+
+        var title = (SelectableTextBlock)window.FindControl<StackPanel>("ResultsPanel")!.Children[0];
+        var point = title.TranslatePoint(new Point(8, title.Bounds.Center.Y), window)!.Value;
+        DoubleClick(window, point);
+        PumpJobs(TimeSpan.FromMilliseconds(500));
+
+        // The re-lookup of the page already on top must collapse into it.
+        Assert.False(window.FindControl<Button>("NavBackButton")!.IsEnabled);
+        Assert.Equal("cat", Headword(window));
+    }
+
+    [AvaloniaFact]
+    public void BackAndForwardButtonsNavigateHistory()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "cat");
+        searchBox.Text = "catch";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "catch");
+
+        var back = window.FindControl<Button>("NavBackButton")!;
+        var forward = window.FindControl<Button>("NavForwardButton")!;
+        Assert.True(back.IsEnabled);
+        Assert.False(forward.IsEnabled);
+
+        RaiseClick(back);
+        WaitUntil(() => Headword(window) == "cat");
+        Assert.Equal("cat", searchBox.Text);
+        Assert.True(forward.IsEnabled);
+
+        RaiseClick(forward);
+        WaitUntil(() => Headword(window) == "catch");
+        SaveScreenshot(window, "stupiddict-nav.png");
+    }
+
+    [AvaloniaFact]
+    public void EscapeClearedResultsComeBackOnBack()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "cat");
+        searchBox.Text = "catch";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "catch");
+
+        searchBox.Clear();
+        PressKey(searchBox, Key.Escape);
+        Assert.False(window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+
+        RaiseClick(window.FindControl<Button>("NavBackButton")!);
+        Assert.True(window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+        Assert.Equal("cat", Headword(window));
+    }
+
+    [AvaloniaFact]
+    public void CmdBracketsNavigateBackAndForward()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "cat");
+        searchBox.Text = "catch";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "catch");
+
+        window.KeyPress(Key.OemOpenBrackets, RawInputModifiers.Meta, PhysicalKey.BracketLeft, "[");
+        WaitUntil(() => Headword(window) == "cat");
+
+        window.KeyPress(Key.OemCloseBrackets, RawInputModifiers.Meta, PhysicalKey.BracketRight, "]");
+        WaitUntil(() => Headword(window) == "catch");
+    }
+
+    private static string? Headword(Window window) =>
+        (window.FindControl<StackPanel>("ResultsPanel")!.Children.FirstOrDefault() as TextBlock)?.Text;
+
+    private static void RaiseClick(Button button) =>
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+    /// <summary>
+    /// Two full press/release cycles at one point; the second press resolves to
+    /// ClickCount=2 through the real mouse-device click counting.
+    /// </summary>
+    private static void DoubleClick(TopLevel window, Point point)
+    {
+        window.MouseDown(point, MouseButton.Left);
+        window.MouseUp(point, MouseButton.Left);
+        window.MouseDown(point, MouseButton.Left);
+        window.MouseUp(point, MouseButton.Left);
+    }
+
+    /// <summary>Pumps the dispatcher long enough for a pending async lookup to settle.</summary>
+    private static void PumpJobs(TimeSpan duration)
+    {
+        var remaining = duration;
+        while (remaining > TimeSpan.Zero)
+        {
+            Dispatcher.UIThread.RunJobs();
+            var slice = TimeSpan.FromMilliseconds(50);
+            Thread.Sleep(slice);
+            remaining -= slice;
+        }
+        Dispatcher.UIThread.RunJobs();
     }
 
     private static DictionaryService CreateService()

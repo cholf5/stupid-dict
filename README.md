@@ -13,6 +13,8 @@ A stupidly simple offline English-Chinese dictionary for Windows, macOS and Linu
 - **输入即补全**：输入英文时按前缀列出候选词，输入的词本身是词条时永远置顶，`↑ / ↓` 选中、`Enter` 确认。1–2 个字母只列常用词（内存索引，微秒级），3 个字母起覆盖全部词头；`Enter` 不选中就永远查你输入的词
 - **精确查询优先**：`Enter` 的语义是“查询我输入的词”，永远优先精确匹配，不会跳到模糊搜索认为“更相关”的词
 - **最近搜索**：本地保存最近 30 条，去重、点击即查，没有管理界面
+- **双击取词**：结果里的英文文本可直接双击，双击哪个单词就查哪个单词，连续点连续查；中文释义不响应（中文没有空格分词，命中无意义）
+- **前进 / 后退**：搜索框旁的 `← / →` 在查询历史里前后翻，查过的词整页缓存，后退不重新查询、不写最近搜索
 - **完全离线**：查询全部在本地完成，断网不影响任何功能
 
 匹配顺序：`Exact → Normalized Exact → Word Form（cats → cat）→ Prefix → Fuzzy`。未命中时给出“你是不是要找”的建议，但绝不替你做决定。
@@ -26,6 +28,7 @@ A stupidly simple offline English-Chinese dictionary for Windows, macOS and Linu
 | `Ctrl/Cmd + A` | 全选输入 |
 | `Ctrl/Cmd + V` | 粘贴 |
 | `↑ / ↓` | 浏览补全候选；输入框为空时进入最近搜索 |
+| `Ctrl/Cmd + [` / `Ctrl/Cmd + ]` | 后退 / 前进（查询历史） |
 | `Ctrl/Cmd + K` | 聚焦搜索框 |
 
 ## 架构

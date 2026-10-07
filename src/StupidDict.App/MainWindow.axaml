@@ -54,6 +54,30 @@
       <Setter Property="Background" Value="#ECECE7" />
     </Style>
 
+    <Style Selector="Button.nav">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#6B6A61" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="7" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Width" Value="26" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#ECECE7" />
+    </Style>
+    <Style Selector="Button.nav:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#E0E0D9" />
+    </Style>
+    <Style Selector="Button.nav:disabled">
+      <Setter Property="Foreground" Value="#C9C8C0" />
+    </Style>
+    <Style Selector="Button.nav:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+
     <Style Selector="TextBlock.hint">
       <Setter Property="Foreground" Value="#9C9A91" />
     </Style>
@@ -71,7 +95,13 @@
       <TextBox Name="SearchBox"
                Watermark="输入单词或中文，按 Enter 查询">
         <TextBox.InnerLeftContent>
-          <TextBlock Text="🔍" Margin="12,0,4,0" VerticalAlignment="Center" FontSize="15" />
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0" Spacing="1">
+            <Button Name="NavBackButton" Classes="nav" Content="←" IsEnabled="False"
+                    ToolTip.Tip="后退 (⌘[)" Click="OnNavBackClick" />
+            <Button Name="NavForwardButton" Classes="nav" Content="→" IsEnabled="False"
+                    ToolTip.Tip="前进 (⌘])" Click="OnNavForwardClick" />
+            <TextBlock Text="🔍" Margin="10,0,4,0" VerticalAlignment="Center" FontSize="15" />
+          </StackPanel>
         </TextBox.InnerLeftContent>
       </TextBox>
     </Border>
