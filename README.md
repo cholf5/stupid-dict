@@ -82,7 +82,7 @@ dotnet run --project src/StupidDict.App -f net10.0   # 运行（需要先构建�
 3. 自动探测本机代理（环境变量 → macOS `scutil --proxy` 系统代理 → Clash/V2Ray/Surge 等常见本地端口探测）
 4. 全部失败时提供「选择本地文件…」手动导入 `dictionary.zip` 或裸 `dictionary.db`
 
-查询功能始终离线，联网只发生在资产下载这一件事上。
+查询功能始终离线，联网只发生在两件事上：首次下载词典与发音包，以及在设置里手动「检查更新」。
 
 ### 词典数据（从源码构建）
 

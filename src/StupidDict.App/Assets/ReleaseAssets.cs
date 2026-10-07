@@ -3,7 +3,7 @@ namespace StupidDict.App.Assets;
 /// <summary>Where release assets come from. Mirrors are prefixes of the GitHub URL.</summary>
 internal static class ReleaseAssets
 {
-    private const string Repository = "cholf5/stupid-dict";
+    internal const string Repository = "cholf5/stupid-dict";
 
     public const string DictionaryAsset = "dictionary.zip";
     public const string AudioPackAsset = "audio-pack.zip";

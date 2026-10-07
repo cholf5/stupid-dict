@@ -550,6 +550,29 @@ public class HeadlessWindowTests
         }
     }
 
+    [AvaloniaFact]
+    public void CheckUpdateButtonSurfacesNewerRelease()
+    {
+        var settings = new AppSettings();
+        var checker = new UpdateChecker(
+            new FakeHandler(_ => UpdateCheckerTests.RedirectResponse(
+                "https://github.com/cholf5/stupid-dict/releases/tag/v9.9.9")),
+            currentVersion: "v0.0.1");
+        var settingsWindow = new SettingsWindow(settings, checker);
+        settingsWindow.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        RaiseClick(settingsWindow.FindControl<Button>("CheckUpdateButton")!);
+
+        // The fake handler completes synchronously, so the status text has
+        // already settled by the time the click returns.
+        Assert.Equal("发现新版本 v9.9.9，当前 v0.0.1",
+            settingsWindow.FindControl<TextBlock>("UpdateStatusText")!.Text);
+        Assert.True(settingsWindow.FindControl<Button>("OpenReleaseButton")!.IsVisible);
+        Assert.True(settingsWindow.FindControl<Button>("CheckUpdateButton")!.IsEnabled);
+        settingsWindow.Close();
+    }
+
     /// <summary>An isolated data layout so asset downloads never touch the user profile.</summary>
     private static AppLocations NewLocations(out string dictionaryPath, out string historyPath, out string audioPath)
     {
