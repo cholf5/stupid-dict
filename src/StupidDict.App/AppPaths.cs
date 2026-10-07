@@ -17,4 +17,14 @@ internal static class AppPaths
         File.Exists(Path.Combine(AppContext.BaseDirectory, "dictionary.db"))
             ? Path.Combine(AppContext.BaseDirectory, "dictionary.db")
             : Path.Combine(DataDirectory, "dictionary.db");
+
+    /// <summary>
+    /// The pronunciation pack (uk/us MP3 directories), following the same
+    /// exe-adjacent-first rule as the dictionary so a bundled install works
+    /// without writing into the user profile.
+    /// </summary>
+    public static string AudioDirectory { get; } =
+        Directory.Exists(Path.Combine(AppContext.BaseDirectory, "audio"))
+            ? Path.Combine(AppContext.BaseDirectory, "audio")
+            : Path.Combine(DataDirectory, "audio");
 }

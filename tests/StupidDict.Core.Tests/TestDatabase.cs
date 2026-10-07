@@ -8,6 +8,7 @@ internal static class TestDatabase
     public sealed record Row(
         string Word,
         string Phonetic = "",
+        string PhoneticUs = "",
         string Pos = "",
         string Translation = "",
         string Definition = "",
@@ -26,7 +27,7 @@ internal static class TestDatabase
             db.BeginTransaction();
             foreach (var row in rows)
             {
-                var wordId = db.InsertWord(row.Word, row.Phonetic, row.Pos, row.Translation, row.Definition, row.Freq, 0, "");
+                var wordId = db.InsertWord(row.Word, row.Phonetic, row.PhoneticUs, row.Pos, row.Translation, row.Definition, row.Freq, 0, "");
                 if (wordId < 0) continue;
                 foreach (Match match in Regex.Matches(row.Translation, @"[\u3400-\u9FFF]+"))
                     if (match.Value.Length <= 12)

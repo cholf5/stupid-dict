@@ -7,6 +7,8 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using StupidDict.App;
+using StupidDict.App.Assets;
+using StupidDict.App.Speech;
 using StupidDict.Core.Application;
 using StupidDict.Core.Dictionary;
 using Xunit;
@@ -29,7 +31,7 @@ public class HeadlessWindowTests
     public void SearchBoxIsFocusedOnStartup()
     {
         using var service = CreateService();
-        var window = new MainWindow(service);
+        var window = new MainWindow(service, autoDownload: false);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -40,7 +42,7 @@ public class HeadlessWindowTests
     public void EnterShowsEnglishResult()
     {
         using var service = CreateService();
-        var window = new MainWindow(service);
+        var window = new MainWindow(service, autoDownload: false);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -58,7 +60,7 @@ public class HeadlessWindowTests
     public void EnterShowsChineseResult()
     {
         using var service = CreateService();
-        var window = new MainWindow(service);
+        var window = new MainWindow(service, autoDownload: false);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -75,7 +77,7 @@ public class HeadlessWindowTests
     public void RecentSearchesAppearAfterLookup()
     {
         using var service = CreateService();
-        var window = new MainWindow(service);
+        var window = new MainWindow(service, autoDownload: false);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -101,7 +103,7 @@ public class HeadlessWindowTests
     public void TypingShowsPrefixSuggestions()
     {
         using var service = CreateService();
-        var window = new MainWindow(service);
+        var window = new MainWindow(service, autoDownload: false);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -119,7 +121,7 @@ public class HeadlessWindowTests
     public void EnterWithSuggestionsOpenStillQueriesTypedText()
     {
         using var service = CreateService();
-        var window = new MainWindow(service);
+        var window = new MainWindow(service, autoDownload: false);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -140,7 +142,7 @@ public class HeadlessWindowTests
     public void EscapeClosesSuggestionsBeforeClearing()
     {
         using var service = CreateService();
-        var window = new MainWindow(service);
+        var window = new MainWindow(service, autoDownload: false);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -160,7 +162,7 @@ public class HeadlessWindowTests
     public void ArrowDownSelectsSuggestionAndEnterSearchesIt()
     {
         using var service = CreateService();
-        var window = new MainWindow(service);
+        var window = new MainWindow(service, autoDownload: false);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -182,7 +184,7 @@ public class HeadlessWindowTests
     public void DoubleClickWordInResultLooksItUp()
     {
         using var service = CreateService();
-        var window = new MainWindow(service);
+        var window = new MainWindow(service, autoDownload: false);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -209,7 +211,7 @@ public class HeadlessWindowTests
     public void DoubleClickingHeadwordDoesNotDuplicateHistory()
     {
         using var service = CreateService();
-        var window = new MainWindow(service);
+        var window = new MainWindow(service, autoDownload: false);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -232,7 +234,7 @@ public class HeadlessWindowTests
     public void BackAndForwardButtonsNavigateHistory()
     {
         using var service = CreateService();
-        var window = new MainWindow(service);
+        var window = new MainWindow(service, autoDownload: false);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -263,7 +265,7 @@ public class HeadlessWindowTests
     public void EscapeClearedResultsComeBackOnBack()
     {
         using var service = CreateService();
-        var window = new MainWindow(service);
+        var window = new MainWindow(service, autoDownload: false);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -288,7 +290,7 @@ public class HeadlessWindowTests
     public void CmdBracketsNavigateBackAndForward()
     {
         using var service = CreateService();
-        var window = new MainWindow(service);
+        var window = new MainWindow(service, autoDownload: false);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -311,7 +313,7 @@ public class HeadlessWindowTests
     public void SynonymSectionsRenderAndClickLooksUp()
     {
         using var service = CreateService();
-        var window = new MainWindow(service);
+        var window = new MainWindow(service, autoDownload: false);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -343,6 +345,173 @@ public class HeadlessWindowTests
         Assert.Equal(link.Text, searchBox.Text);
         Assert.True(window.FindControl<Button>("NavBackButton")!.IsEnabled);
         SaveScreenshot(window, "stupiddict-thesaurus.png");
+    }
+
+    [AvaloniaFact]
+    public void PhoneticLineShowsBritishAndAmerican()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "cat");
+
+        var labels = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
+            .OfType<TextBlock>().Select(b => b.Text).ToList();
+        Assert.Contains(labels, t => t is not null && t.StartsWith("英 /"));
+        Assert.Contains(labels, t => t is not null && t.StartsWith("美 /"));
+        SaveScreenshot(window, "stupiddict-phonetics.png");
+    }
+
+    [AvaloniaFact]
+    public void SpeakerButtonPlaysThroughInjectedPlayer()
+    {
+        using var service = CreateService();
+        var player = new RecordingSpeechPlayer();
+        var window = new MainWindow(service, player, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "cat");
+
+        var ukButton = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
+            .OfType<Button>().First(b => (string?)b.Content == "UK");
+        RaiseClick(ukButton);
+        Dispatcher.UIThread.RunJobs();
+
+        var (word, accent) = Assert.Single(player.Played);
+        Assert.Equal("cat", word);
+        Assert.Equal(SpeechAccent.British, accent);
+
+        var usButton = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
+            .OfType<Button>().First(b => (string?)b.Content == "US");
+        RaiseClick(usButton);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(SpeechAccent.American, player.Played.Last().Accent);
+    }
+
+    [AvaloniaFact]
+    public void MissingDictionaryShowsDownloadPanelAndBlocksLookup()
+    {
+        var locations = NewLocations(out var dictionaryPath, out _, out _);
+        using var service = new DictionaryService(dictionaryPath, locations.HistoryDatabasePath);
+        var window = new MainWindow(service, locations: locations, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(window.FindControl<StackPanel>("DictionaryDownloadPanel")!.IsVisible);
+        Assert.False(window.FindControl<StackPanel>("HintPanel")!.IsVisible);
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+        Assert.True(window.FindControl<StackPanel>("DictionaryDownloadPanel")!.IsVisible);
+    }
+
+    [AvaloniaFact]
+    public void DictionaryDownloadCompletesAndEnablesLookup()
+    {
+        var locations = NewLocations(out var dictionaryPath, out _, out _);
+
+        // The "released" asset: a zip holding a dictionary.db with one word.
+        var releaseDirectory = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Guid.NewGuid().ToString("N"), "release");
+        Directory.CreateDirectory(releaseDirectory);
+        var dbPath = Path.Combine(releaseDirectory, "dictionary.db");
+        using (var db = DictionaryDatabase.Create(dbPath))
+            db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
+        var zipPath = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Path.GetFileName(Path.GetDirectoryName(releaseDirectory))!, "dictionary.zip");
+        System.IO.Compression.ZipFile.CreateFromDirectory(releaseDirectory, zipPath);
+
+        var downloader = new StubDownloader(asset => asset == ReleaseAssets.DictionaryAsset ? zipPath : null);
+        using var service = new DictionaryService(dictionaryPath, locations.HistoryDatabasePath);
+        var window = new MainWindow(service, downloader: downloader, locations: locations, autoDownload: true);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Contains(ReleaseAssets.DictionaryAsset, downloader.Requests);
+        WaitUntil(() => !window.FindControl<StackPanel>("DictionaryDownloadPanel")!.IsVisible);
+        Assert.True(File.Exists(locations.DictionaryDatabasePath));
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "cat");
+    }
+
+    [AvaloniaFact]
+    public void AudioPackDownloadInstallsIntoAudioDirectory()
+    {
+        var locations = NewLocations(out var dictionaryPath, out _, out _);
+        using (var db = DictionaryDatabase.Create(dictionaryPath))
+            db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
+
+        var packDirectory = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Guid.NewGuid().ToString("N"), "pack");
+        Directory.CreateDirectory(Path.Combine(packDirectory, "uk"));
+        File.WriteAllBytes(Path.Combine(packDirectory, "uk", "cat.mp3"), [0x49, 0x44, 0x33]);
+        var zipPath = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Path.GetFileName(Path.GetDirectoryName(packDirectory))!, "audio-pack.zip");
+        System.IO.Compression.ZipFile.CreateFromDirectory(packDirectory, zipPath);
+
+        var downloader = new StubDownloader(asset => asset == ReleaseAssets.AudioPackAsset ? zipPath : null);
+        using var service = new DictionaryService(dictionaryPath, locations.HistoryDatabasePath);
+        var window = new MainWindow(service, downloader: downloader, locations: locations, autoDownload: true);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Contains(ReleaseAssets.AudioPackAsset, downloader.Requests);
+        WaitUntil(() => !window.FindControl<Border>("AudioPackPanel")!.IsVisible);
+        Assert.True(Directory.Exists(Path.Combine(locations.AudioDirectory, "uk")));
+        Assert.True(File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
+    }
+
+    /// <summary>An isolated data layout so asset downloads never touch the user profile.</summary>
+    private static AppLocations NewLocations(out string dictionaryPath, out string historyPath, out string audioPath)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        dictionaryPath = Path.Combine(directory, "dictionary.db");
+        historyPath = Path.Combine(directory, "history.db");
+        audioPath = Path.Combine(directory, "audio");
+        return new AppLocations(directory, dictionaryPath, historyPath, audioPath);
+    }
+
+    private sealed class StubDownloader(Func<string, string?> assets) : IAssetDownloader
+    {
+        public List<string> Requests = [];
+
+        public Task<DownloadResult> DownloadAsync(string assetName, string destinationFile,
+            IProgress<DownloadProgress>? progress, CancellationToken cancellation)
+        {
+            Requests.Add(assetName);
+            var source = assets(assetName) ?? throw new InvalidOperationException($"stub has no {assetName}");
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationFile)!);
+            File.Copy(source, destinationFile, overwrite: true);
+            return Task.FromResult(new DownloadResult(destinationFile, "stub://test"));
+        }
+
+        public Task<string?> FetchChecksumAsync(string assetName, CancellationToken cancellation) =>
+            Task.FromResult<string?>(null);
+    }
+
+    private sealed class RecordingSpeechPlayer : ISpeechPlayer
+    {
+        public List<(string Word, SpeechAccent Accent)> Played = [];
+
+        public bool Play(string word, SpeechAccent accent)
+        {
+            Played.Add((word, accent));
+            return true;
+        }
     }
 
     private static string? Headword(Window window) =>
@@ -385,7 +554,7 @@ public class HeadlessWindowTests
         using (var db = DictionaryDatabase.Create(dictionaryPath))
         {
             db.BeginTransaction();
-            var cat = db.InsertWord("cat", "kæt", "n:100", "n. 猫, 恶妇\nvi. 呕吐",
+            var cat = db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫, 恶妇\nvi. 呕吐",
                 "a small animal with four legs, especially one kept as a pet", 1775, 0, "zk gk");
             if (cat >= 0)
             {
@@ -394,9 +563,9 @@ public class HeadlessWindowTests
                 db.InsertSynGroup(cat, "syn", "n.", "tiger");
                 db.InsertSynGroup(cat, "ant", "adj.", "doglike");
             }
-            var tiger = db.InsertWord("tiger", "ˈtaɪɡər", "n:80", "n. 老虎", "", 900, 0, "zk gk");
+            var tiger = db.InsertWord("tiger", "ˈtaɪɡər", "ˈtaɪɡɚ", "n:80", "n. 老虎", "", 900, 0, "zk gk");
             if (tiger >= 0) db.InsertZhTerm("老虎", tiger);
-            db.InsertWord("catch", "", "", "v. 抓住", "", 900, 0, "gk");
+            db.InsertWord("catch", "", "", "", "v. 抓住", "", 900, 0, "gk");
             db.CommitTransaction();
         }
         return new DictionaryService(dictionaryPath, Path.Combine(directory, "history.db"));

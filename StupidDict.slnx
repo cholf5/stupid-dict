@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/StupidDict.App/StupidDict.App.csproj" />
+    <Project Path="src/StupidDict.AudioPackBuilder/StupidDict.AudioPackBuilder.csproj" />
     <Project Path="src/StupidDict.Core/StupidDict.Core.csproj" />
     <Project Path="src/StupidDict.DataBuilder/StupidDict.DataBuilder.csproj" />
   </Folder>

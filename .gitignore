@@ -65,3 +65,9 @@ history.db
 .DS_Store
 .idea/
 .vs/
+.zcode/
+
+# Audio pack build artifacts (regenerate with StupidDict.AudioPackBuilder)
+/audio-pack/
+audio-pack.zip
+audio-pack.zip.sha256

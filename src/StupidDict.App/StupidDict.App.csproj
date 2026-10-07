@@ -2,7 +2,10 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <!-- Multi-target: net10.0-windows unlocks System.Speech for the Windows
+         TTS fallback; the other platforms build against plain net10.0. -->
+    <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
+    <AssemblyName>StupidDict</AssemblyName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -15,8 +18,16 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.0" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+    <PackageReference Include="System.Speech" Version="10.0.0" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\StupidDict.Core\StupidDict.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="StupidDict.App.Tests" />
   </ItemGroup>
 
 </Project>

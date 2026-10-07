@@ -9,7 +9,6 @@ namespace StupidDict.Core.Dictionary;
 /// </summary>
 public sealed class DictionaryStore
 {
-    private const string EntryColumns = "word, phonetic, pos, translation, definition, freq, bnc, tag";
     private const int RelatedWordLimit = 10;
 
     private static readonly string CommonalitySql =
@@ -19,6 +18,7 @@ public sealed class DictionaryStore
 
     private readonly Lazy<DictionaryDatabase> _database;
     private readonly Lazy<bool> _hasThesaurus;
+    private readonly Lazy<bool> _hasUsPhonetic;
 
     internal DictionaryStore(Lazy<DictionaryDatabase> database)
     {
@@ -30,7 +30,27 @@ public sealed class DictionaryStore
             using var cmd = Command("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'syn_group'");
             return cmd.ExecuteScalar() is not null;
         });
+        // Same for the US-phonetic column: old databases read as if every
+        // entry had none, so the US pronunciation line just stays hidden.
+        _hasUsPhonetic = new Lazy<bool>(() =>
+        {
+            using var cmd = Command("SELECT 1 FROM pragma_table_info('word') WHERE name = 'phonetic_us'");
+            return cmd.ExecuteScalar() is not null;
+        });
     }
+
+    /// <summary>
+    /// The word-table projection for a <see cref="DictionaryEntry"/>. Without
+    /// phonetic_us a NULL is selected in its place so column positions — and
+    /// therefore MapEntry — stay identical for both schema generations.
+    /// </summary>
+    private string EntryColumns => _hasUsPhonetic.Value
+        ? "word, phonetic, phonetic_us, pos, translation, definition, freq, bnc, tag"
+        : "word, phonetic, NULL, pos, translation, definition, freq, bnc, tag";
+
+    private string WordColumns(string alias) => _hasUsPhonetic.Value
+        ? $"{alias}.word, {alias}.phonetic, {alias}.phonetic_us, {alias}.pos, {alias}.translation, {alias}.definition, {alias}.freq, {alias}.bnc, {alias}.tag"
+        : $"{alias}.word, {alias}.phonetic, NULL, {alias}.pos, {alias}.translation, {alias}.definition, {alias}.freq, {alias}.bnc, {alias}.tag";
 
     public DictionaryEntry? FindWord(string word)
     {
@@ -49,7 +69,7 @@ public sealed class DictionaryStore
     public DictionaryEntry? FindByWordForm(string lower)
     {
         using var cmd = Command($"""
-            SELECT w.word, w.phonetic, w.pos, w.translation, w.definition, w.freq, w.bnc, w.tag
+            SELECT {WordColumns("w")}
             FROM word_form f JOIN word w ON w.id = f.word_id
             WHERE f.inflected = $lower
             ORDER BY {CommonalitySql.Replace("freq", "w.freq").Replace("bnc", "w.bnc")}, w.word
@@ -79,7 +99,7 @@ public sealed class DictionaryStore
     public List<ChineseMatch> FindTerm(string term, int limit)
     {
         using var cmd = Command($"""
-            SELECT DISTINCT z.term, w.word, w.phonetic, w.pos, w.translation, w.definition, w.freq, w.bnc, w.tag
+            SELECT DISTINCT z.term, {WordColumns("w")}
             FROM zh_index z JOIN word w ON w.id = z.word_id
             WHERE z.term = $term
             ORDER BY {CommonalitySql.Replace("freq", "w.freq").Replace("bnc", "w.bnc")}, w.word
@@ -93,7 +113,7 @@ public sealed class DictionaryStore
     public List<ChineseMatch> FindTermPrefix(string term, int limit)
     {
         using var cmd = Command($"""
-            SELECT DISTINCT z.term, w.word, w.phonetic, w.pos, w.translation, w.definition, w.freq, w.bnc, w.tag
+            SELECT DISTINCT z.term, {WordColumns("w")}
             FROM zh_index z JOIN word w ON w.id = z.word_id
             WHERE z.term >= $term AND z.term < $end
             ORDER BY {CommonalitySql.Replace("freq", "w.freq").Replace("bnc", "w.bnc")}, w.word
@@ -224,7 +244,8 @@ public sealed class DictionaryStore
         reader.IsDBNull(offset + 2) ? "" : reader.GetString(offset + 2),
         reader.IsDBNull(offset + 3) ? "" : reader.GetString(offset + 3),
         reader.IsDBNull(offset + 4) ? "" : reader.GetString(offset + 4),
-        reader.IsDBNull(offset + 7) ? "" : reader.GetString(offset + 7),
-        reader.IsDBNull(offset + 5) ? 0 : reader.GetInt32(offset + 5),
-        reader.IsDBNull(offset + 6) ? 0 : reader.GetInt32(offset + 6));
+        reader.IsDBNull(offset + 5) ? "" : reader.GetString(offset + 5),
+        reader.IsDBNull(offset + 8) ? "" : reader.GetString(offset + 8),
+        reader.IsDBNull(offset + 6) ? 0 : reader.GetInt32(offset + 6),
+        reader.IsDBNull(offset + 7) ? 0 : reader.GetInt32(offset + 7));
 }

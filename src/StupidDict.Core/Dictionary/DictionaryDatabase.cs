@@ -48,6 +48,7 @@ public sealed class DictionaryDatabase : IDisposable
                 word        TEXT NOT NULL UNIQUE,
                 word_lower  TEXT NOT NULL UNIQUE,
                 phonetic    TEXT NOT NULL DEFAULT '',
+                phonetic_us TEXT NOT NULL DEFAULT '',
                 pos         TEXT NOT NULL DEFAULT '',
                 translation TEXT NOT NULL DEFAULT '',
                 definition  TEXT NOT NULL DEFAULT '',
@@ -107,16 +108,17 @@ public sealed class DictionaryDatabase : IDisposable
     }
 
     /// <summary>Inserts a headword. Returns its id, or -1 if the normalized headword already exists.</summary>
-    public long InsertWord(string word, string phonetic, string pos, string translation, string definition, int freq, int bnc, string tag)
+    public long InsertWord(string word, string phonetic, string phoneticUs, string pos, string translation, string definition, int freq, int bnc, string tag)
     {
         using var cmd = CreateCommand("""
-            INSERT INTO word (word, word_lower, phonetic, pos, translation, definition, freq, bnc, tag)
-            VALUES ($word, $word_lower, $phonetic, $pos, $translation, $definition, $freq, $bnc, $tag)
+            INSERT INTO word (word, word_lower, phonetic, phonetic_us, pos, translation, definition, freq, bnc, tag)
+            VALUES ($word, $word_lower, $phonetic, $phonetic_us, $pos, $translation, $definition, $freq, $bnc, $tag)
             ON CONFLICT (word_lower) DO NOTHING
             """);
         cmd.Parameters.AddWithValue("$word", word);
         cmd.Parameters.AddWithValue("$word_lower", word.ToLowerInvariant());
         cmd.Parameters.AddWithValue("$phonetic", phonetic);
+        cmd.Parameters.AddWithValue("$phonetic_us", phoneticUs);
         cmd.Parameters.AddWithValue("$pos", pos);
         cmd.Parameters.AddWithValue("$translation", translation);
         cmd.Parameters.AddWithValue("$definition", definition);

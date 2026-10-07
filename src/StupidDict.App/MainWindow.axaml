@@ -78,6 +78,25 @@
       <Setter Property="Background" Value="Transparent" />
     </Style>
 
+    <Style Selector="Button.spk">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#8B897F" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="9" />
+      <Setter Property="Padding" Value="7,2" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="MinHeight" Value="18" />
+    </Style>
+    <Style Selector="Button.spk:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#ECECE7" />
+      <Setter Property="Foreground" Value="#403F38" />
+    </Style>
+    <Style Selector="Button.spk:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#E0E0D9" />
+    </Style>
+
     <Style Selector="TextBlock.hint">
       <Setter Property="Foreground" Value="#9C9A91" />
     </Style>
@@ -96,7 +115,7 @@
     </Style>
   </Window.Styles>
 
-  <Grid RowDefinitions="Auto,Auto,*,Auto">
+  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
 
     <Border Grid.Row="0" Margin="18,18,18,6"
             CornerRadius="10" Background="White"
@@ -141,6 +160,28 @@
           <TextBlock Text="完全离线 · 无账号 · 无设置" FontSize="12"
                      HorizontalAlignment="Center" Classes="hint" Opacity="0.8" />
         </StackPanel>
+
+        <StackPanel Name="DictionaryDownloadPanel" IsVisible="False"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Spacing="10" Margin="0,0,0,60">
+          <TextBlock Text="Stupid Dict" FontSize="24" FontWeight="SemiBold"
+                     Foreground="#403F38" HorizontalAlignment="Center" />
+          <TextBlock Name="DictionaryDownloadStatus"
+                     Text="首次使用需要词典数据（约 600 MB）。直接下载，或导入本地已有文件。"
+                     FontSize="14" HorizontalAlignment="Center" Classes="hint"
+                     TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center" />
+          <ProgressBar Name="DictionaryDownloadBar" Minimum="0" Maximum="100"
+                       Height="4" MinWidth="280" IsVisible="False" />
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+            <Button Name="DownloadDictionaryButton" Classes="chip" Content="开始下载"
+                    Click="OnDownloadDictionaryClick" />
+            <Button Name="PickDictionaryButton" Classes="chip" Content="选择本地文件…"
+                    Click="OnPickDictionaryClick" />
+            <Button Name="CancelDictionaryButton" Classes="chip" Content="取消"
+                    IsVisible="False" Click="OnCancelDictionaryClick" />
+          </StackPanel>
+        </StackPanel>
+
         <StackPanel Name="ResultsPanel" IsVisible="False" Spacing="4" />
       </Panel>
     </ScrollViewer>
@@ -162,6 +203,18 @@
         </ItemsControl.ItemTemplate>
       </ItemsControl>
     </StackPanel>
+
+    <Border Grid.Row="4" Name="AudioPackPanel" IsVisible="False"
+            Background="#EFEFE9" Padding="20,7">
+      <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+        <TextBlock Name="AudioPackStatus" VerticalAlignment="Center" FontSize="12"
+                   Classes="hint" TextTrimming="CharacterEllipsis" />
+        <ProgressBar Name="AudioPackBar" Width="140" Height="4" MinHeight="4"
+                     VerticalAlignment="Center" Minimum="0" Maximum="100" />
+        <Button Name="AudioPackActionButton" Classes="spk" Content="取消"
+                Click="OnAudioPackActionClick" />
+      </StackPanel>
+    </Border>
 
   </Grid>
 </Window>

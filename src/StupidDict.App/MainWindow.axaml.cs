@@ -5,7 +5,10 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
+using StupidDict.App.Assets;
+using StupidDict.App.Speech;
 using StupidDict.Core.Application;
 using StupidDict.Core.Dictionary;
 using StupidDict.Core.History;
@@ -16,24 +19,35 @@ public partial class MainWindow : Window
 {
     private static readonly TimeSpan SuggestDebounce = TimeSpan.FromMilliseconds(120);
 
-    private readonly DictionaryService _service;
+    private readonly ISpeechPlayer _speech;
+    private readonly IAssetDownloader _downloader;
+    private readonly AppLocations _locations;
+    private DictionaryService _service;
     private readonly LookupNavigator _navigator = new();
-    private readonly bool _dictionaryAvailable;
+    private bool _dictionaryAvailable;
     private CancellationTokenSource? _suggestDebounce;
     private List<string> _suggestions = [];
     private int _suggestSelection = -1;
     private int _suggestGeneration;
     private bool _suppressSuggest;
     private int _searchGeneration;
+    private CancellationTokenSource? _dictionaryDownloadCts;
+    private CancellationTokenSource? _audioPackCts;
+    private readonly bool _autoDownload;
 
     public MainWindow() : this(new DictionaryService(AppPaths.DictionaryDatabasePath, AppPaths.HistoryDatabasePath))
     {
     }
 
-    public MainWindow(DictionaryService service)
+    public MainWindow(DictionaryService service, ISpeechPlayer? speechPlayer = null,
+        IAssetDownloader? downloader = null, AppLocations? locations = null, bool autoDownload = true)
     {
         InitializeComponent();
         _service = service;
+        _locations = locations ?? AppLocations.Default;
+        _autoDownload = autoDownload;
+        _speech = speechPlayer ?? SpeechPlayback.Create(_locations.AudioDirectory);
+        _downloader = downloader ?? new AssetDownloadService();
         _dictionaryAvailable = File.Exists(service.DictionaryPath);
 
         Opened += (_, _) => SearchBox.Focus();
@@ -44,10 +58,19 @@ public partial class MainWindow : Window
         ShowEmptyState();
         RefreshRecents();
         UpdateNavButtons();
-        if (!_dictionaryAvailable)
-            HintText.Text = "未找到词典数据 dictionary.db — 先运行 dotnet run --project src/StupidDict.DataBuilder";
+        if (_dictionaryAvailable)
+        {
+            _ = _service.WarmupAsync();
+            if (_autoDownload && !AudioPackInstalled())
+                StartAudioPackDownload();
+        }
         else
-            _ = service.WarmupAsync();
+        {
+            DictionaryDownloadPanel.IsVisible = true;
+            HintPanel.IsVisible = false;
+            if (_autoDownload)
+                StartDictionaryDownload();
+        }
     }
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
@@ -85,6 +108,12 @@ public partial class MainWindow : Window
 
     private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
     {
+        if (!_dictionaryAvailable)
+        {
+            _suppressSuggest = false;
+            HideSuggestions();
+            return;
+        }
         if (_suppressSuggest)
         {
             _suppressSuggest = false;
@@ -248,6 +277,8 @@ public partial class MainWindow : Window
             ShowEmptyState();
             return;
         }
+        if (!_dictionaryAvailable)
+            return; // the download panel owns the screen until the dictionary lands
 
         var generation = ++_searchGeneration;
         LookupResult result;
@@ -299,7 +330,8 @@ public partial class MainWindow : Window
     private void ShowEmptyState()
     {
         _searchGeneration++;
-        HintPanel.IsVisible = true;
+        HintPanel.IsVisible = _dictionaryAvailable;
+        DictionaryDownloadPanel.IsVisible = !_dictionaryAvailable;
         ResultsPanel.IsVisible = false;
         ResultsPanel.Children.Clear();
     }
@@ -309,6 +341,216 @@ public partial class MainWindow : Window
         var recent = _service.History.GetRecent();
         RecentPanel.IsVisible = recent.Count > 0;
         RecentList.ItemsSource = recent;
+    }
+
+    // ---- asset bootstrap: the dictionary and the pronunciation pack ----
+
+    private bool AudioPackInstalled() =>
+        Directory.Exists(Path.Combine(_locations.AudioDirectory, "uk"));
+
+    private void OnDownloadDictionaryClick(object? sender, RoutedEventArgs e) => StartDictionaryDownload();
+
+    private void OnCancelDictionaryClick(object? sender, RoutedEventArgs e) => _dictionaryDownloadCts?.Cancel();
+
+    private async void StartDictionaryDownload()
+    {
+        if (_dictionaryDownloadCts is not null) return;
+        _dictionaryDownloadCts = new CancellationTokenSource();
+        DownloadDictionaryButton.IsVisible = false;
+        PickDictionaryButton.IsVisible = false;
+        CancelDictionaryButton.IsVisible = true;
+        DictionaryDownloadBar.IsVisible = true;
+        var cancellation = _dictionaryDownloadCts.Token;
+        var destination = Path.Combine(Path.GetTempPath(), "stupiddict-downloads", ReleaseAssets.DictionaryAsset);
+        try
+        {
+            var result = await _downloader.DownloadAsync(ReleaseAssets.DictionaryAsset, destination,
+                new Progress<DownloadProgress>(UpdateDictionaryProgress), cancellation);
+            DictionaryDownloadStatus.Text = "校验中…";
+            await VerifyChecksumAsync(result.FilePath, ReleaseAssets.DictionaryAsset, cancellation);
+            DictionaryDownloadStatus.Text = "解压中…";
+            await Task.Run(() => ExtractZip(result.FilePath, _locations.DataDirectory), cancellation);
+            File.Delete(result.FilePath);
+            FinishDictionarySetup();
+        }
+        catch (OperationCanceledException)
+        {
+            DictionaryDownloadStatus.Text = "已取消下载。可以直接下载，或选择本地已有文件。";
+        }
+        catch (Exception ex)
+        {
+            DictionaryDownloadStatus.Text = $"下载失败：{ex.Message}";
+        }
+        finally
+        {
+            _dictionaryDownloadCts.Dispose();
+            _dictionaryDownloadCts = null;
+            DownloadDictionaryButton.IsVisible = true;
+            PickDictionaryButton.IsVisible = true;
+            CancelDictionaryButton.IsVisible = false;
+        }
+    }
+
+    private void UpdateDictionaryProgress(DownloadProgress progress)
+    {
+        if (progress.TotalBytes is { } total && total > 0)
+        {
+            DictionaryDownloadBar.IsIndeterminate = false;
+            DictionaryDownloadBar.Value = 100.0 * progress.ReceivedBytes / total;
+            DictionaryDownloadStatus.Text =
+                $"正在下载词典 {progress.ReceivedBytes / 1048576.0:F0} / {total / 1048576.0:F0} MB";
+        }
+        else
+        {
+            DictionaryDownloadBar.IsIndeterminate = true;
+            DictionaryDownloadStatus.Text = $"正在下载词典 {progress.ReceivedBytes / 1048576.0:F0} MB";
+        }
+    }
+
+    private async void OnPickDictionaryClick(object? sender, RoutedEventArgs e)
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "选择 dictionary.zip 或 dictionary.db",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("词典数据") { Patterns = ["*.zip", "*.db"] }],
+        });
+        if (files.Count == 0) return;
+        var path = files[0].TryGetLocalPath();
+        if (path is null) return;
+
+        DictionaryDownloadStatus.Text = "导入中…";
+        try
+        {
+            await Task.Run(() =>
+            {
+                if (path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                    ExtractZip(path, _locations.DataDirectory);
+                else
+                    File.Copy(path, Path.Combine(_locations.DataDirectory, "dictionary.db"), overwrite: true);
+            });
+            if (!File.Exists(Path.Combine(_locations.DataDirectory, "dictionary.db")))
+                throw new InvalidOperationException("文件里没有 dictionary.db");
+            FinishDictionarySetup();
+        }
+        catch (Exception ex)
+        {
+            DictionaryDownloadStatus.Text = $"导入失败：{ex.Message}";
+        }
+    }
+
+    private void FinishDictionarySetup()
+    {
+        _service.Dispose();
+        _service = new DictionaryService(_locations.DictionaryDatabasePath, _locations.HistoryDatabasePath);
+        _dictionaryAvailable = true;
+        DictionaryDownloadPanel.IsVisible = false;
+        HintPanel.IsVisible = true;
+        HintText.Text = "输入单词或中文，按 Enter 查询";
+        RefreshRecents();
+        _ = _service.WarmupAsync();
+
+        if (_autoDownload && !AudioPackInstalled())
+            StartAudioPackDownload();
+    }
+
+    private async void StartAudioPackDownload()
+    {
+        if (_audioPackCts is not null || AudioPackInstalled()) return;
+        _audioPackCts = new CancellationTokenSource();
+        AudioPackPanel.IsVisible = true;
+        AudioPackActionButton.Content = "取消";
+        AudioPackActionButton.IsEnabled = true;
+        AudioPackBar.IsVisible = true;
+        AudioPackStatus.Text = "正在下载发音包（约 1 GB，一次性）";
+        var cancellation = _audioPackCts.Token;
+        var destination = Path.Combine(Path.GetTempPath(), "stupiddict-downloads", ReleaseAssets.AudioPackAsset);
+        try
+        {
+            var result = await _downloader.DownloadAsync(ReleaseAssets.AudioPackAsset, destination,
+                new Progress<DownloadProgress>(UpdateAudioPackProgress), cancellation);
+            AudioPackStatus.Text = "校验中…";
+            await VerifyChecksumAsync(result.FilePath, ReleaseAssets.AudioPackAsset, cancellation);
+            AudioPackStatus.Text = "解压中…";
+            AudioPackBar.IsIndeterminate = true;
+            await Task.Run(() => ExtractZip(result.FilePath, _locations.AudioDirectory), cancellation);
+            File.Delete(result.FilePath);
+            AudioPackPanel.IsVisible = false;
+        }
+        catch (OperationCanceledException)
+        {
+            AudioPackStatus.Text = "发音包下载已取消。未覆盖的单词会用系统语音朗读。";
+            AudioPackActionButton.Content = "下载";
+            AudioPackBar.IsVisible = false;
+        }
+        catch (Exception ex)
+        {
+            AudioPackStatus.Text = $"发音包下载失败：{ex.Message}";
+            AudioPackActionButton.Content = "重试";
+            AudioPackBar.IsVisible = false;
+        }
+        finally
+        {
+            _audioPackCts.Dispose();
+            _audioPackCts = null;
+        }
+    }
+
+    private void UpdateAudioPackProgress(DownloadProgress progress)
+    {
+        AudioPackBar.IsIndeterminate = false;
+        if (progress.TotalBytes is { } total && total > 0)
+        {
+            AudioPackBar.Value = 100.0 * progress.ReceivedBytes / total;
+            AudioPackStatus.Text =
+                $"正在下载发音包 {progress.ReceivedBytes / 1048576.0:F0} / {total / 1048576.0:F0} MB";
+        }
+        else
+        {
+            AudioPackStatus.Text = $"正在下载发音包 {progress.ReceivedBytes / 1048576.0:F0} MB";
+        }
+    }
+
+    private void OnAudioPackActionClick(object? sender, RoutedEventArgs e)
+    {
+        if (_audioPackCts is not null)
+        {
+            _audioPackCts.Cancel();
+            AudioPackActionButton.IsEnabled = false;
+            AudioPackStatus.Text = "正在取消…";
+        }
+        else
+        {
+            StartAudioPackDownload();
+        }
+    }
+
+    private async Task VerifyChecksumAsync(string filePath, string assetName, CancellationToken cancellation)
+    {
+        var expected = await _downloader.FetchChecksumAsync(assetName, cancellation);
+        if (expected is null) return;
+        await Task.Run(() => AssetDownloadService.VerifyChecksum(filePath, expected), cancellation);
+    }
+
+    /// <summary>
+    /// Zip entries cannot escape the destination (zip-slip); extraction is
+    /// all-or-nothing because a half-extracted pack would look installed.
+    /// </summary>
+    private static void ExtractZip(string zipPath, string destinationDirectory)
+    {
+        Directory.CreateDirectory(destinationDirectory);
+        var root = Path.GetFullPath(destinationDirectory);
+        using (var archive = System.IO.Compression.ZipFile.OpenRead(zipPath))
+        {
+            foreach (var entry in archive.Entries)
+            {
+                if (entry.FullName.Length == 0) continue;
+                var target = Path.GetFullPath(Path.Combine(destinationDirectory, entry.FullName));
+                if (!target.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal) && target != root)
+                    throw new InvalidOperationException($"压缩包内出现非法路径：{entry.FullName}");
+            }
+        }
+        System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, destinationDirectory, overwriteFiles: true);
     }
 
     private void RenderResult(LookupResult result)
@@ -345,8 +587,7 @@ public partial class MainWindow : Window
         if (result.WordFormNote is { } note)
             ResultsPanel.Children.Add(Text($"{result.Query} → {note}", fontSize: 13, color: "#9C9A91", margin: new Thickness(2, 4, 0, 0)));
 
-        if (entry.Phonetic.Length > 0)
-            ResultsPanel.Children.Add(Text(FormatPhonetic(entry.Phonetic), fontSize: 14, color: "#8B897F", mono: true, margin: new Thickness(2, 4, 0, 0)));
+        ResultsPanel.Children.Add(BuildPhoneticsLine(entry, margin: new Thickness(2, 4, 0, 0)));
 
         if (entry.Chinese.Length > 0)
         {
@@ -423,8 +664,7 @@ public partial class MainWindow : Window
         {
             var wordLine = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(2, 8, 0, 0) };
             wordLine.Children.Add(Text(primary.Word, 20, FontWeight.SemiBold, "#2B2A24", verticalCenter: true));
-            if (primary.Phonetic.Length > 0)
-                wordLine.Children.Add(Text(FormatPhonetic(primary.Phonetic), fontSize: 13, color: "#8B897F", mono: true, verticalCenter: true));
+            wordLine.Children.Add(BuildPhoneticsLine(primary));
             ResultsPanel.Children.Add(wordLine);
 
             if (primary.English.Length > 0)
@@ -477,6 +717,48 @@ public partial class MainWindow : Window
 
     private static string FormatPhonetic(string phonetic) =>
         phonetic.StartsWith('/') ? phonetic : $"/{phonetic}/";
+
+    /// <summary>
+    /// The 英/美 phonetic line under the headword. Speaker buttons always
+    /// join it — even a word without IPA can be spoken through TTS — so the
+    /// line shows whenever there is a primary entry.
+    /// </summary>
+    private StackPanel BuildPhoneticsLine(DictionaryEntry entry, Thickness? margin = null)
+    {
+        var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = margin ?? new Thickness(0) };
+        if (entry.Phonetic.Length > 0)
+            line.Children.Add(Text("英 " + FormatPhonetic(entry.Phonetic), fontSize: 14, color: "#8B897F", mono: true, verticalCenter: true));
+        if (entry.UsPhonetic.Length > 0)
+            line.Children.Add(Text("美 " + FormatPhonetic(entry.UsPhonetic), fontSize: 14, color: "#8B897F", mono: true, verticalCenter: true));
+        line.Children.Add(SpeakerButton(entry.Word, SpeechAccent.British));
+        line.Children.Add(SpeakerButton(entry.Word, SpeechAccent.American));
+        return line;
+    }
+
+    private Button SpeakerButton(string word, SpeechAccent accent)
+    {
+        var label = accent == SpeechAccent.British ? "UK" : "US";
+        var button = new Button { Classes = { "spk" }, Content = label };
+        ToolTip.SetTip(button, accent == SpeechAccent.British ? "英音" : "美音");
+        button.Click += (_, _) => PlayWord(button, word, accent, label);
+        return button;
+    }
+
+    private async void PlayWord(Button button, string word, SpeechAccent accent, string label)
+    {
+        if (_speech.Play(word, accent)) return;
+        // No engine could speak. When the pack is simply missing, surface the
+        // download entry; otherwise flash the button instead of failing silently.
+        if (!AudioPackInstalled() && _audioPackCts is null)
+        {
+            AudioPackPanel.IsVisible = true;
+            AudioPackActionButton.Content = "下载";
+            AudioPackStatus.Text = "该词没有本地发音。下载发音包可获得离线英/美真人发音。";
+        }
+        button.Content = "✕";
+        await Task.Delay(1500);
+        if (button.Content is "✕") button.Content = label;
+    }
 
     private static string[] SplitLines(string value) =>
         value.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

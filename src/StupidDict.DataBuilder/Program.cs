@@ -9,7 +9,7 @@ using StupidDict.Core.Dictionary;
 if (args.Length < 1)
 {
     Console.Error.WriteLine("""
-        用法: dotnet run --project src/StupidDict.DataBuilder -- <ECDICT 源文件> [输出 dictionary.db] [--wordnet <WordNet dict 目录>]
+        用法: dotnet run --project src/StupidDict.DataBuilder -- <ECDICT 源文件> [输出 dictionary.db] [--wordnet <WordNet dict 目录>] [--cmudict <cmudict 文件>]
 
         源文件支持:
           * ECDICT 官方发布包中的 stardict.db（推荐，收词约 340 万）
@@ -18,16 +18,21 @@ if (args.Length < 1)
         --wordnet 指向 WordNet 的 dict 目录（含 index.noun / data.noun 等），
         提供后生成近义词/反义词/联想词；省略则这些板块为空。
 
+        --cmudict 指向 CMU 美式发音词典（cmudict-0.7b，约 13.4 万词），提供后
+        生成美音音标；省略则美音音标为空，应用照常工作。
+
         输出默认写入用户词典目录（应用启动时自动查找同一位置）。
         """);
     return 1;
 }
 
 var wordnetDir = (string?)null;
+var cmudictFile = (string?)null;
 List<string> positional = [];
 for (var i = 0; i < args.Length; i++)
 {
     if (args[i] == "--wordnet" && i + 1 < args.Length) wordnetDir = Path.GetFullPath(args[++i]);
+    else if (args[i] == "--cmudict" && i + 1 < args.Length) cmudictFile = Path.GetFullPath(args[++i]);
     else positional.Add(args[i]);
 }
 if (wordnetDir is { } wn && !Directory.Exists(wn))
@@ -35,6 +40,13 @@ if (wordnetDir is { } wn && !Directory.Exists(wn))
     Console.Error.WriteLine($"WordNet 目录不存在: {wn}");
     return 1;
 }
+if (cmudictFile is { } cmu && !File.Exists(cmu))
+{
+    Console.Error.WriteLine($"cmudict 文件不存在: {cmu}");
+    return 1;
+}
+
+var usPhonetics = cmudictFile is { } file ? CmuPhonetics.Load(file) : null;
 
 var source = Path.GetFullPath(positional[0]);
 var output = positional.Count > 1 ? Path.GetFullPath(positional[1]) : DefaultOutputPath();
@@ -47,7 +59,7 @@ if (!File.Exists(source))
 var commonTags = new HashSet<string> { "zk", "gk", "cet4", "cet6", "ky", "toefl", "ielts", "gre" };
 var zhTermRegex = new Regex(@"[\u3400-\u9FFF]+", RegexOptions.Compiled);
 var started = Stopwatch.StartNew();
-long entries = 0, skipped = 0, common = 0, zhTerms = 0, forms = 0;
+long entries = 0, skipped = 0, common = 0, zhTerms = 0, forms = 0, usPhoneticCount = 0;
 
 using (var db = DictionaryDatabase.Create(output))
 {
@@ -60,8 +72,10 @@ using (var db = DictionaryDatabase.Create(output))
         var isCommon = row.Frq > 0 || row.Bnc > 0 || row.Collins > 0 || row.Oxford > 0
             || row.Tag.Split(' ', StringSplitOptions.RemoveEmptyEntries).Any(commonTags.Contains);
 
-        var wordId = db.InsertWord(word, row.Phonetic, row.Pos, row.Translation, row.Definition, row.Frq, row.Bnc, row.Tag);
+        var usPhonetic = usPhonetics is { } map && map.TryGetValue(word.ToLowerInvariant(), out var ipa) ? ipa : "";
+        var wordId = db.InsertWord(word, row.Phonetic, usPhonetic, row.Pos, row.Translation, row.Definition, row.Frq, row.Bnc, row.Tag);
         if (wordId < 0) { skipped++; continue; }
+        if (usPhonetic.Length > 0) usPhoneticCount++;
         entries++;
 
         if (isCommon)
@@ -99,6 +113,8 @@ using (var db = DictionaryDatabase.Create(output))
     db.SetMeta("source_file", Path.GetFileName(source));
     db.SetMeta("built_at", DateTime.UtcNow.ToString("o"));
     db.SetMeta("entries", entries.ToString());
+    db.SetMeta("us_phonetics", usPhoneticCount.ToString());
+    if (cmudictFile is { } cmuFile) db.SetMeta("cmudict_file", Path.GetFileName(cmuFile));
     db.CommitTransaction();
 
     if (wordnetDir is { } dir)
@@ -119,7 +135,7 @@ using (var db = DictionaryDatabase.Create(output))
 }
 
 var sizeMb = new FileInfo(output).Length / 1024.0 / 1024.0;
-Console.WriteLine($"完成: {entries:N0} 词条（跳过 {skipped:N0}），常用词 {common:N0}，中文索引 {zhTerms:N0}，词形映射 {forms:N0}");
+Console.WriteLine($"完成: {entries:N0} 词条（跳过 {skipped:N0}），常用词 {common:N0}，中文索引 {zhTerms:N0}，词形映射 {forms:N0}，美音音标 {usPhoneticCount:N0}");
 Console.WriteLine($"输出: {output}（{sizeMb:F0} MB，用时 {started.Elapsed.TotalSeconds:F0}s）");
 return 0;
 

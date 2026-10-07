@@ -4,6 +4,7 @@ namespace StupidDict.Core.Dictionary;
 public sealed record DictionaryEntry(
     string Word,
     string Phonetic,
+    string UsPhonetic,
     string Pos,
     string Chinese,
     string English,
