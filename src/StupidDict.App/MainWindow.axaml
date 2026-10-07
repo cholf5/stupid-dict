@@ -131,21 +131,34 @@
     </ScrollViewer>
 
     <StackPanel Grid.Row="3" Name="RecentPanel" Margin="20,6,20,16"
-                Spacing="7" IsVisible="False">
+                Spacing="7" IsVisible="False" Opacity="0">
+      <!-- Opacity fades in/out through this transition; IsVisible only
+           collapses after the fade-out (SetRecentsVisible), so the strip
+           keeps its layout space while dissolving. Duration mirrors
+           RecentsFadeDuration in MainWindow.axaml.cs. -->
+      <StackPanel.Transitions>
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.18" />
+        </Transitions>
+      </StackPanel.Transitions>
       <TextBlock Text="{Binding Recent, Source={x:Static loc:Translations.Instance}}" Classes="label" Margin="4,0,0,0" />
-      <ItemsControl Name="RecentList">
-        <ItemsControl.ItemsPanel>
-          <ItemsPanelTemplate>
-            <WrapPanel Orientation="Horizontal" />
-          </ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="history:RecentSearch">
-            <Button Classes="chip" Margin="0,0,8,8"
-                    Content="{Binding Query}" Click="OnRecentClick" />
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
+      <!-- Cap the strip: 30 stored entries must never squeeze the pane above
+           on a minimal-height window; the overflow scrolls. -->
+      <ScrollViewer MaxHeight="150">
+        <ItemsControl Name="RecentList">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="history:RecentSearch">
+              <Button Classes="chip" Margin="0,0,8,8"
+                      Content="{Binding Query}" Click="OnRecentClick" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
     </StackPanel>
 
     <Border Grid.Row="4" Name="AudioPackPanel" IsVisible="False"

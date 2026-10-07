@@ -71,3 +71,4 @@ history.db
 /audio-pack/
 audio-pack.zip
 audio-pack.zip.sha256
+.zcodeignore

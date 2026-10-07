@@ -76,7 +76,6 @@ public partial class MainWindow : Window
         Closed += (_, _) => Translations.Instance.PropertyChanged -= OnTranslationsChanged;
 
         ShowEmptyState();
-        RefreshRecents();
         UpdateNavButtons();
         if (_dictionaryAvailable)
         {
@@ -340,7 +339,12 @@ public partial class MainWindow : Window
 
     private void OnSettingsClick(object? sender, RoutedEventArgs e) => OpenSettings();
 
-    /// <summary>Single-instance, non-modal, owned by the main window.</summary>
+    /// <summary>
+    /// Single-instance modal dialog. While it is open the main window is
+    /// disabled, so the ⌘, "toggle" closes from the settings side (its own
+    /// key handler): here it only ever opens, and the re-open guard just
+    /// focuses the existing dialog.
+    /// </summary>
     private void OpenSettings()
     {
         if (_settingsWindow is { } open)
@@ -350,7 +354,7 @@ public partial class MainWindow : Window
         }
         _settingsWindow = new SettingsWindow(_settings);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
-        _settingsWindow.Show(this);
+        _settingsWindow.ShowDialog(this);
     }
 
     private void OnActualThemeVariantChanged(object? sender, EventArgs e)
@@ -400,13 +404,48 @@ public partial class MainWindow : Window
         ResultsPanel.IsVisible = false;
         ResultsPanel.Children.Clear();
         _rebuildResults = null;
+        RefreshRecents();
     }
 
     private void RefreshRecents()
     {
         var recent = _service.History.GetRecent();
-        RecentPanel.IsVisible = recent.Count > 0;
+        // The strip is empty-state chrome: a result page owns the whole window
+        // (←/→ covers "back to a recent word" mid-session), and the strip
+        // returns when the query is cleared.
         RecentList.ItemsSource = recent;
+        SetRecentsVisible(recent.Count > 0 && !ResultsPanel.IsVisible);
+    }
+
+    private static readonly TimeSpan RecentsFadeDuration = TimeSpan.FromMilliseconds(180);
+    private int _recentsFadeGeneration;
+
+    /// <summary>
+    /// Fades the recents strip in or out via the panel's Opacity transition.
+    /// Hiding keeps IsVisible until the fade completes so the strip keeps its
+    /// layout space while dissolving; a show requested mid-fade cancels the
+    /// pending collapse through the generation token.
+    /// </summary>
+    private void SetRecentsVisible(bool show)
+    {
+        var generation = ++_recentsFadeGeneration;
+        if (show)
+        {
+            RecentPanel.IsVisible = true;
+            RecentPanel.Opacity = 1;
+        }
+        else if (RecentPanel.IsVisible)
+        {
+            RecentPanel.Opacity = 0;
+            _ = CollapseRecentsWhenFadedAsync(generation);
+        }
+    }
+
+    private async Task CollapseRecentsWhenFadedAsync(int generation)
+    {
+        await Task.Delay(RecentsFadeDuration);
+        if (generation == _recentsFadeGeneration)
+            RecentPanel.IsVisible = false;
     }
 
     // ---- asset bootstrap: the dictionary and the pronunciation pack ----
@@ -626,6 +665,7 @@ public partial class MainWindow : Window
     {
         HintPanel.IsVisible = false;
         ResultsPanel.IsVisible = true;
+        SetRecentsVisible(false);
         ResultsPanel.Children.Clear();
         _rebuildResults = () => RenderResult(result);
 
@@ -768,6 +808,7 @@ public partial class MainWindow : Window
     {
         HintPanel.IsVisible = false;
         ResultsPanel.IsVisible = true;
+        SetRecentsVisible(false);
         ResultsPanel.Children.Clear();
         _rebuildResults = () => RenderError(query, ex);
         ResultsPanel.Children.Add(Text(string.Format(Translations.Instance.LookupErrorFormat, query),

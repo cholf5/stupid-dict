@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using StupidDict.App.Localization;
 using System.Diagnostics;
@@ -28,6 +29,34 @@ public partial class SettingsWindow : Window
         ThemeComboBox.SelectionChanged += OnThemeSelectionChanged;
         LanguageComboBox.SelectedIndex = (int)settings.Language;
         LanguageComboBox.SelectionChanged += OnLanguageSelectionChanged;
+    }
+
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+        // 键盘焦点必须落进对话框内控件：Avalonia 的 Window / TabControl 默认
+        // Focusable=false，打开后全局 FocusedElement 仍停留在主窗口搜索框，
+        // Esc / ⌘, 会被路由回主窗口（模态下它已禁用）。照 inpaint
+        // ConfirmWindow 的做法在 OnOpened 里显式聚焦（首个可聚焦控件）。
+        ThemeComboBox.Focus();
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Handled) return;
+        // Esc / ⌘, 关闭对话框——⌘, 开关的关闭半边（打开半边在
+        // MainWindow.OnPreviewKeyDown）。气泡阶段处理：ComboBox 弹层打开时
+        // 先吃掉 Esc（关下拉并标记 handled），窗口只在没人要这个键时才关。
+        var cmdCtrl = (e.KeyModifiers & (KeyModifiers.Meta | KeyModifiers.Control)) != 0;
+        switch (e.Key)
+        {
+            case Key.Escape:
+            case Key.OemComma when cmdCtrl:
+                e.Handled = true;
+                Close();
+                break;
+        }
     }
 
     private void OnThemeSelectionChanged(object? sender, SelectionChangedEventArgs e)

@@ -122,28 +122,37 @@ public class HeadlessWindowTests
     }
 
     [AvaloniaFact]
-    public void RecentSearchesAppearAfterLookup()
+    public void RecentSearchesHiddenOnResultsBackOnEmptyState()
     {
         using var service = CreateService();
         var window = new MainWindow(service, autoDownload: false);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
+        var recentPanel = window.FindControl<StackPanel>("RecentPanel")!;
+        var recentList = window.FindControl<ItemsControl>("RecentList")!;
         var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        // Fresh history: nothing to show even on the empty state.
+        Assert.False(recentPanel.IsVisible);
+
         searchBox.Text = "cat";
         PressEnter(searchBox);
         WaitUntil(() => window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+        // The result page owns the window; the strip fades out (IsVisible
+        // drops only after the fade completes) while the word still lands
+        // in the list.
+        WaitUntil(() => !recentPanel.IsVisible);
+        Assert.Single(recentList.ItemsSource!.Cast<object>());
+
+        searchBox.Clear();
+        PressKey(searchBox, Key.Escape);
+        WaitUntil(() => recentPanel.IsVisible);
+        Assert.True(window.FindControl<StackPanel>("HintPanel")!.IsVisible);
 
         searchBox.Text = "猫";
         PressEnter(searchBox);
-        WaitUntil(() =>
-        {
-            var recent = window.FindControl<ItemsControl>("RecentList")!.ItemsSource;
-            return recent is not null && recent.Cast<object>().Count() == 2;
-        });
-
-        var recentPanel = window.FindControl<StackPanel>("RecentPanel")!;
-        Assert.True(recentPanel.IsVisible);
+        WaitUntil(() => recentList.ItemsSource!.Cast<object>().Count() == 2);
+        WaitUntil(() => !recentPanel.IsVisible);
         SaveScreenshot(window, "stupiddict-recent.png");
     }
 
@@ -597,6 +606,65 @@ public class HeadlessWindowTests
         {
             App.ApplyTheme(AppTheme.System);
         }
+    }
+
+    [AvaloniaFact]
+    public void SettingsWindowIsModalAndCmdCommaTogglesIt()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        // Open via the shortcut. The dialog is shown with ShowDialog, so on
+        // real platforms the owner is disabled while it is up — headless
+        // stubs SetEnabled away, hence no IsEnabled assertion here. The
+        // dialog must carry keyboard focus itself (OnOpened focuses the
+        // TabControl); without that the raw key would keep routing to the
+        // main window's focused SearchBox, since Avalonia keeps one global
+        // focused element across windows.
+        window.KeyPress(Key.OemComma, RawInputModifiers.Control, PhysicalKey.Comma, null);
+        Dispatcher.UIThread.RunJobs();
+        var settingsWindow = Assert.IsType<SettingsWindow>(Assert.Single(window.OwnedWindows));
+
+        // A second ⌘, lands in the dialog and closes it; the shortcut then
+        // opens it again.
+        settingsWindow.KeyPress(Key.OemComma, RawInputModifiers.Control, PhysicalKey.Comma, null);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Empty(window.OwnedWindows);
+
+        window.KeyPress(Key.OemComma, RawInputModifiers.Control, PhysicalKey.Comma, null);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Single(window.OwnedWindows);
+    }
+
+    [AvaloniaFact]
+    public void EscapeClosesSettingsUnlessComboBoxDropdownOpen()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        window.KeyPress(Key.OemComma, RawInputModifiers.Control, PhysicalKey.Comma, null);
+        Dispatcher.UIThread.RunJobs();
+        var settingsWindow = Assert.IsType<SettingsWindow>(Assert.Single(window.OwnedWindows));
+
+        // With a ComboBox popup open, Esc belongs to the dropdown: dismiss
+        // the popup and leave the window alone.
+        var combo = settingsWindow.FindControl<ComboBox>("ThemeComboBox")!;
+        combo.Focus();
+        combo.IsDropDownOpen = true;
+        Dispatcher.UIThread.RunJobs();
+        settingsWindow.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(combo.IsDropDownOpen);
+        Assert.True(settingsWindow.IsVisible);
+
+        // Otherwise Esc closes the dialog.
+        settingsWindow.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Empty(window.OwnedWindows);
     }
 
     [AvaloniaFact]

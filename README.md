@@ -28,12 +28,12 @@ A stupidly simple offline English-Chinese dictionary for Windows, macOS and Linu
 | 操作 | 行为 |
 | --- | --- |
 | `Enter` | 查询输入的词；候选列表有选中项时查询该词 |
-| `Esc` | 关闭候选列表；再按清空 / 返回搜索状态 |
+| `Esc` | 关闭候选列表；再按清空 / 返回搜索状态；设置窗口内关闭设置 |
 | `Ctrl/Cmd + A` | 全选输入 |
 | `Ctrl/Cmd + V` | 粘贴 |
 | `↑ / ↓` | 浏览补全候选；输入框为空时进入最近搜索 |
 | `Ctrl/Cmd + [` / `Ctrl/Cmd + ]` | 后退 / 前进（查询历史） |
-| `Ctrl/Cmd + ,` | 打开设置 |
+| `Ctrl/Cmd + ,` | 打开 / 关闭设置 |
 | `Ctrl/Cmd + K` | 聚焦搜索框 |
 
 ## 架构
