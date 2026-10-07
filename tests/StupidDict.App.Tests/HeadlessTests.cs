@@ -95,6 +95,87 @@ public class HeadlessWindowTests
         SaveScreenshot(window, "stupiddict-recent.png");
     }
 
+    [AvaloniaFact]
+    public void TypingShowsPrefixSuggestions()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "ca";
+        WaitUntil(() => window.FindControl<Border>("SuggestPanel")!.IsVisible);
+
+        var words = window.FindControl<ItemsControl>("SuggestList")!.ItemsSource!.Cast<string>().ToList();
+        Assert.Contains("cat", words);
+        Assert.Contains("catch", words);
+        SaveScreenshot(window, "stupiddict-suggest.png");
+    }
+
+    [AvaloniaFact]
+    public void EnterWithSuggestionsOpenStillQueriesTypedText()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "ca";
+        WaitUntil(() => window.FindControl<Border>("SuggestPanel")!.IsVisible);
+
+        PressEnter(searchBox);
+        WaitUntil(() => window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+
+        // Enter means "look up what I typed" — the box keeps "ca", the
+        // suggestion list closes, and the result view replaces the list.
+        Assert.Equal("ca", searchBox.Text);
+        Assert.False(window.FindControl<Border>("SuggestPanel")!.IsVisible);
+    }
+
+    [AvaloniaFact]
+    public void EscapeClosesSuggestionsBeforeClearing()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "ca";
+        WaitUntil(() => window.FindControl<Border>("SuggestPanel")!.IsVisible);
+
+        PressKey(searchBox, Key.Escape);
+        Assert.False(window.FindControl<Border>("SuggestPanel")!.IsVisible);
+        Assert.Equal("ca", searchBox.Text);
+
+        PressKey(searchBox, Key.Escape);
+        Assert.True(string.IsNullOrEmpty(searchBox.Text));
+    }
+
+    [AvaloniaFact]
+    public void ArrowDownSelectsSuggestionAndEnterSearchesIt()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "ca";
+        WaitUntil(() => window.FindControl<Border>("SuggestPanel")!.IsVisible);
+
+        var firstSuggestion = window.FindControl<ItemsControl>("SuggestList")!.ItemsSource!.Cast<string>().First();
+        PressKey(searchBox, Key.Down);
+        PressKey(searchBox, Key.Enter);
+        WaitUntil(() => window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+
+        // An explicit selection replaces the query; the first suggestion wins.
+        Assert.Equal(firstSuggestion, searchBox.Text);
+        Assert.False(window.FindControl<Border>("SuggestPanel")!.IsVisible);
+    }
+
     private static DictionaryService CreateService()
     {
         var directory = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Guid.NewGuid().ToString("N"));
@@ -116,8 +197,10 @@ public class HeadlessWindowTests
         return new DictionaryService(dictionaryPath, Path.Combine(directory, "history.db"));
     }
 
-    private static void PressEnter(TextBox searchBox) =>
-        searchBox.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+    private static void PressEnter(TextBox searchBox) => PressKey(searchBox, Key.Enter);
+
+    private static void PressKey(TextBox searchBox, Key key) =>
+        searchBox.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = key });
 
     private static void WaitUntil(Func<bool> condition)
     {

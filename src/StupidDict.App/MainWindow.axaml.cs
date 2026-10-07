@@ -13,8 +13,15 @@ namespace StupidDict.App;
 
 public partial class MainWindow : Window
 {
+    private static readonly TimeSpan SuggestDebounce = TimeSpan.FromMilliseconds(120);
+
     private readonly DictionaryService _service;
     private readonly bool _dictionaryAvailable;
+    private CancellationTokenSource? _suggestDebounce;
+    private List<string> _suggestions = [];
+    private int _suggestSelection = -1;
+    private int _suggestGeneration;
+    private bool _suppressSuggest;
     private int _searchGeneration;
 
     public MainWindow() : this(new DictionaryService(AppPaths.DictionaryDatabasePath, AppPaths.HistoryDatabasePath))
@@ -29,12 +36,15 @@ public partial class MainWindow : Window
 
         Opened += (_, _) => SearchBox.Focus();
         SearchBox.KeyDown += OnSearchBoxKeyDown;
+        SearchBox.TextChanged += OnSearchTextChanged;
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
 
         ShowEmptyState();
         RefreshRecents();
         if (!_dictionaryAvailable)
             HintText.Text = "未找到词典数据 dictionary.db — 先运行 dotnet run --project src/StupidDict.DataBuilder";
+        else
+            _ = service.WarmupAsync();
     }
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
@@ -48,11 +58,130 @@ public partial class MainWindow : Window
                 break;
             case Key.Escape:
                 e.Handled = true;
+                if (SuggestPanel.IsVisible)
+                {
+                    HideSuggestions();
+                    HintPanel.IsVisible = !ResultsPanel.IsVisible;
+                    break;
+                }
                 SearchBox.Clear();
                 ShowEmptyState();
                 SearchBox.Focus();
                 break;
         }
+    }
+
+    private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        if (_suppressSuggest)
+        {
+            _suppressSuggest = false;
+            HideSuggestions();
+            HintPanel.IsVisible = !ResultsPanel.IsVisible;
+            return;
+        }
+        CancelScheduledSuggestions();
+        var text = SearchBox.Text ?? "";
+        if (text.Trim().Length == 0 || DictionaryService.IsChineseQuery(text))
+        {
+            HideSuggestions();
+            HintPanel.IsVisible = !ResultsPanel.IsVisible;
+            return;
+        }
+        ScheduleSuggestions(text);
+    }
+
+    private void ScheduleSuggestions(string query)
+    {
+        var cts = new CancellationTokenSource();
+        _suggestDebounce = cts;
+        var generation = _suggestGeneration;
+        _ = RunSuggestionsAsync(query, generation, cts);
+    }
+
+    private async Task RunSuggestionsAsync(string query, int generation, CancellationTokenSource cts)
+    {
+        try
+        {
+            await Task.Delay(SuggestDebounce, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        List<string> words;
+        try
+        {
+            words = await _service.SuggestAsync(query);
+        }
+        catch
+        {
+            return; // completion is best-effort; dictionary errors surface on Lookup
+        }
+        if (generation != _suggestGeneration) return;
+        ShowSuggestions(words);
+    }
+
+    /// <summary>Invalidates any scheduled or in-flight suggestion fetch.</summary>
+    private void CancelScheduledSuggestions()
+    {
+        _suggestDebounce?.Cancel();
+        _suggestDebounce?.Dispose();
+        _suggestDebounce = null;
+        _suggestGeneration++;
+    }
+
+    private void ShowSuggestions(List<string> words)
+    {
+        if (words.Count == 0)
+        {
+            HideSuggestions();
+            return;
+        }
+        _suggestions = words;
+        _suggestSelection = -1;
+        SuggestList.ItemsSource = words;
+        SuggestPanel.IsVisible = true;
+        HintPanel.IsVisible = false;
+    }
+
+    private void HideSuggestions()
+    {
+        CancelScheduledSuggestions();
+        _suggestions = [];
+        _suggestSelection = -1;
+        SuggestPanel.IsVisible = false;
+    }
+
+    private void UpdateSuggestSelection()
+    {
+        var index = 0;
+        foreach (var button in SuggestList.GetVisualDescendants().OfType<Button>())
+            button.Classes.Set("selected", index++ == _suggestSelection);
+    }
+
+    private void SelectSuggestion(string word)
+    {
+        HideSuggestions();
+        SetQueryText(word);
+        RunSearch(word);
+    }
+
+    /// <summary>Programmatic text assignment that must not retrigger live completion.</summary>
+    private void SetQueryText(string text)
+    {
+        if (SearchBox.Text != text)
+            _suppressSuggest = true;
+        SearchBox.Text = text;
+        SearchBox.CaretIndex = text.Length;
+        SearchBox.Focus();
+    }
+
+    private void OnSuggestClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Content: string word })
+            SelectSuggestion(word);
     }
 
     private void OnSearchBoxKeyDown(object? sender, KeyEventArgs e)
@@ -61,7 +190,23 @@ public partial class MainWindow : Window
         {
             case Key.Enter:
                 e.Handled = true;
-                RunSearch(SearchBox.Text);
+                if (_suggestSelection >= 0 && _suggestSelection < _suggestions.Count)
+                    SelectSuggestion(_suggestions[_suggestSelection]);
+                else
+                {
+                    HideSuggestions();
+                    RunSearch(SearchBox.Text);
+                }
+                break;
+            case Key.Down when SuggestPanel.IsVisible && _suggestSelection < _suggestions.Count - 1:
+                e.Handled = true;
+                _suggestSelection++;
+                UpdateSuggestSelection();
+                break;
+            case Key.Up when SuggestPanel.IsVisible && _suggestSelection >= 0:
+                e.Handled = true;
+                _suggestSelection--;
+                UpdateSuggestSelection();
                 break;
             case Key.Up or Key.Down when string.IsNullOrEmpty(SearchBox.Text):
                 var firstRecent = RecentList.GetVisualDescendants().OfType<Button>().FirstOrDefault();
@@ -78,7 +223,7 @@ public partial class MainWindow : Window
     {
         if (sender is Button { DataContext: RecentSearch recent })
         {
-            SearchBox.Text = recent.Query;
+            SetQueryText(recent.Query);
             RunSearch(recent.Query);
         }
     }
@@ -235,7 +380,7 @@ public partial class MainWindow : Window
             var chip = new Button { Classes = { "chip" }, Content = item, Margin = new Thickness(0, 0, 8, 8) };
             chip.Click += (_, _) =>
             {
-                SearchBox.Text = item;
+                SetQueryText(item);
                 RunSearch(item);
             };
             panel.Children.Add(chip);

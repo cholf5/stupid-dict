@@ -126,4 +126,81 @@ public class DictionaryServiceTests
         Assert.Single(recent);
         Assert.Equal("cat", recent[0].Query);
     }
+
+    [Fact]
+    public void ShortPrefixSuggestsCommonWordsRankedByFrequency()
+    {
+        var paths = TestDatabase.Create(
+            new Row("cat", Freq: 100),
+            new Row("Cab", Freq: 90),
+            new Row("catalog", Freq: 80),
+            new Row("catfish", Freq: 0));
+        using var service = new DictionaryService(paths.DictionaryPath, paths.HistoryPath);
+
+        var words = service.Suggest("ca");
+
+        // 1-2 char prefixes draw from the in-memory common-word set: ranked
+        // common-first (lower freq rank = more common), long-tail words
+        // excluded, original casing preserved.
+        Assert.Equal(["catalog", "Cab", "cat"], words);
+    }
+
+    [Fact]
+    public void LongPrefixSuggestsLongTailWords()
+    {
+        var paths = TestDatabase.Create(
+            new Row("zebra", Freq: 100),
+            new Row("zebrawood", Freq: 0),
+            new Row("zebu", Freq: 0));
+        using var service = new DictionaryService(paths.DictionaryPath, paths.HistoryPath);
+
+        var words = service.Suggest("zebra");
+
+        // 3+ char prefixes hit the SQLite index: rare words are reachable.
+        Assert.Equal(["zebra", "zebrawood"], words);
+    }
+
+    [Fact]
+    public void ExactMatchLeadsLongPrefixSuggestions()
+    {
+        var paths = TestDatabase.Create(
+            new Row("catch", Freq: 586),
+            new Row("category", Freq: 1461),
+            new Row("cat", Freq: 1775));
+        using var service = new DictionaryService(paths.DictionaryPath, paths.HistoryPath);
+
+        // "cat" is a headword: it leads despite "catch" being more common.
+        Assert.Equal(["cat", "catch", "category"], service.Suggest("cat"));
+    }
+
+    [Fact]
+    public void ExactMatchLeadsShortPrefixSuggestions()
+    {
+        var paths = TestDatabase.Create(
+            new Row("down", Freq: 900),
+            new Row("do", Freq: 1775));
+        using var service = new DictionaryService(paths.DictionaryPath, paths.HistoryPath);
+
+        Assert.Equal(["do", "down"], service.Suggest("do"));
+    }
+
+    [Fact]
+    public void SuggestIsCaseAndWhitespaceInsensitive()
+    {
+        var paths = TestDatabase.Create(new Row("cat", Freq: 100));
+        using var service = new DictionaryService(paths.DictionaryPath, paths.HistoryPath);
+
+        Assert.Equal(service.Suggest("ca"), service.Suggest("  CA  "));
+    }
+
+    [Fact]
+    public void SuggestSkipsEmptyAndChineseQueries()
+    {
+        var paths = TestDatabase.Create(new Row("cat", Freq: 100));
+        using var service = new DictionaryService(paths.DictionaryPath, paths.HistoryPath);
+
+        Assert.Empty(service.Suggest(""));
+        Assert.Empty(service.Suggest("   "));
+        Assert.Empty(service.Suggest("猫"));
+    }
 }

@@ -4,16 +4,19 @@ namespace StupidDict.Core.Dictionary;
 public sealed class EnglishEnglishDictionary
 {
     private readonly DictionaryStore _store;
-    private List<CommonWord>? _commonWords;
+    private readonly CommonWordIndex _commonWords;
 
-    internal EnglishEnglishDictionary(DictionaryStore store) => _store = store;
+    internal EnglishEnglishDictionary(DictionaryStore store, CommonWordIndex commonWords)
+    {
+        _store = store;
+        _commonWords = commonWords;
+    }
 
     /// <summary>Common words within a small edit distance of the query, nearest and most common first.</summary>
     public List<DictionaryEntry> FindSimilar(string lower, int limit)
     {
-        _commonWords ??= _store.GetCommonWords();
         var entries = new List<DictionaryEntry>(limit);
-        foreach (var word in FuzzyMatcher.Find(lower, _commonWords, limit))
+        foreach (var word in FuzzyMatcher.Find(lower, _commonWords.Words, limit))
         {
             if (_store.FindNormalized(word) is { } entry) entries.Add(entry);
         }
