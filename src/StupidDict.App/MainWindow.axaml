@@ -4,7 +4,7 @@
         xmlns:loc="using:StupidDict.App.Localization"
         xmlns:sys="using:System"
         x:Class="StupidDict.App.MainWindow"
-        Title="Stupid Dict"
+        Title="{Binding AppName, Source={x:Static loc:Translations.Instance}}"
         Width="780" Height="560"
         MinWidth="560" MinHeight="440"
         Background="{DynamicResource WindowBackground}">
@@ -73,7 +73,7 @@
         <StackPanel Name="HintPanel"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
                     Spacing="10" Margin="0,0,0,60">
-          <TextBlock Text="Stupid Dict" FontSize="24" FontWeight="SemiBold"
+          <TextBlock Text="{Binding AppName, Source={x:Static loc:Translations.Instance}}" FontSize="24" FontWeight="SemiBold"
                      Foreground="{DynamicResource TextTitle}" HorizontalAlignment="Center" />
           <TextBlock Name="HintText" Text="{Binding SearchWatermark, Source={x:Static loc:Translations.Instance}}"
                      FontSize="14" HorizontalAlignment="Center" Classes="hint" />
@@ -84,7 +84,7 @@
         <StackPanel Name="DictionaryDownloadPanel" IsVisible="False"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
                     Spacing="10" Margin="0,0,0,60">
-          <TextBlock Text="Stupid Dict" FontSize="24" FontWeight="SemiBold"
+          <TextBlock Text="{Binding AppName, Source={x:Static loc:Translations.Instance}}" FontSize="24" FontWeight="SemiBold"
                      Foreground="{DynamicResource TextTitle}" HorizontalAlignment="Center" />
           <TextBlock Name="DictionaryDownloadStatus"
                      Text="{Binding DownloadPrompt, Source={x:Static loc:Translations.Instance}}"

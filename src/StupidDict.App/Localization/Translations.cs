@@ -27,6 +27,7 @@ public sealed class Translations : INotifyPropertyChanged
 
     private static readonly Dictionary<string, string> Zh = new()
     {
+        [nameof(AppName)] = "傻瓜词典",
         [nameof(SearchWatermark)] = "输入单词或中文，按 Enter 查询",
         [nameof(NavBackTip)] = "后退 (⌘[)",
         [nameof(NavForwardTip)] = "前进 (⌘])",
@@ -109,6 +110,7 @@ public sealed class Translations : INotifyPropertyChanged
 
     private static readonly Dictionary<string, string> En = new()
     {
+        [nameof(AppName)] = "Stupid Dict",
         [nameof(SearchWatermark)] = "Type an English word or Chinese, then press Enter",
         [nameof(NavBackTip)] = "Back (⌘[)",
         [nameof(NavForwardTip)] = "Forward (⌘])",
@@ -234,6 +236,8 @@ public sealed class Translations : INotifyPropertyChanged
 
     // ---- 主窗口 ----
 
+    /// <summary>应用名：标题栏、空态标题与设置 About 卡共用。</summary>
+    public string AppName => Get();
     /// <summary>搜索框水印与空态提示共用同一条文案。</summary>
     public string SearchWatermark => Get();
     public string NavBackTip => Get();

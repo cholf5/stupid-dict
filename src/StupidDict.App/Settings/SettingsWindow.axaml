@@ -98,7 +98,8 @@
     <TabItem Header="{Binding SectionAbout, Source={x:Static loc:Translations.Instance}}">
       <StackPanel Margin="16,14" Spacing="12">
         <StackPanel Orientation="Horizontal" Spacing="10">
-          <TextBlock FontWeight="Bold" FontSize="18" VerticalAlignment="Center" Text="Stupid Dict" />
+          <TextBlock FontWeight="Bold" FontSize="18" VerticalAlignment="Center"
+                     Text="{Binding AppName, Source={x:Static loc:Translations.Instance}}" />
           <TextBlock VerticalAlignment="Center" Classes="hint"
                      Text="{x:Static s:SettingsWindow.AppVersion}" />
         </StackPanel>

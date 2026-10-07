@@ -615,6 +615,7 @@ public class HeadlessWindowTests
             Assert.Contains("近义词", ResultLabels(window));
             Assert.Equal("输入单词或中文，按 Enter 查询",
                 window.FindControl<TextBlock>("HintText")!.Text);
+            Assert.Equal("傻瓜词典", window.Title);
 
             RaiseClick(window.FindControl<Button>("SettingsButton")!);
             Dispatcher.UIThread.RunJobs();
@@ -631,6 +632,7 @@ public class HeadlessWindowTests
             Assert.Equal(AppLanguage.English, settings.Language);
             Assert.Equal(AppLanguage.English, Translations.Instance.CurrentLanguage);
             Assert.Equal("Settings", settingsWindow.Title);
+            Assert.Equal("Stupid Dict", window.Title);
             Assert.Equal("Type an English word or Chinese, then press Enter",
                 window.FindControl<TextBlock>("HintText")!.Text);
             Assert.Contains("Synonyms", ResultLabels(window));
