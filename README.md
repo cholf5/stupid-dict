@@ -133,11 +133,25 @@ dotnet run --project src/StupidDict.AudioPackBuilder -c Release -- \
 ### 打包与发布
 
 ```bash
+scripts/release.sh 1.0.1 --watch    # bump 版本 → 打 tag → CI 三平台打包并建 Release
+```
+
+发版脚本把 `StupidDict.App.csproj` 的 `<Version>` 提升到目标版本并打 `v` tag，CI（`.github/workflows/dotnet-desktop.yml`）随后测试、打包 macOS（.app，arm64/x64）/ Windows / Linux 应用包并创建 Release；`--watch` 会等 CI 跑完并核对产物齐全。版本必须与 csproj 一致，CI 在 tag 时强制校验，in-app 更新检查也以它为比较基准。
+
+`dictionary.zip` / `audio-pack.zip` 不随版本变化且无法在 CI 构建（词典 600 MB、发音包需本地生成），release job 会自动把上一版 Release 的这两件资产（含 `.sha256`）接力到新 Release；文件名不可变，应用内下载按 latest + 固定资产名解析。首次发版还没有可接力的对象，等 CI 建好 Release 后手动补传一次，之后每版自动接力：
+
+```bash
+gh release upload v1.0.0 dictionary.zip dictionary.zip.sha256 audio-pack.zip audio-pack.zip.sha256
+```
+
+本地打包（调试或补传数据资产时用）：
+
+```bash
 scripts/package.sh                                        # 本机平台
 scripts/package.sh --rids "osx-arm64 osx-x64 linux-x64 win-x64"
 ```
 
-产出到 `dist/`：不带词典的应用包（`StupidDict-{rid}.zip`）、带词典的应用包（`StupidDict-{rid}-with-dictionary.zip`）、`dictionary.zip`、`audio-pack.zip`（若已生成）及对应 `.sha256`。资产名保持不变后 `gh release create v1.x dist/*` 发布，应用内下载链即可识别最新版。macOS 首次打开未签名 `.app` 被拦截时：`xattr -cr "Stupid Dict.app"`。
+macOS 首次打开未签名 `.app` 被拦截时：`xattr -cr "Stupid Dict.app"`。
 
 ## License
 
