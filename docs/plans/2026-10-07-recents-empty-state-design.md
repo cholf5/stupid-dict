@@ -27,14 +27,18 @@ WrapPanel 铺开成四五行 chip，把结果页（Row 2 的 `*` 行）挤到只
 - 测试：`RecentSearchesAppearAfterLookup`（钉旧语义：查词后历史条可见）改写为
   `RecentSearchesHiddenOnResultsBackOnEmptyState`，钉住新语义——空态无历史不可见、
   结果页不可见但列表照常刷新、清空后可见。
-- 淡入淡出：`RecentPanel` 挂 `DoubleTransition`（180 ms）动 Opacity，`SetRecentsVisible`
-  切换状态。`IsVisible` 不可动画，因此消失分两段：先 Opacity→0 淡出，180 ms 后才折叠
-  `IsVisible` 释放布局空间；期间若又要求显示，用代数令牌（`_recentsFadeGeneration`）
-  取消未决的折叠，与查询过期结果用 `_searchGeneration` 丢弃同一套路。淡出在布局里
-  多滞留 180 ms，视觉上结果页先渲染、历史条原地溶解，可接受。
+- 显示/隐藏为瞬时 `IsVisible` 切换（`RefreshRecents` 与 `RenderResult`/`RenderError`
+  直接赋值）。曾试过淡入淡出（`DoubleTransition` 动 Opacity + 代数令牌延迟折叠
+  `IsVisible`），装上当天回滚，原因见「评估过什么」。
 
 ## 评估过什么、为何不做
 
+- **历史条淡出动画**：试装当天回滚。Opacity 淡出要求 `IsVisible`（即 Row 3 的布局
+  空间）在动画期间保持原状，而历史条在 Grid 里独立成行、不与结果页重叠——实际观感
+  是结果页底部被一条不透明的空带压住 180 ms，动画结束行高回收、结果页突然弹开
+  （用户反馈："背景挡死，然后突然消失"），"原地溶解"的前提不成立。抽屉式收起
+  （动画高度/MaxHeight）只是把同一 180 ms 让位延迟做得平滑，且 Avalonia 不能过渡
+  `GridLength`，需要自定义动画代码。结论：结果页接管应当瞬时，动画整体删除。
 - **限行/限高单独作为方案**：结果页永久多占一行，滚动藏住大部分 chip，治标不治本。
   只保留 `MaxHeight` 作为空态下的护栏。
 - **收进搜索框下拉（浏览器式浮层）**：零永久占位、最优雅，但要处理与现有建议下拉的

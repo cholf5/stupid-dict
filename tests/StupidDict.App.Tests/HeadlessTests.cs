@@ -174,9 +174,8 @@ public class HeadlessWindowTests
         searchBox.Text = "cat";
         PressEnter(searchBox);
         WaitUntil(() => window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
-        // The result page owns the window; the strip fades out (IsVisible
-        // drops only after the fade completes) while the word still lands
-        // in the list.
+        // The result page owns the window; the strip hides instantly while
+        // the word still lands in the list.
         WaitUntil(() => !recentPanel.IsVisible);
         Assert.Single(recentList.ItemsSource!.Cast<object>());
 
@@ -656,7 +655,7 @@ public class HeadlessWindowTests
         // real platforms the owner is disabled while it is up — headless
         // stubs SetEnabled away, hence no IsEnabled assertion here. The
         // dialog must carry keyboard focus itself (OnOpened focuses the
-        // TabControl); without that the raw key would keep routing to the
+        // ThemeComboBox); without that the raw key would keep routing to the
         // main window's focused SearchBox, since Avalonia keeps one global
         // focused element across windows.
         window.KeyPress(Key.OemComma, RawInputModifiers.Control, PhysicalKey.Comma, null);

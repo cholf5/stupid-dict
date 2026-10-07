@@ -359,7 +359,7 @@ public partial class MainWindow : Window
         }
         _settingsWindow = new SettingsWindow(_settings);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
-        _settingsWindow.ShowDialog(this);
+        _ = _settingsWindow.ShowDialog(this);
     }
 
     private void OnActualThemeVariantChanged(object? sender, EventArgs e)
@@ -454,40 +454,12 @@ public partial class MainWindow : Window
         var recent = _service.History.GetRecent();
         // The strip is empty-state chrome: a result page owns the whole window
         // (←/→ covers "back to a recent word" mid-session), and the strip
-        // returns when the query is cleared.
+        // returns when the query is cleared. Visibility toggles instantly —
+        // a fade-out would have to keep IsVisible (and this row's layout
+        // space) alive for the animation, leaving a blank band pressed over
+        // the bottom of the results page before snapping away.
         RecentList.ItemsSource = recent;
-        SetRecentsVisible(recent.Count > 0 && !ResultsPanel.IsVisible);
-    }
-
-    private static readonly TimeSpan RecentsFadeDuration = TimeSpan.FromMilliseconds(180);
-    private int _recentsFadeGeneration;
-
-    /// <summary>
-    /// Fades the recents strip in or out via the panel's Opacity transition.
-    /// Hiding keeps IsVisible until the fade completes so the strip keeps its
-    /// layout space while dissolving; a show requested mid-fade cancels the
-    /// pending collapse through the generation token.
-    /// </summary>
-    private void SetRecentsVisible(bool show)
-    {
-        var generation = ++_recentsFadeGeneration;
-        if (show)
-        {
-            RecentPanel.IsVisible = true;
-            RecentPanel.Opacity = 1;
-        }
-        else if (RecentPanel.IsVisible)
-        {
-            RecentPanel.Opacity = 0;
-            _ = CollapseRecentsWhenFadedAsync(generation);
-        }
-    }
-
-    private async Task CollapseRecentsWhenFadedAsync(int generation)
-    {
-        await Task.Delay(RecentsFadeDuration);
-        if (generation == _recentsFadeGeneration)
-            RecentPanel.IsVisible = false;
+        RecentPanel.IsVisible = recent.Count > 0 && !ResultsPanel.IsVisible;
     }
 
     // ---- asset bootstrap: the dictionary and the pronunciation pack ----
@@ -707,7 +679,7 @@ public partial class MainWindow : Window
     {
         HintPanel.IsVisible = false;
         ResultsPanel.IsVisible = true;
-        SetRecentsVisible(false);
+        RecentPanel.IsVisible = false;
         ResultsPanel.Children.Clear();
         _rebuildResults = () => RenderResult(result);
 
@@ -850,7 +822,7 @@ public partial class MainWindow : Window
     {
         HintPanel.IsVisible = false;
         ResultsPanel.IsVisible = true;
-        SetRecentsVisible(false);
+        RecentPanel.IsVisible = false;
         ResultsPanel.Children.Clear();
         _rebuildResults = () => RenderError(query, ex);
         ResultsPanel.Children.Add(Text(string.Format(Translations.Instance.LookupErrorFormat, query),

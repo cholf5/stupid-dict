@@ -131,16 +131,7 @@
     </ScrollViewer>
 
     <StackPanel Grid.Row="3" Name="RecentPanel" Margin="20,6,20,16"
-                Spacing="7" IsVisible="False" Opacity="0">
-      <!-- Opacity fades in/out through this transition; IsVisible only
-           collapses after the fade-out (SetRecentsVisible), so the strip
-           keeps its layout space while dissolving. Duration mirrors
-           RecentsFadeDuration in MainWindow.axaml.cs. -->
-      <StackPanel.Transitions>
-        <Transitions>
-          <DoubleTransition Property="Opacity" Duration="0:0:0.18" />
-        </Transitions>
-      </StackPanel.Transitions>
+                Spacing="7" IsVisible="False">
       <TextBlock Text="{Binding Recent, Source={x:Static loc:Translations.Instance}}" Classes="label" Margin="4,0,0,0" />
       <!-- Cap the strip: 30 stored entries must never squeeze the pane above
            on a minimal-height window; the overflow scrolls. -->
