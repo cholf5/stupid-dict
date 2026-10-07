@@ -34,17 +34,27 @@ public partial class App : Application
         };
 
     /// <summary>
-    /// Applies the theme once, then applies and persists every change so the
-    /// settings window only has to mutate the shared instance. Tests pass a
-    /// save path so they never touch the real settings file.
+    /// Applies theme and language once, then applies and persists every change
+    /// so the settings window only has to mutate the shared instance. Tests
+    /// pass a save path so they never touch the real settings file.
     /// </summary>
     internal static void WireSettings(AppSettings settings, string? savePath = null)
     {
         ApplyTheme(settings.Theme);
+        Localization.Translations.Instance.SetLanguage(settings.Language);
         settings.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName != nameof(AppSettings.Theme)) return;
-            ApplyTheme(settings.Theme);
+            switch (e.PropertyName)
+            {
+                case nameof(AppSettings.Theme):
+                    ApplyTheme(settings.Theme);
+                    break;
+                case nameof(AppSettings.Language):
+                    Localization.Translations.Instance.SetLanguage(settings.Language);
+                    break;
+                default:
+                    return;
+            }
             SettingsService.Save(settings, savePath);
         };
     }

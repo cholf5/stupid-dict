@@ -1,6 +1,6 @@
 # AGENTS.md
 
-cholf5/stupid-dict：.NET 10 + Avalonia 桌面离线英汉词典（Windows / macOS / Linux）。定位是"傻瓜词典"——零配置、零账号、查询全离线；唯一的设置是主题，联网只发生在首次资产下载和设置里手动检查更新。改功能前先读 README 的「明确不做的功能」，新增设置项原则上禁止，优先自动决定。
+cholf5/stupid-dict：.NET 10 + Avalonia 桌面离线英汉词典（Windows / macOS / Linux）。定位是"傻瓜词典"——零配置、零账号、查询全离线；仅有的设置是主题和界面语言，联网只发生在首次资产下载和设置里手动检查更新。改功能前先读 README 的「明确不做的功能」，新增设置项原则上禁止，优先自动决定。
 
 ## 构建 / 运行
 
@@ -43,12 +43,14 @@ cholf5/stupid-dict：.NET 10 + Avalonia 桌面离线英汉词典（Windows / mac
 - **颜色只从 `Settings/Palette.cs` 的语义 token 取**：XAML 用 `{DynamicResource Token}`（自动跟随主题），代码渲染用 `Palette.Get(token, ActualThemeVariant)`。token 的日/夜值在 `App.axaml` 的 `ThemeDictionaries`（Light 是原始纸面色板，Dark 是配套暖炭色）。**加颜色先加 token，禁止再写 hex 字面量**（CI 之外没有检查，靠自觉 + code review）。
 - 主题切换时 XAML 样式自动换色，但代码渲染的结果页不会——`MainWindow` 订阅 `ActualThemeVariantChanged`，经 `_rebuildResults` 闭包重放当前页渲染；新增渲染路径时记得维护这个闭包（`RenderResult`/`RenderError` 已接，`ShowEmptyState` 置空）。
 - **Fluent 的 TextBox 聚焦态会覆盖模板化 Border 的背景/描边**（`:focus` 状态样式赢过无状态覆盖）：日间是白底看不出来，夜间是一块黑底蓝环。搜索框的无边框化因此有两条样式（基础 + `:focus`），见 `MainWindow.axaml`；给其他输入框去边框时同理，两条都要。
-- UI 字符串直接写中文（产品定位就是中文界面），**没有本地化框架，不要引入**。设计文档惯例：`docs/plans/YYYY-MM-DD-<topic>-design.md`，写背景/目标、做了什么、评估过什么、为何不做（YAGNI 显式留痕）。
+- **UI 字符串一律走 `Localization/Translations.Instance`，禁止再写字面量**：zh 是源词典（键 = `nameof` 属性名），en 只放覆盖项、缺键回退中文，`Get` 兜底返回键名（漏翻译肉眼可见）。XAML 绑定 `{Binding Prop, Source={x:Static loc:Translations.Instance}}`（编译期查属性名），代码里 `Translations.Instance.Prop`，带参文案用 `string.Format`（`{0}` 占位）。新增字符串 zh/en 两份都要补；en 漏了会显示中文（能发现），zh 漏了会显示属性名（一眼假）。设计文档惯例：`docs/plans/YYYY-MM-DD-<topic>-design.md`，写背景/目标、做了什么、评估过什么、为何不做（YAGNI 显式留痕）。
 - 快捷键在 `OnPreviewKeyDown` 隧道阶段处理，修饰键 `(Meta | Control)` 双认——macOS 上 ⌘ 是 `Meta`，与物理 `Ctrl` 互不匹配（Avalonia `KeyGesture` 精确相等），双认让 ⌘K / ⌘[ / ⌘] / ⌘, 在两个平台键位一致。新增快捷键照这个写法，别用 XAML `KeyBindings`（会只认其一）。
 
-## 设置与主题
+## 设置、主题与本地化
 
-- 设置只有一个：主题（`AppTheme.System/Light/Dark`，默认跟随系统）。`AppSettings` 是共享单实例，`App.WireSettings` 启动时接线：任何属性变更立即应用（`ApplyTheme` 映射到 `RequestedThemeVariant`）并原子落盘。`SettingsWindow` 只改实例，不拥有持久化；窗口非模态、单实例（`MainWindow.OpenSettings` 重复打开只 Activate，`Closed` 清引用）。入口两个：搜索框右侧 ⚙ 和 `⌘/Ctrl + ,`。
+- 设置有两项：主题（`AppTheme.System/Light/Dark`，默认跟随系统）和界面语言（`AppLanguage.System/SimplifiedChinese/English`，默认跟随系统）。`AppSettings` 是共享单实例，`App.WireSettings` 启动时接线：任何属性变更立即应用（Theme → `ApplyTheme` 映射 `RequestedThemeVariant`；Language → `Translations.SetLanguage`）并原子落盘。`SettingsWindow` 只改实例，不拥有持久化；窗口非模态、单实例（`MainWindow.OpenSettings` 重复打开只 Activate，`Closed` 清引用）。入口两个：搜索框右侧 ⚙ 和 `⌘/Ctrl + ,`。
+- 本地化 = `Localization/Translations` 进程级单例（INotifyPropertyChanged）：`SetLanguage` 重拼词典后**逐属性 raise PropertyChanged**，所有在绑定的 XAML 即时刷新；代码渲染的结果页由 MainWindow 订阅该事件经 `_rebuildResults` 闭包重放（与主题切换同一机制）；**瞬态状态行（下载/更新进度、检查更新结果、版本行）不回溯刷新**，保持出现时的语言——新增瞬态文案默认接受这一点，别为它做刷新机制。跟随系统按 `CultureInfo.CurrentUICulture` 两位码解析：zh → 简体中文，其余一律 English。
+- 涉及 Translations 的测试规则：程序集已 `[assembly: CollectionBehavior(DisableTestParallelization = true)]`（单例会被并行测试类互踩）；`HeadlessWindowTests` 构造器固定 `SetLanguage(SimplifiedChinese)`——**Instance 初值按机器 UI 文化解析，CI（en）与本机（zh）不同，断言中文的测试必须显式钉住**；凡是走 `WireSettings(new AppSettings())` 的测试同样会被 System 解析到机器文化，要显式 `Language = SimplifiedChinese`；切过语言的测试在 `finally` 还原。
 - `SettingsService`：`settings.json` 在用户数据目录，枚举存名字（手改友好）、临时文件 + `File.Move` 原子替换；缺失/损坏/未知枚举值一律回退默认。`Load/Save` 的 path 参数供测试注入。
 - 设置窗口 About 卡片的版本号与更新检查共用 `UpdateChecker.CurrentVersion`（= csproj `<Version>`，发版唯一改动点）。
 - `AvaloniaUseCompiledBindingsByDefault=true` 已开：XAML 绑定路径写错编译期就报。

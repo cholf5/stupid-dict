@@ -43,6 +43,27 @@ public class SettingsServiceTests
     }
 
     [Fact]
+    public void RoundTripsLanguage()
+    {
+        var path = NewPath();
+        var settings = new AppSettings { Language = AppLanguage.English };
+
+        SettingsService.Save(settings, path);
+
+        Assert.Equal(AppLanguage.English, SettingsService.Load(path).Language);
+    }
+
+    [Fact]
+    public void UnknownLanguageFallsBackToDefaults()
+    {
+        var path = NewPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, """{ "Language": "Klingon" }""");
+
+        Assert.Equal(AppLanguage.System, SettingsService.Load(path).Language);
+    }
+
+    [Fact]
     public void SavedFileUsesEnumNamesAndIsHandEditable()
     {
         var path = NewPath();

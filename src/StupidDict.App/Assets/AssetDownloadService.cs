@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using StupidDict.App.Localization;
 
 namespace StupidDict.App.Assets;
 
@@ -51,7 +52,7 @@ public sealed class AssetDownloadService : IAssetDownloader
                 // every source gets its chance; only total failure surfaces
             }
         }
-        throw new InvalidOperationException("所有下载源都失败了。请检查网络，或手动下载后导入。");
+        throw new InvalidOperationException(Translations.Instance.AllSourcesFailed);
     }
 
     /// <summary>
@@ -160,6 +161,6 @@ public sealed class AssetDownloadService : IAssetDownloader
         using var stream = File.OpenRead(filePath);
         var actual = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
         if (actual != expectedHex.ToLowerInvariant())
-            throw new InvalidOperationException("下载文件校验失败，已删除损坏文件。");
+            throw new InvalidOperationException(Translations.Instance.ChecksumFailed);
     }
 }

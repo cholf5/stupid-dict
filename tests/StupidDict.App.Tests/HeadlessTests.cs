@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using StupidDict.App;
 using StupidDict.App.Assets;
+using StupidDict.App.Localization;
 using StupidDict.App.Settings;
 using StupidDict.App.Speech;
 using StupidDict.Core.Application;
@@ -16,6 +17,10 @@ using StupidDict.Core.Dictionary;
 using Xunit;
 
 [assembly: AvaloniaTestApplication(typeof(StupidDict.App.Tests.TestAppBuilder))]
+
+// Translations is a process-level singleton that language tests mutate;
+// xunit parallelizes test classes by default, which would race on it.
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
 
 namespace StupidDict.App.Tests;
 
@@ -29,6 +34,14 @@ public static class TestAppBuilder
 
 public class HeadlessWindowTests
 {
+    public HeadlessWindowTests()
+    {
+        // Translations is a process-level singleton; fix it to Chinese so
+        // string assertions are deterministic regardless of the machine's UI
+        // culture (the language live-switch test restores it afterwards).
+        Translations.Instance.SetLanguage(AppLanguage.SimplifiedChinese);
+    }
+
     [AvaloniaFact]
     public void SearchBoxIsFocusedOnStartup()
     {
@@ -514,7 +527,9 @@ public class HeadlessWindowTests
     public void SettingsButtonOpensWindowAndThemeChoiceAppliesAndPersists()
     {
         using var service = CreateService();
-        var settings = new AppSettings();
+        // Pin Chinese so the window title assertion holds on any UI culture
+        // (System would resolve via the machine's culture).
+        var settings = new AppSettings { Language = AppLanguage.SimplifiedChinese };
         var savePath = Path.Combine(Path.GetTempPath(), "stupiddict-uitests",
             Guid.NewGuid().ToString("N"), "settings.json");
         App.WireSettings(settings, savePath);
@@ -553,6 +568,7 @@ public class HeadlessWindowTests
     [AvaloniaFact]
     public void CheckUpdateButtonSurfacesNewerRelease()
     {
+        Translations.Instance.SetLanguage(AppLanguage.SimplifiedChinese);
         var settings = new AppSettings();
         var checker = new UpdateChecker(
             new FakeHandler(_ => UpdateCheckerTests.RedirectResponse(
@@ -572,6 +588,62 @@ public class HeadlessWindowTests
         Assert.True(settingsWindow.FindControl<Button>("CheckUpdateButton")!.IsEnabled);
         settingsWindow.Close();
     }
+
+    [AvaloniaFact]
+    public void LanguageSwitchLiveRetitlesAndRerendersResults()
+    {
+        using var service = CreateService();
+        var settings = new AppSettings { Language = AppLanguage.SimplifiedChinese };
+        var savePath = Path.Combine(Path.GetTempPath(), "stupiddict-uitests",
+            Guid.NewGuid().ToString("N"), "settings.json");
+        App.WireSettings(settings, savePath);
+        try
+        {
+            var window = new MainWindow(service, settings: settings, autoDownload: false);
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            var searchBox = window.FindControl<TextBox>("SearchBox")!;
+            searchBox.Text = "cat";
+            PressEnter(searchBox);
+            WaitUntil(() => Headword(window) == "cat");
+            Assert.Contains("近义词", ResultLabels(window));
+            Assert.Equal("输入单词或中文，按 Enter 查询",
+                window.FindControl<TextBlock>("HintText")!.Text);
+
+            RaiseClick(window.FindControl<Button>("SettingsButton")!);
+            Dispatcher.UIThread.RunJobs();
+            var settingsWindow = (SettingsWindow)Assert.Single(window.OwnedWindows);
+            var languageCombo = settingsWindow.FindControl<ComboBox>("LanguageComboBox")!;
+            Assert.Equal((int)AppLanguage.SimplifiedChinese, languageCombo.SelectedIndex);
+            Assert.Equal("设置", settingsWindow.Title);
+
+            languageCombo.SelectedIndex = (int)AppLanguage.English;
+            Dispatcher.UIThread.RunJobs();
+
+            // Both windows retitle live through their Translations bindings and
+            // the result page re-renders through the rebuild closure.
+            Assert.Equal(AppLanguage.English, settings.Language);
+            Assert.Equal(AppLanguage.English, Translations.Instance.CurrentLanguage);
+            Assert.Equal("Settings", settingsWindow.Title);
+            Assert.Equal("Type an English word or Chinese, then press Enter",
+                window.FindControl<TextBlock>("HintText")!.Text);
+            Assert.Contains("Synonyms", ResultLabels(window));
+            Assert.Equal(AppLanguage.English, SettingsService.Load(savePath).Language);
+            SaveScreenshot(window, "stupiddict-english.png");
+
+            settingsWindow.Close();
+        }
+        finally
+        {
+            App.ApplyTheme(AppTheme.System);
+            Translations.Instance.SetLanguage(AppLanguage.SimplifiedChinese);
+        }
+    }
+
+    private static List<string?> ResultLabels(Window window) =>
+        window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
+            .OfType<TextBlock>().Select(b => b.Text).ToList();
 
     /// <summary>An isolated data layout so asset downloads never touch the user profile.</summary>
     private static AppLocations NewLocations(out string dictionaryPath, out string historyPath, out string audioPath)

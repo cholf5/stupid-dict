@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
@@ -8,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using StupidDict.App.Assets;
+using StupidDict.App.Localization;
 using StupidDict.App.Settings;
 using StupidDict.App.Speech;
 using StupidDict.Core.Application;
@@ -68,6 +70,10 @@ public partial class MainWindow : Window
         SearchBox.TextChanged += OnSearchTextChanged;
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         ActualThemeVariantChanged += OnActualThemeVariantChanged;
+        // A language switch re-renders the result page just like a theme
+        // switch does; XAML bindings refresh themselves.
+        Translations.Instance.PropertyChanged += OnTranslationsChanged;
+        Closed += (_, _) => Translations.Instance.PropertyChanged -= OnTranslationsChanged;
 
         ShowEmptyState();
         RefreshRecents();
@@ -339,6 +345,12 @@ public partial class MainWindow : Window
             _rebuildResults?.Invoke();
     }
 
+    private void OnTranslationsChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (ResultsPanel.IsVisible)
+            _rebuildResults?.Invoke();
+    }
+
     private void OnNavBackClick(object? sender, RoutedEventArgs e) => Navigate(_navigator.GoBack());
 
     private void OnNavForwardClick(object? sender, RoutedEventArgs e) => Navigate(_navigator.GoForward());
@@ -406,20 +418,20 @@ public partial class MainWindow : Window
         {
             var result = await _downloader.DownloadAsync(ReleaseAssets.DictionaryAsset, destination,
                 new Progress<DownloadProgress>(UpdateDictionaryProgress), cancellation);
-            DictionaryDownloadStatus.Text = "校验中…";
+            DictionaryDownloadStatus.Text = Translations.Instance.Verifying;
             await VerifyChecksumAsync(result.FilePath, ReleaseAssets.DictionaryAsset, cancellation);
-            DictionaryDownloadStatus.Text = "解压中…";
+            DictionaryDownloadStatus.Text = Translations.Instance.Extracting;
             await Task.Run(() => ExtractZip(result.FilePath, _locations.DataDirectory), cancellation);
             File.Delete(result.FilePath);
             FinishDictionarySetup();
         }
         catch (OperationCanceledException)
         {
-            DictionaryDownloadStatus.Text = "已取消下载。可以直接下载，或选择本地已有文件。";
+            DictionaryDownloadStatus.Text = Translations.Instance.DownloadCancelled;
         }
         catch (Exception ex)
         {
-            DictionaryDownloadStatus.Text = $"下载失败：{ex.Message}";
+            DictionaryDownloadStatus.Text = string.Format(Translations.Instance.DownloadFailedFormat, ex.Message);
         }
         finally
         {
@@ -437,13 +449,14 @@ public partial class MainWindow : Window
         {
             DictionaryDownloadBar.IsIndeterminate = false;
             DictionaryDownloadBar.Value = 100.0 * progress.ReceivedBytes / total;
-            DictionaryDownloadStatus.Text =
-                $"正在下载词典 {progress.ReceivedBytes / 1048576.0:F0} / {total / 1048576.0:F0} MB";
+            DictionaryDownloadStatus.Text = string.Format(Translations.Instance.DownloadingDictionaryFormat,
+                progress.ReceivedBytes / 1048576.0, total / 1048576.0);
         }
         else
         {
             DictionaryDownloadBar.IsIndeterminate = true;
-            DictionaryDownloadStatus.Text = $"正在下载词典 {progress.ReceivedBytes / 1048576.0:F0} MB";
+            DictionaryDownloadStatus.Text = string.Format(
+                Translations.Instance.DownloadingDictionaryUnsizedFormat, progress.ReceivedBytes / 1048576.0);
         }
     }
 
@@ -451,15 +464,16 @@ public partial class MainWindow : Window
     {
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "选择 dictionary.zip 或 dictionary.db",
+            Title = Translations.Instance.PickerTitle,
             AllowMultiple = false,
-            FileTypeFilter = [new FilePickerFileType("词典数据") { Patterns = ["*.zip", "*.db"] }],
+            FileTypeFilter = [new FilePickerFileType(Translations.Instance.FileTypeDictionary)
+                { Patterns = ["*.zip", "*.db"] }],
         });
         if (files.Count == 0) return;
         var path = files[0].TryGetLocalPath();
         if (path is null) return;
 
-        DictionaryDownloadStatus.Text = "导入中…";
+        DictionaryDownloadStatus.Text = Translations.Instance.Importing;
         try
         {
             await Task.Run(() =>
@@ -470,12 +484,12 @@ public partial class MainWindow : Window
                     File.Copy(path, Path.Combine(_locations.DataDirectory, "dictionary.db"), overwrite: true);
             });
             if (!File.Exists(Path.Combine(_locations.DataDirectory, "dictionary.db")))
-                throw new InvalidOperationException("文件里没有 dictionary.db");
+                throw new InvalidOperationException(Translations.Instance.ImportMissingDb);
             FinishDictionarySetup();
         }
         catch (Exception ex)
         {
-            DictionaryDownloadStatus.Text = $"导入失败：{ex.Message}";
+            DictionaryDownloadStatus.Text = string.Format(Translations.Instance.ImportFailedFormat, ex.Message);
         }
     }
 
@@ -486,7 +500,6 @@ public partial class MainWindow : Window
         _dictionaryAvailable = true;
         DictionaryDownloadPanel.IsVisible = false;
         HintPanel.IsVisible = true;
-        HintText.Text = "输入单词或中文，按 Enter 查询";
         RefreshRecents();
         _ = _service.WarmupAsync();
 
@@ -499,19 +512,19 @@ public partial class MainWindow : Window
         if (_audioPackCts is not null || AudioPackInstalled()) return;
         _audioPackCts = new CancellationTokenSource();
         AudioPackPanel.IsVisible = true;
-        AudioPackActionButton.Content = "取消";
+        AudioPackActionButton.Content = Translations.Instance.Cancel;
         AudioPackActionButton.IsEnabled = true;
         AudioPackBar.IsVisible = true;
-        AudioPackStatus.Text = "正在下载发音包（约 1 GB，一次性）";
+        AudioPackStatus.Text = Translations.Instance.DownloadingAudioPack;
         var cancellation = _audioPackCts.Token;
         var destination = Path.Combine(Path.GetTempPath(), "stupiddict-downloads", ReleaseAssets.AudioPackAsset);
         try
         {
             var result = await _downloader.DownloadAsync(ReleaseAssets.AudioPackAsset, destination,
                 new Progress<DownloadProgress>(UpdateAudioPackProgress), cancellation);
-            AudioPackStatus.Text = "校验中…";
+            AudioPackStatus.Text = Translations.Instance.Verifying;
             await VerifyChecksumAsync(result.FilePath, ReleaseAssets.AudioPackAsset, cancellation);
-            AudioPackStatus.Text = "解压中…";
+            AudioPackStatus.Text = Translations.Instance.Extracting;
             AudioPackBar.IsIndeterminate = true;
             await Task.Run(() => ExtractZip(result.FilePath, _locations.AudioDirectory), cancellation);
             File.Delete(result.FilePath);
@@ -519,14 +532,14 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            AudioPackStatus.Text = "发音包下载已取消。未覆盖的单词会用系统语音朗读。";
-            AudioPackActionButton.Content = "下载";
+            AudioPackStatus.Text = Translations.Instance.AudioPackCancelled;
+            AudioPackActionButton.Content = Translations.Instance.AudioPackDownloadButton;
             AudioPackBar.IsVisible = false;
         }
         catch (Exception ex)
         {
-            AudioPackStatus.Text = $"发音包下载失败：{ex.Message}";
-            AudioPackActionButton.Content = "重试";
+            AudioPackStatus.Text = string.Format(Translations.Instance.AudioPackFailedFormat, ex.Message);
+            AudioPackActionButton.Content = Translations.Instance.Retry;
             AudioPackBar.IsVisible = false;
         }
         finally
@@ -542,12 +555,13 @@ public partial class MainWindow : Window
         if (progress.TotalBytes is { } total && total > 0)
         {
             AudioPackBar.Value = 100.0 * progress.ReceivedBytes / total;
-            AudioPackStatus.Text =
-                $"正在下载发音包 {progress.ReceivedBytes / 1048576.0:F0} / {total / 1048576.0:F0} MB";
+            AudioPackStatus.Text = string.Format(Translations.Instance.DownloadingAudioPackFormat,
+                progress.ReceivedBytes / 1048576.0, total / 1048576.0);
         }
         else
         {
-            AudioPackStatus.Text = $"正在下载发音包 {progress.ReceivedBytes / 1048576.0:F0} MB";
+            AudioPackStatus.Text = string.Format(
+                Translations.Instance.DownloadingAudioPackUnsizedFormat, progress.ReceivedBytes / 1048576.0);
         }
     }
 
@@ -557,7 +571,7 @@ public partial class MainWindow : Window
         {
             _audioPackCts.Cancel();
             AudioPackActionButton.IsEnabled = false;
-            AudioPackStatus.Text = "正在取消…";
+            AudioPackStatus.Text = Translations.Instance.Cancelling;
         }
         else
         {
@@ -587,7 +601,8 @@ public partial class MainWindow : Window
                 if (entry.FullName.Length == 0) continue;
                 var target = Path.GetFullPath(Path.Combine(destinationDirectory, entry.FullName));
                 if (!target.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal) && target != root)
-                    throw new InvalidOperationException($"压缩包内出现非法路径：{entry.FullName}");
+                    throw new InvalidOperationException(
+                        string.Format(Translations.Instance.ZipSlipFormat, entry.FullName));
             }
         }
         System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, destinationDirectory, overwriteFiles: true);
@@ -610,15 +625,16 @@ public partial class MainWindow : Window
     {
         if (result.Primary is not { } entry)
         {
-            ResultsPanel.Children.Add(Text($"没有找到 “{result.Query}”", 20, FontWeight.SemiBold, Palette.TextTitle, margin: new Thickness(2, 8, 0, 0)));
+            ResultsPanel.Children.Add(Text(string.Format(Translations.Instance.NoResultFormat, result.Query),
+                20, FontWeight.SemiBold, Palette.TextTitle, margin: new Thickness(2, 8, 0, 0)));
             if (result.WordSuggestions.Count > 0)
             {
-                ResultsPanel.Children.Add(Text("你是不是要找", fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 18, 0, 8)));
+                ResultsPanel.Children.Add(Text(Translations.Instance.DidYouMean, fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 18, 0, 8)));
                 ResultsPanel.Children.Add(BuildChips(result.WordSuggestions.Select(w => w.Word)));
             }
             else
             {
-                ResultsPanel.Children.Add(Text("试试更短的拼写，或换个说法。", fontSize: 14, brushKey: Palette.TextMuted, margin: new Thickness(2, 10, 0, 0)));
+                ResultsPanel.Children.Add(Text(Translations.Instance.TryShorter, fontSize: 14, brushKey: Palette.TextMuted, margin: new Thickness(2, 10, 0, 0)));
             }
             return;
         }
@@ -640,7 +656,7 @@ public partial class MainWindow : Window
 
         if (entry.English.Length > 0)
         {
-            ResultsPanel.Children.Add(Text("英英释义", fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 18, 0, 5)));
+            ResultsPanel.Children.Add(Text(Translations.Instance.EnglishDefinitions, fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 18, 0, 5)));
             ResultsPanel.Children.Add(Text(entry.English, fontSize: 14, brushKey: Palette.TextSecondary, margin: new Thickness(2, 0, 0, 0), lineHeight: 22));
         }
 
@@ -651,7 +667,7 @@ public partial class MainWindow : Window
     {
         if (result.Synonyms.Count > 0)
         {
-            ResultsPanel.Children.Add(Text("近义词", fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 18, 0, 5)));
+            ResultsPanel.Children.Add(Text(Translations.Instance.Synonyms, fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 18, 0, 5)));
             foreach (var line in result.Synonyms)
                 ResultsPanel.Children.Add(BuildLinkText(PosLineSegments(line), fontSize: 15,
                     margin: new Thickness(2, 0, 0, 0)));
@@ -659,7 +675,7 @@ public partial class MainWindow : Window
 
         if (result.Antonyms.Count > 0)
         {
-            ResultsPanel.Children.Add(Text("反义词", fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 14, 0, 5)));
+            ResultsPanel.Children.Add(Text(Translations.Instance.Antonyms, fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 14, 0, 5)));
             foreach (var line in result.Antonyms)
                 ResultsPanel.Children.Add(BuildLinkText(PosLineSegments(line), fontSize: 15,
                     margin: new Thickness(2, 0, 0, 0)));
@@ -667,7 +683,7 @@ public partial class MainWindow : Window
 
         if (result.RelatedWords.Count > 0)
         {
-            ResultsPanel.Children.Add(Text("联想词", fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 14, 0, 5)));
+            ResultsPanel.Children.Add(Text(Translations.Instance.RelatedWords, fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 14, 0, 5)));
             List<LinkSegment> segments = [];
             foreach (var related in result.RelatedWords)
             {
@@ -695,7 +711,8 @@ public partial class MainWindow : Window
     {
         if (result.Primary is null && result.ChineseMatches.Count == 0)
         {
-            ResultsPanel.Children.Add(Text($"没有找到 “{result.Query}”", 20, FontWeight.SemiBold, Palette.TextTitle, margin: new Thickness(2, 8, 0, 0)));
+            ResultsPanel.Children.Add(Text(string.Format(Translations.Instance.NoResultFormat, result.Query),
+                20, FontWeight.SemiBold, Palette.TextTitle, margin: new Thickness(2, 8, 0, 0)));
             return;
         }
 
@@ -726,7 +743,9 @@ public partial class MainWindow : Window
             .ToList();
         if (others.Count > 0)
         {
-            ResultsPanel.Children.Add(Text(result.Primary is null ? "相关词条" : "其他词条", fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 18, 0, 8)));
+            ResultsPanel.Children.Add(Text(result.Primary is null
+                ? Translations.Instance.RelatedEntries
+                : Translations.Instance.OtherEntries, fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 18, 0, 8)));
             ResultsPanel.Children.Add(BuildChips(others.Select(m => m.Entry.Word)));
         }
     }
@@ -737,7 +756,8 @@ public partial class MainWindow : Window
         ResultsPanel.IsVisible = true;
         ResultsPanel.Children.Clear();
         _rebuildResults = () => RenderError(query, ex);
-        ResultsPanel.Children.Add(Text($"查询 “{query}” 时出错", 20, FontWeight.SemiBold, Palette.ErrorForeground, margin: new Thickness(2, 8, 0, 0)));
+        ResultsPanel.Children.Add(Text(string.Format(Translations.Instance.LookupErrorFormat, query),
+            20, FontWeight.SemiBold, Palette.ErrorForeground, margin: new Thickness(2, 8, 0, 0)));
         ResultsPanel.Children.Add(Text(ex.Message, fontSize: 13, brushKey: Palette.TextMuted, margin: new Thickness(2, 8, 0, 0)));
     }
 
@@ -769,9 +789,11 @@ public partial class MainWindow : Window
     {
         var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = margin ?? new Thickness(0) };
         if (entry.Phonetic.Length > 0)
-            line.Children.Add(Text("英 " + FormatPhonetic(entry.Phonetic), fontSize: 14, brushKey: Palette.TextMuted, mono: true, verticalCenter: true));
+            line.Children.Add(Text(string.Format(Translations.Instance.UkPhoneticPrefix, FormatPhonetic(entry.Phonetic)),
+                fontSize: 14, brushKey: Palette.TextMuted, mono: true, verticalCenter: true));
         if (entry.UsPhonetic.Length > 0)
-            line.Children.Add(Text("美 " + FormatPhonetic(entry.UsPhonetic), fontSize: 14, brushKey: Palette.TextMuted, mono: true, verticalCenter: true));
+            line.Children.Add(Text(string.Format(Translations.Instance.UsPhoneticPrefix, FormatPhonetic(entry.UsPhonetic)),
+                fontSize: 14, brushKey: Palette.TextMuted, mono: true, verticalCenter: true));
         line.Children.Add(SpeakerButton(entry.Word, SpeechAccent.British));
         line.Children.Add(SpeakerButton(entry.Word, SpeechAccent.American));
         return line;
@@ -781,7 +803,9 @@ public partial class MainWindow : Window
     {
         var label = accent == SpeechAccent.British ? "UK" : "US";
         var button = new Button { Classes = { "spk" }, Content = label };
-        ToolTip.SetTip(button, accent == SpeechAccent.British ? "英音" : "美音");
+        ToolTip.SetTip(button, accent == SpeechAccent.British
+            ? Translations.Instance.UkTip
+            : Translations.Instance.UsTip);
         button.Click += (_, _) => PlayWord(button, word, accent, label);
         return button;
     }
@@ -794,8 +818,8 @@ public partial class MainWindow : Window
         if (!AudioPackInstalled() && _audioPackCts is null)
         {
             AudioPackPanel.IsVisible = true;
-            AudioPackActionButton.Content = "下载";
-            AudioPackStatus.Text = "该词没有本地发音。下载发音包可获得离线英/美真人发音。";
+            AudioPackActionButton.Content = Translations.Instance.AudioPackDownloadButton;
+            AudioPackStatus.Text = Translations.Instance.NoLocalPronunciation;
         }
         button.Content = "✕";
         await Task.Delay(1500);

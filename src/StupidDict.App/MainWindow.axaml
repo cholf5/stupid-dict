@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:history="using:StupidDict.Core.History"
+        xmlns:loc="using:StupidDict.App.Localization"
         xmlns:sys="using:System"
         x:Class="StupidDict.App.MainWindow"
         Title="Stupid Dict"
@@ -36,19 +37,19 @@
             CornerRadius="10" Background="{DynamicResource CardBackground}"
             BorderBrush="{DynamicResource CardBorder}" BorderThickness="1">
       <TextBox Name="SearchBox"
-               Watermark="输入单词或中文，按 Enter 查询">
+               Watermark="{Binding SearchWatermark, Source={x:Static loc:Translations.Instance}}">
         <TextBox.InnerLeftContent>
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0" Spacing="1">
             <Button Name="NavBackButton" Classes="nav" Content="←" IsEnabled="False"
-                    ToolTip.Tip="后退 (⌘[)" Click="OnNavBackClick" />
+                    ToolTip.Tip="{Binding NavBackTip, Source={x:Static loc:Translations.Instance}}" Click="OnNavBackClick" />
             <Button Name="NavForwardButton" Classes="nav" Content="→" IsEnabled="False"
-                    ToolTip.Tip="前进 (⌘])" Click="OnNavForwardClick" />
+                    ToolTip.Tip="{Binding NavForwardTip, Source={x:Static loc:Translations.Instance}}" Click="OnNavForwardClick" />
             <TextBlock Text="🔍" Margin="10,0,4,0" VerticalAlignment="Center" FontSize="15" />
           </StackPanel>
         </TextBox.InnerLeftContent>
         <TextBox.InnerRightContent>
           <Button Name="SettingsButton" Classes="nav" Content="⚙" Margin="0,0,8,0"
-                  ToolTip.Tip="设置 (⌘,)" Click="OnSettingsClick" />
+                  ToolTip.Tip="{Binding SettingsTip, Source={x:Static loc:Translations.Instance}}" Click="OnSettingsClick" />
         </TextBox.InnerRightContent>
       </TextBox>
     </Border>
@@ -74,9 +75,9 @@
                     Spacing="10" Margin="0,0,0,60">
           <TextBlock Text="Stupid Dict" FontSize="24" FontWeight="SemiBold"
                      Foreground="{DynamicResource TextTitle}" HorizontalAlignment="Center" />
-          <TextBlock Name="HintText" Text="输入单词或中文，按 Enter 查询"
+          <TextBlock Name="HintText" Text="{Binding SearchWatermark, Source={x:Static loc:Translations.Instance}}"
                      FontSize="14" HorizontalAlignment="Center" Classes="hint" />
-          <TextBlock Text="完全离线 · 无账号 · 零配置" FontSize="12"
+          <TextBlock Text="{Binding Tagline, Source={x:Static loc:Translations.Instance}}" FontSize="12"
                      HorizontalAlignment="Center" Classes="hint" Opacity="0.8" />
         </StackPanel>
 
@@ -86,17 +87,20 @@
           <TextBlock Text="Stupid Dict" FontSize="24" FontWeight="SemiBold"
                      Foreground="{DynamicResource TextTitle}" HorizontalAlignment="Center" />
           <TextBlock Name="DictionaryDownloadStatus"
-                     Text="首次使用需要词典数据（约 600 MB）。直接下载，或导入本地已有文件。"
+                     Text="{Binding DownloadPrompt, Source={x:Static loc:Translations.Instance}}"
                      FontSize="14" HorizontalAlignment="Center" Classes="hint"
                      TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center" />
           <ProgressBar Name="DictionaryDownloadBar" Minimum="0" Maximum="100"
                        Height="4" MinWidth="280" IsVisible="False" />
           <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
-            <Button Name="DownloadDictionaryButton" Classes="chip" Content="开始下载"
+            <Button Name="DownloadDictionaryButton" Classes="chip"
+                    Content="{Binding StartDownload, Source={x:Static loc:Translations.Instance}}"
                     Click="OnDownloadDictionaryClick" />
-            <Button Name="PickDictionaryButton" Classes="chip" Content="选择本地文件…"
+            <Button Name="PickDictionaryButton" Classes="chip"
+                    Content="{Binding PickLocalFile, Source={x:Static loc:Translations.Instance}}"
                     Click="OnPickDictionaryClick" />
-            <Button Name="CancelDictionaryButton" Classes="chip" Content="取消"
+            <Button Name="CancelDictionaryButton" Classes="chip"
+                    Content="{Binding Cancel, Source={x:Static loc:Translations.Instance}}"
                     IsVisible="False" Click="OnCancelDictionaryClick" />
           </StackPanel>
         </StackPanel>
@@ -107,7 +111,7 @@
 
     <StackPanel Grid.Row="3" Name="RecentPanel" Margin="20,6,20,16"
                 Spacing="7" IsVisible="False">
-      <TextBlock Text="最近" Classes="label" Margin="4,0,0,0" />
+      <TextBlock Text="{Binding Recent, Source={x:Static loc:Translations.Instance}}" Classes="label" Margin="4,0,0,0" />
       <ItemsControl Name="RecentList">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>
@@ -130,7 +134,8 @@
                    Classes="hint" TextTrimming="CharacterEllipsis" />
         <ProgressBar Name="AudioPackBar" Width="140" Height="4" MinHeight="4"
                      VerticalAlignment="Center" Minimum="0" Maximum="100" />
-        <Button Name="AudioPackActionButton" Classes="spk" Content="取消"
+        <Button Name="AudioPackActionButton" Classes="spk"
+                Content="{Binding Cancel, Source={x:Static loc:Translations.Instance}}"
                 Click="OnAudioPackActionClick" />
       </StackPanel>
     </Border>

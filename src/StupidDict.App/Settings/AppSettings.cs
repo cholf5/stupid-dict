@@ -10,14 +10,24 @@ public enum AppTheme
     Dark = 2,
 }
 
+/// <summary>The UI language: follow the OS, or force one. (0/1/2 mirror the settings combo order.)</summary>
+public enum AppLanguage
+{
+    System = 0,
+    SimplifiedChinese = 1,
+    English = 2,
+}
+
 /// <summary>
-/// Everything the user can configure — currently only the theme. Lives as one
-/// shared instance: App wires it at startup, the settings window mutates it,
-/// and every change applies live and is persisted by the wiring.
+/// Everything the user can configure — currently the theme and the UI
+/// language. Lives as one shared instance: App wires it at startup, the
+/// settings window mutates it, and every change applies live and is persisted
+/// by the wiring.
 /// </summary>
 public sealed class AppSettings : INotifyPropertyChanged
 {
     private AppTheme _theme = AppTheme.System;
+    private AppLanguage _language = AppLanguage.System;
 
     public AppTheme Theme
     {
@@ -27,6 +37,17 @@ public sealed class AppSettings : INotifyPropertyChanged
             if (_theme == value) return;
             _theme = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Theme)));
+        }
+    }
+
+    public AppLanguage Language
+    {
+        get => _language;
+        set
+        {
+            if (_language == value) return;
+            _language = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Language)));
         }
     }
 
