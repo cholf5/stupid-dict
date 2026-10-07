@@ -89,6 +89,39 @@ public class HeadlessWindowTests
     }
 
     [AvaloniaFact]
+    public void ClearSearchButtonFollowsInputAndResetsResults()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        var clearButton = window.FindControl<Button>("ClearSearchButton")!;
+        var settingsButton = window.FindControl<Button>("SettingsButton")!;
+        // Empty box: the gear owns the rightmost slot, ✕ is hidden.
+        Assert.True(settingsButton.IsVisible);
+        Assert.False(clearButton.IsVisible);
+
+        searchBox.Text = "cat";
+        // TextChanged is raised via Dispatcher.UIThread.Post in Avalonia 11,
+        // so the buttons' visibility lands on the next dispatcher pass.
+        WaitUntil(() => clearButton.IsVisible);
+        Assert.False(settingsButton.IsVisible);
+
+        PressEnter(searchBox);
+        WaitUntil(() => window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+
+        RaiseClick(clearButton);
+        Assert.Equal(string.Empty, searchBox.Text);
+        WaitUntil(() => !clearButton.IsVisible);
+        Assert.True(settingsButton.IsVisible);
+        Assert.False(window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+        Assert.True(window.FindControl<StackPanel>("HintPanel")!.IsVisible);
+        Assert.True(searchBox.IsFocused);
+    }
+
+    [AvaloniaFact]
     public void RecentSearchesAppearAfterLookup()
     {
         using var service = CreateService();

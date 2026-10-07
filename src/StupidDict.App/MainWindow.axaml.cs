@@ -130,8 +130,22 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnClearSearchClick(object? sender, RoutedEventArgs e)
+    {
+        // Same semantics as the Escape shortcut: clear input and results,
+        // then put the caret back for the next word.
+        SearchBox.Clear();
+        ShowEmptyState();
+        SearchBox.Focus();
+    }
+
     private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
     {
+        // The rightmost accessory slot swaps between settings and clear:
+        // an empty box shows the gear, any input swaps it for the ✕.
+        var hasText = !string.IsNullOrEmpty(SearchBox.Text);
+        ClearSearchButton.IsVisible = hasText;
+        SettingsButton.IsVisible = !hasText;
         if (!_dictionaryAvailable)
         {
             _suppressSuggest = false;

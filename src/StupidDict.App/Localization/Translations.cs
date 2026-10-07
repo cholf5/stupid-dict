@@ -32,6 +32,7 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(NavBackTip)] = "后退 (⌘[)",
         [nameof(NavForwardTip)] = "前进 (⌘])",
         [nameof(SettingsTip)] = "设置 (⌘,)",
+        [nameof(ClearSearchTip)] = "清空搜索框",
         [nameof(Tagline)] = "完全离线 · 无账号 · 零配置",
         [nameof(DownloadPrompt)] = "首次使用需要词典数据（约 600 MB）。直接下载，或导入本地已有文件。",
         [nameof(StartDownload)] = "开始下载",
@@ -115,6 +116,7 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(NavBackTip)] = "Back (⌘[)",
         [nameof(NavForwardTip)] = "Forward (⌘])",
         [nameof(SettingsTip)] = "Settings (⌘,)",
+        [nameof(ClearSearchTip)] = "Clear search box",
         [nameof(Tagline)] = "Fully offline · No account · Zero setup",
         [nameof(DownloadPrompt)] = "First run needs the dictionary data (about 600 MB). Download it, or import a local copy.",
         [nameof(StartDownload)] = "Download",
@@ -243,6 +245,7 @@ public sealed class Translations : INotifyPropertyChanged
     public string NavBackTip => Get();
     public string NavForwardTip => Get();
     public string SettingsTip => Get();
+    public string ClearSearchTip => Get();
     public string Tagline => Get();
     public string DownloadPrompt => Get();
     public string StartDownload => Get();
