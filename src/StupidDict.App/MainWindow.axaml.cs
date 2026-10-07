@@ -781,36 +781,64 @@ public partial class MainWindow : Window
         phonetic.StartsWith('/') ? phonetic : $"/{phonetic}/";
 
     /// <summary>
-    /// The 英/美 phonetic line under the headword. Speaker buttons always
-    /// join it — even a word without IPA can be spoken through TTS — so the
-    /// line shows whenever there is a primary entry.
+    /// The phonetic line under the headword: one speaker button per accent,
+    /// followed by its selectable phonetic text. The buttons always join the
+    /// line — even a word without IPA can be spoken through TTS — so the line
+    /// shows whenever there is a primary entry.
     /// </summary>
     private StackPanel BuildPhoneticsLine(DictionaryEntry entry, Thickness? margin = null)
     {
         var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = margin ?? new Thickness(0) };
-        if (entry.Phonetic.Length > 0)
-            line.Children.Add(Text(string.Format(Translations.Instance.UkPhoneticPrefix, FormatPhonetic(entry.Phonetic)),
-                fontSize: 14, brushKey: Palette.TextMuted, mono: true, verticalCenter: true));
-        if (entry.UsPhonetic.Length > 0)
-            line.Children.Add(Text(string.Format(Translations.Instance.UsPhoneticPrefix, FormatPhonetic(entry.UsPhonetic)),
-                fontSize: 14, brushKey: Palette.TextMuted, mono: true, verticalCenter: true));
-        line.Children.Add(SpeakerButton(entry.Word, SpeechAccent.British));
-        line.Children.Add(SpeakerButton(entry.Word, SpeechAccent.American));
+        line.Children.Add(AccentGroup(entry.Word, SpeechAccent.British, entry.Phonetic));
+        line.Children.Add(AccentGroup(entry.Word, SpeechAccent.American, entry.UsPhonetic));
         return line;
+    }
+
+    private StackPanel AccentGroup(string word, SpeechAccent accent, string phonetic)
+    {
+        var group = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
+        group.Children.Add(SpeakerButton(word, accent));
+        // The accent label stays visible even without IPA (TTS still speaks):
+        // formatting the prefix with an empty phonetic yields 英/美 or UK/US.
+        var prefix = accent == SpeechAccent.British
+            ? Translations.Instance.UkPhoneticPrefix
+            : Translations.Instance.UsPhoneticPrefix;
+        var label = string.Format(prefix, phonetic.Length > 0 ? FormatPhonetic(phonetic) : string.Empty).Trim();
+        group.Children.Add(Text(label, fontSize: 14, brushKey: Palette.TextMuted, mono: true, verticalCenter: true));
+        return group;
     }
 
     private Button SpeakerButton(string word, SpeechAccent accent)
     {
-        var label = accent == SpeechAccent.British ? "UK" : "US";
-        var button = new Button { Classes = { "spk" }, Content = label };
+        var button = new Button
+        {
+            Classes = { "spk" },
+            Name = accent == SpeechAccent.British ? "UkSpeakerButton" : "UsSpeakerButton",
+            Content = SpeakerIcon(),
+        };
         ToolTip.SetTip(button, accent == SpeechAccent.British
             ? Translations.Instance.UkTip
             : Translations.Instance.UsTip);
-        button.Click += (_, _) => PlayWord(button, word, accent, label);
+        button.Click += (_, _) => PlayWord(button, word, accent);
         return button;
     }
 
-    private async void PlayWord(Button button, string word, SpeechAccent accent, string label)
+    /// <summary>
+    /// Material Icons volume_up (Apache-2.0). Fill follows the button
+    /// foreground through the Button.spk &gt; Path style.
+    /// </summary>
+    private static readonly Geometry SpeakerIconGeometry = StreamGeometry.Parse(
+        "M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z");
+
+    private static Avalonia.Controls.Shapes.Path SpeakerIcon() => new()
+    {
+        Width = 12,
+        Height = 12,
+        Stretch = Stretch.Uniform,
+        Data = SpeakerIconGeometry,
+    };
+
+    private async void PlayWord(Button button, string word, SpeechAccent accent)
     {
         if (_speech.Play(word, accent)) return;
         // No engine could speak. When the pack is simply missing, surface the
@@ -821,9 +849,10 @@ public partial class MainWindow : Window
             AudioPackActionButton.Content = Translations.Instance.AudioPackDownloadButton;
             AudioPackStatus.Text = Translations.Instance.NoLocalPronunciation;
         }
+        var original = button.Content;
         button.Content = "✕";
         await Task.Delay(1500);
-        if (button.Content is "✕") button.Content = label;
+        if (button.Content is "✕") button.Content = original;
     }
 
     private static string[] SplitLines(string value) =>

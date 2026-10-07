@@ -396,8 +396,9 @@ public class HeadlessWindowTests
         PressEnter(searchBox);
         WaitUntil(() => Headword(window) == "cat");
 
+        // Speaker buttons are icon-only; find them by the name set in SpeakerButton.
         var ukButton = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
-            .OfType<Button>().First(b => (string?)b.Content == "UK");
+            .OfType<Button>().First(b => b.Name == "UkSpeakerButton");
         RaiseClick(ukButton);
         Dispatcher.UIThread.RunJobs();
 
@@ -406,7 +407,7 @@ public class HeadlessWindowTests
         Assert.Equal(SpeechAccent.British, accent);
 
         var usButton = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
-            .OfType<Button>().First(b => (string?)b.Content == "US");
+            .OfType<Button>().First(b => b.Name == "UsSpeakerButton");
         RaiseClick(usButton);
         Dispatcher.UIThread.RunJobs();
 
