@@ -6,7 +6,18 @@ using StupidDict.App.Localization;
 namespace StupidDict.App.Assets;
 
 /// <summary>What stage a download reached, for the progress UI.</summary>
-public sealed record DownloadProgress(long ReceivedBytes, long? TotalBytes, string SourceUrl);
+/// <param name="ResumedFromBytes">
+/// Offset this attempt resumed from over an existing ".part" file, 0 for a
+/// fresh transfer. The UI uses it to label a follow-up attempt as a resume
+/// instead of indistinguishable "downloading" bar number two.
+/// </param>
+public sealed record DownloadProgress(long ReceivedBytes, long? TotalBytes, string SourceUrl, long ResumedFromBytes = 0);
+
+/// <summary>Thrown when a downloaded asset's SHA-256 differs from the published checksum.</summary>
+public sealed class ChecksumMismatchException : Exception
+{
+    public ChecksumMismatchException(string message) : base(message) { }
+}
 
 /// <summary>A finished download: the local file and which source served it.</summary>
 public sealed record DownloadResult(string FilePath, string SourceUrl);
@@ -114,15 +125,16 @@ public sealed class AssetDownloadService : IAssetDownloader
         await using var source = await response.Content.ReadAsStreamAsync(cancellation);
         await using var target = new FileStream(partFile, append ? FileMode.Append : FileMode.Create);
         var received = resumeFrom;
+        var resumed = append ? resumeFrom : 0;
         var buffer = new byte[1 << 16];
         int read;
         while ((read = await source.ReadAsync(buffer, cancellation)) > 0)
         {
             await target.WriteAsync(buffer.AsMemory(0, read), cancellation);
             received += read;
-            progress?.Report(new DownloadProgress(received, total, url));
+            progress?.Report(new DownloadProgress(received, total, url, resumed));
         }
-        progress?.Report(new DownloadProgress(received, total, url));
+        progress?.Report(new DownloadProgress(received, total, url, resumed));
 
         File.Move(partFile, destinationFile, overwrite: true);
         return new DownloadResult(destinationFile, url);
@@ -161,6 +173,6 @@ public sealed class AssetDownloadService : IAssetDownloader
         using var stream = File.OpenRead(filePath);
         var actual = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
         if (actual != expectedHex.ToLowerInvariant())
-            throw new InvalidOperationException(Translations.Instance.ChecksumFailed);
+            throw new ChecksumMismatchException(Translations.Instance.ChecksumFailed);
     }
 }

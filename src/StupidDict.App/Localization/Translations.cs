@@ -48,12 +48,17 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(ImportMissingDb)] = "文件里没有 dictionary.db",
         [nameof(AllSourcesFailed)] = "所有下载源都失败了。请检查网络，或手动下载后导入。",
         [nameof(ChecksumFailed)] = "下载文件校验失败，已删除损坏文件。",
+        [nameof(ChecksumRedownloading)] = "校验失败，已删除损坏文件，正在重新下载…",
+        [nameof(ExtractFailedFormat)] = "解压失败：{0}",
+        [nameof(AudioPackExtractFailedFormat)] = "发音包解压失败：{0}",
         [nameof(ZipSlipFormat)] = "压缩包内出现非法路径：{0}",
         [nameof(DownloadingDictionaryFormat)] = "正在下载词典 {0:F0} / {1:F0} MB",
         [nameof(DownloadingDictionaryUnsizedFormat)] = "正在下载词典 {0:F0} MB",
         [nameof(DownloadingAudioPack)] = "正在下载发音包（约 1 GB，一次性）",
         [nameof(DownloadingAudioPackFormat)] = "正在下载发音包 {0:F0} / {1:F0} MB",
         [nameof(DownloadingAudioPackUnsizedFormat)] = "正在下载发音包 {0:F0} MB",
+        [nameof(DownloadResumeFormat)] = "断点续传 {0:F0} / {1:F0} MB",
+        [nameof(DownloadResumeUnsizedFormat)] = "断点续传 {0:F0} MB",
         [nameof(AudioPackCancelled)] = "发音包下载已取消。未覆盖的单词会用系统语音朗读。",
         [nameof(AudioPackFailedFormat)] = "发音包下载失败：{0}",
         [nameof(AudioPackDownloadButton)] = "下载",
@@ -130,12 +135,17 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(ImportMissingDb)] = "The file does not contain dictionary.db",
         [nameof(AllSourcesFailed)] = "Every download source failed. Check the network, or download and import manually.",
         [nameof(ChecksumFailed)] = "Checksum verification failed; the corrupted file was deleted.",
+        [nameof(ChecksumRedownloading)] = "Checksum failed; the corrupted file was deleted. Downloading again…",
+        [nameof(ExtractFailedFormat)] = "Extraction failed: {0}",
+        [nameof(AudioPackExtractFailedFormat)] = "Pronunciation pack extraction failed: {0}",
         [nameof(ZipSlipFormat)] = "Illegal path inside the archive: {0}",
         [nameof(DownloadingDictionaryFormat)] = "Downloading dictionary {0:F0} / {1:F0} MB",
         [nameof(DownloadingDictionaryUnsizedFormat)] = "Downloading dictionary {0:F0} MB",
         [nameof(DownloadingAudioPack)] = "Downloading the pronunciation pack (about 1 GB, one-time)",
         [nameof(DownloadingAudioPackFormat)] = "Downloading pronunciation pack {0:F0} / {1:F0} MB",
         [nameof(DownloadingAudioPackUnsizedFormat)] = "Downloading pronunciation pack {0:F0} MB",
+        [nameof(DownloadResumeFormat)] = "Resuming download {0:F0} / {1:F0} MB",
+        [nameof(DownloadResumeUnsizedFormat)] = "Resuming download {0:F0} MB",
         [nameof(AudioPackCancelled)] = "Pronunciation pack download cancelled. Words it does not cover fall back to the system voice.",
         [nameof(AudioPackFailedFormat)] = "Pronunciation pack download failed: {0}",
         [nameof(AudioPackDownloadButton)] = "Download",
@@ -261,6 +271,9 @@ public sealed class Translations : INotifyPropertyChanged
     /// <summary>异常消息即用户可见文案（经下载状态行展示），因此进词池。</summary>
     public string AllSourcesFailed => Get();
     public string ChecksumFailed => Get();
+    public string ChecksumRedownloading => Get();
+    public string ExtractFailedFormat => Get();
+    public string AudioPackExtractFailedFormat => Get();
     public string ZipSlipFormat => Get();
     /// <summary>{0} 已接收 MB，{1} 总 MB。</summary>
     public string DownloadingDictionaryFormat => Get();
@@ -268,6 +281,9 @@ public sealed class Translations : INotifyPropertyChanged
     public string DownloadingAudioPack => Get();
     public string DownloadingAudioPackFormat => Get();
     public string DownloadingAudioPackUnsizedFormat => Get();
+    /// <summary>{0} 已接收 MB，{1} 总 MB；断点续传的第二遍下载进度。</summary>
+    public string DownloadResumeFormat => Get();
+    public string DownloadResumeUnsizedFormat => Get();
     public string AudioPackCancelled => Get();
     public string AudioPackFailedFormat => Get();
     public string AudioPackDownloadButton => Get();

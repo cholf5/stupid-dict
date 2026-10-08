@@ -483,22 +483,27 @@ public partial class MainWindow : Window
         var destination = Path.Combine(Path.GetTempPath(), "stupiddict-downloads", ReleaseAssets.DictionaryAsset);
         try
         {
-            var result = await _downloader.DownloadAsync(ReleaseAssets.DictionaryAsset, destination,
-                new Progress<DownloadProgress>(UpdateDictionaryProgress), cancellation);
-            DictionaryDownloadStatus.Text = Translations.Instance.Verifying;
-            await VerifyChecksumAsync(result.FilePath, ReleaseAssets.DictionaryAsset, cancellation);
+            var zipPath = await DownloadAndVerifyAsync(ReleaseAssets.DictionaryAsset, destination,
+                new Progress<DownloadProgress>(UpdateDictionaryProgress),
+                text => DictionaryDownloadStatus.Text = text,
+                Translations.Instance.DownloadFailedFormat, cancellation);
             DictionaryDownloadStatus.Text = Translations.Instance.Extracting;
-            await Task.Run(() => ExtractZip(result.FilePath, _locations.DataDirectory), cancellation);
-            File.Delete(result.FilePath);
+            await Task.Run(() => ExtractZip(zipPath, _locations.DataDirectory), cancellation);
+            File.Delete(zipPath);
             FinishDictionarySetup();
         }
         catch (OperationCanceledException)
         {
             DictionaryDownloadStatus.Text = Translations.Instance.DownloadCancelled;
         }
+        catch (AssetBootstrapException ex)
+        {
+            // Download/checksum failures carry their stage in the message already.
+            DictionaryDownloadStatus.Text = ex.Message;
+        }
         catch (Exception ex)
         {
-            DictionaryDownloadStatus.Text = string.Format(Translations.Instance.DownloadFailedFormat, ex.Message);
+            DictionaryDownloadStatus.Text = string.Format(Translations.Instance.ExtractFailedFormat, ex.Message);
         }
         finally
         {
@@ -510,20 +515,77 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Download plus checksum with one purge-and-redownload recovery: a
+    /// ".part" resumed across asset versions (or a corrupted transfer) yields
+    /// a file that only the checksum can catch, and the old flow surfaced
+    /// that as a baffling "download failed" long after the bar had filled.
+    /// Deleting the artifacts and starting over turns the deterministic
+    /// failure into a self-healing retry.
+    /// </summary>
+    private async Task<string> DownloadAndVerifyAsync(string assetName, string destinationFile,
+        IProgress<DownloadProgress> progress, Action<string> setStatus, string downloadFailedFormat,
+        CancellationToken cancellation)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                var filePath = (await _downloader.DownloadAsync(assetName, destinationFile, progress, cancellation)).FilePath;
+                setStatus(Translations.Instance.Verifying);
+                var expected = await _downloader.FetchChecksumAsync(assetName, cancellation);
+                if (expected is not null)
+                    await Task.Run(() => AssetDownloadService.VerifyChecksum(filePath, expected), cancellation);
+                return filePath;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (ChecksumMismatchException ex)
+            {
+                // The message promises the corrupted file is gone — make it true,
+                // so the retry cannot resume from the damaged bytes.
+                PurgeDownloadArtifacts(destinationFile);
+                if (attempt > 1)
+                    throw new AssetBootstrapException(Translations.Instance.ChecksumFailed, ex);
+                setStatus(Translations.Instance.ChecksumRedownloading);
+            }
+            catch (Exception ex)
+            {
+                throw new AssetBootstrapException(string.Format(downloadFailedFormat, ex.Message), ex);
+            }
+        }
+    }
+
+    private static void PurgeDownloadArtifacts(string destinationFile)
+    {
+        File.Delete(destinationFile);
+        File.Delete(destinationFile + ".part");
+    }
+
     private void UpdateDictionaryProgress(DownloadProgress progress)
     {
         if (progress.TotalBytes is { } total && total > 0)
         {
             DictionaryDownloadBar.IsIndeterminate = false;
             DictionaryDownloadBar.Value = 100.0 * progress.ReceivedBytes / total;
-            DictionaryDownloadStatus.Text = string.Format(Translations.Instance.DownloadingDictionaryFormat,
-                progress.ReceivedBytes / 1048576.0, total / 1048576.0);
+            // A second full-looking bar is a resumed attempt on another source,
+            // not a stuck download — say so instead of "downloading" again.
+            DictionaryDownloadStatus.Text = progress.ResumedFromBytes > 0
+                ? string.Format(Translations.Instance.DownloadResumeFormat,
+                    progress.ReceivedBytes / 1048576.0, total / 1048576.0)
+                : string.Format(Translations.Instance.DownloadingDictionaryFormat,
+                    progress.ReceivedBytes / 1048576.0, total / 1048576.0);
         }
         else
         {
             DictionaryDownloadBar.IsIndeterminate = true;
             DictionaryDownloadStatus.Text = string.Format(
-                Translations.Instance.DownloadingDictionaryUnsizedFormat, progress.ReceivedBytes / 1048576.0);
+                progress.ResumedFromBytes > 0
+                    ? Translations.Instance.DownloadResumeUnsizedFormat
+                    : Translations.Instance.DownloadingDictionaryUnsizedFormat,
+                progress.ReceivedBytes / 1048576.0);
         }
     }
 
@@ -587,14 +649,14 @@ public partial class MainWindow : Window
         var destination = Path.Combine(Path.GetTempPath(), "stupiddict-downloads", ReleaseAssets.AudioPackAsset);
         try
         {
-            var result = await _downloader.DownloadAsync(ReleaseAssets.AudioPackAsset, destination,
-                new Progress<DownloadProgress>(UpdateAudioPackProgress), cancellation);
-            AudioPackStatus.Text = Translations.Instance.Verifying;
-            await VerifyChecksumAsync(result.FilePath, ReleaseAssets.AudioPackAsset, cancellation);
+            var zipPath = await DownloadAndVerifyAsync(ReleaseAssets.AudioPackAsset, destination,
+                new Progress<DownloadProgress>(UpdateAudioPackProgress),
+                text => AudioPackStatus.Text = text,
+                Translations.Instance.AudioPackFailedFormat, cancellation);
             AudioPackStatus.Text = Translations.Instance.Extracting;
             AudioPackBar.IsIndeterminate = true;
-            await Task.Run(() => ExtractZip(result.FilePath, _locations.AudioDirectory), cancellation);
-            File.Delete(result.FilePath);
+            await Task.Run(() => ExtractZip(zipPath, _locations.AudioDirectory), cancellation);
+            File.Delete(zipPath);
             AudioPackPanel.IsVisible = false;
         }
         catch (OperationCanceledException)
@@ -603,9 +665,16 @@ public partial class MainWindow : Window
             AudioPackActionButton.Content = Translations.Instance.AudioPackDownloadButton;
             AudioPackBar.IsVisible = false;
         }
+        catch (AssetBootstrapException ex)
+        {
+            // Download/checksum failures carry their stage in the message already.
+            AudioPackStatus.Text = ex.Message;
+            AudioPackActionButton.Content = Translations.Instance.Retry;
+            AudioPackBar.IsVisible = false;
+        }
         catch (Exception ex)
         {
-            AudioPackStatus.Text = string.Format(Translations.Instance.AudioPackFailedFormat, ex.Message);
+            AudioPackStatus.Text = string.Format(Translations.Instance.AudioPackExtractFailedFormat, ex.Message);
             AudioPackActionButton.Content = Translations.Instance.Retry;
             AudioPackBar.IsVisible = false;
         }
@@ -622,13 +691,19 @@ public partial class MainWindow : Window
         if (progress.TotalBytes is { } total && total > 0)
         {
             AudioPackBar.Value = 100.0 * progress.ReceivedBytes / total;
-            AudioPackStatus.Text = string.Format(Translations.Instance.DownloadingAudioPackFormat,
-                progress.ReceivedBytes / 1048576.0, total / 1048576.0);
+            AudioPackStatus.Text = progress.ResumedFromBytes > 0
+                ? string.Format(Translations.Instance.DownloadResumeFormat,
+                    progress.ReceivedBytes / 1048576.0, total / 1048576.0)
+                : string.Format(Translations.Instance.DownloadingAudioPackFormat,
+                    progress.ReceivedBytes / 1048576.0, total / 1048576.0);
         }
         else
         {
             AudioPackStatus.Text = string.Format(
-                Translations.Instance.DownloadingAudioPackUnsizedFormat, progress.ReceivedBytes / 1048576.0);
+                progress.ResumedFromBytes > 0
+                    ? Translations.Instance.DownloadResumeUnsizedFormat
+                    : Translations.Instance.DownloadingAudioPackUnsizedFormat,
+                progress.ReceivedBytes / 1048576.0);
         }
     }
 
@@ -646,18 +721,13 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task VerifyChecksumAsync(string filePath, string assetName, CancellationToken cancellation)
-    {
-        var expected = await _downloader.FetchChecksumAsync(assetName, cancellation);
-        if (expected is null) return;
-        await Task.Run(() => AssetDownloadService.VerifyChecksum(filePath, expected), cancellation);
-    }
-
     /// <summary>
-    /// Zip entries cannot escape the destination (zip-slip); extraction is
-    /// all-or-nothing because a half-extracted pack would look installed.
+    /// Zip entries cannot escape the destination (zip-slip). Extraction is
+    /// all-or-nothing: the archive unpacks into a staging directory inside
+    /// the destination and only then moves into place — a half-extracted
+    /// pack must never look installed (AudioPackInstalled checks for uk/).
     /// </summary>
-    private static void ExtractZip(string zipPath, string destinationDirectory)
+    internal static void ExtractZip(string zipPath, string destinationDirectory)
     {
         Directory.CreateDirectory(destinationDirectory);
         var root = Path.GetFullPath(destinationDirectory);
@@ -672,7 +742,41 @@ public partial class MainWindow : Window
                         string.Format(Translations.Instance.ZipSlipFormat, entry.FullName));
             }
         }
-        System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, destinationDirectory, overwriteFiles: true);
+
+        // Sweep staging directories a crashed run may have left behind.
+        const string stagingPrefix = ".stupiddict-extracting-";
+        foreach (var stale in Directory.EnumerateDirectories(destinationDirectory, stagingPrefix + "*"))
+            Directory.Delete(stale, recursive: true);
+
+        var staging = Path.Combine(destinationDirectory, stagingPrefix + Guid.NewGuid().ToString("N"));
+        try
+        {
+            System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, staging);
+            // Materialize before moving: moving entries out of staging while
+            // lazily enumerating it races the enumerator (the pack has two).
+            foreach (var entry in Directory.EnumerateFileSystemEntries(staging).ToArray())
+                MoveIntoPlace(entry, Path.Combine(destinationDirectory, Path.GetFileName(entry)));
+        }
+        finally
+        {
+            if (Directory.Exists(staging))
+                Directory.Delete(staging, recursive: true);
+        }
+    }
+
+    // Same-volume renames, so moving is cheap and the destination never holds
+    // half-written data. Existing entries are replaced wholesale, matching the
+    // overwriteFiles behaviour this replaced.
+    private static void MoveIntoPlace(string source, string target)
+    {
+        if (File.Exists(target))
+            File.Delete(target);
+        else if (Directory.Exists(target))
+            Directory.Delete(target, recursive: true);
+        if (File.Exists(source))
+            File.Move(source, target, overwrite: true);
+        else
+            Directory.Move(source, target);
     }
 
     private void RenderResult(LookupResult result)
