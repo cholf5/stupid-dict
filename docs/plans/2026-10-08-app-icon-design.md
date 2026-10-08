@@ -56,9 +56,11 @@ macOS 26 给 bundle 图标自动加的圆角蒙版，Windows .ico 同样不加�
 - **依赖 macOS 26 的 bundle 自动蒙版**：只作用于 bundle 图标；运行时设置
   （MacDockIcon）与 Windows .ico 都不经过，且源图无 alpha、蒙版无边界可依。
   烤圆角是唯一让三端一致的方案。
-- **生成脚本入库**（如 `scripts/make-icon.sh`）：素材是一次性资产，母版已固化为
-  `app-icon.png` 入库，重生成属极低频操作（YAGNI）。参数都记录在本档，需要时
-  半小时可复现。
+- **生成脚本**（`scripts/make-icon.py`）：初版按"素材是一次性资产、重生成属极低频
+  操作"否掉，只在本档记录参数。实际进入多候选试错循环后结论反转：每次换源都要
+  重跑同一条管线、且需要小尺寸深/浅底预览辅助判断，脚本化后试错零成本，还把
+  "源图 → 三件套"固化成唯一入口（脚本重跑当前源图，png/ico 逐字节复现；icns 因
+  iconset 帧改用 Pillow 缩放与手排 sips 版有帧级差异，语义等价）。
 - **Linux .desktop / Icon 安装位**：Linux 只发 zip 无安装器，窗口图标已由
   `Window.Icon` 覆盖（YAGNI）。
 
