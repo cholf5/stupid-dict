@@ -13,7 +13,20 @@
          script: release.sh bumps this and tags vX.Y.Z, CI enforces equality. -->
     <Version>1.0.0</Version>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- App icon embedded into the Windows exe (Explorer / taskbar); the same
+         ico doubles as the window icon via avares:// below. -->
+    <ApplicationIcon>Assets/app-icon.ico</ApplicationIcon>
+    <!-- MacDockIcon sends ObjC messages (unsafe pointers into libobjc). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <!-- Embedded via the avares:// protocol: Window Icon="avares://StupidDict/Assets/app-icon.ico",
+       MacDockIcon loads the png the same way (prefix is the AssemblyName, not the project name).
+       Explicit list on purpose: Assets/ also holds .cs sources, so no Assets/** wildcard.
+       The icns is deliberately not embedded — it only travels via package.sh into the bundle. -->
+  <ItemGroup>
+    <AvaloniaResource Include="Assets/app-icon.png;Assets/app-icon.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.0" />

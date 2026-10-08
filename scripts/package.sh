@@ -58,9 +58,12 @@ for rid in $RID_LIST; do
   if [[ "$rid" == osx-* ]]; then
     # A minimal .app bundle so macOS users get a double-clickable program.
     APP="$STAGE/Stupid Dict.app"
-    mkdir -p "$APP/Contents/MacOS"
+    mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
     cp "$PUBLISHED" "$APP/Contents/MacOS/StupidDict"
     chmod +x "$APP/Contents/MacOS/StupidDict"
+    # Same icns MacDockIcon embeds for bare `dotnet run`; LaunchServices reads it
+    # from CFBundleIconFile for the packaged bundle.
+    cp src/StupidDict.App/Assets/app-icon.icns "$APP/Contents/Resources/app-icon.icns"
     cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -70,6 +73,7 @@ for rid in $RID_LIST; do
     <key>CFBundleExecutable</key><string>StupidDict</string>
     <key>CFBundleIdentifier</key><string>com.cholf5.stupiddict</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
+    <key>CFBundleIconFile</key><string>app-icon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleHighResolutionCapable</key><true/>
     <key>NSHighResolutionCapable</key><true/>

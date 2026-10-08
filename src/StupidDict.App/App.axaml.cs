@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using StupidDict.App.Settings;
 using StupidDict.Core.Application;
 
@@ -15,6 +16,12 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            // macOS bare-process Dock icon for dev runs; the packaged bundle gets it
+            // from Info.plist (see MacDockIcon). Posted onto the idle dispatcher so the
+            // set lands after NSApplication has finished launching and the window is up
+            // (checked isRunning/activationPolicy while debugging); cost is a possible
+            // brief flash of the generic icon before the real one lands.
+            Dispatcher.UIThread.Post(MacDockIcon.TrySetFromEmbeddedIcon, DispatcherPriority.ApplicationIdle);
             var settings = SettingsService.Load();
             WireSettings(settings);
             desktop.MainWindow = new MainWindow(

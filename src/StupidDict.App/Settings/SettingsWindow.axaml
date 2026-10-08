@@ -5,6 +5,7 @@
         xmlns:s="using:StupidDict.App.Settings"
         x:Class="StupidDict.App.Settings.SettingsWindow"
         Title="{Binding SettingsTitle, Source={x:Static loc:Translations.Instance}}"
+        Icon="avares://StupidDict/Assets/app-icon.ico"
         Width="500" SizeToContent="Height"
         CanResize="False" WindowStartupLocation="CenterOwner"
         Background="{DynamicResource WindowBackground}">

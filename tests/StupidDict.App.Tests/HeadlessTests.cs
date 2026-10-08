@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -52,6 +53,22 @@ public class HeadlessWindowTests
         Dispatcher.UIThread.RunJobs();
 
         Assert.True(window.FindControl<TextBox>("SearchBox")!.IsFocused);
+    }
+
+    [AvaloniaFact]
+    public void WindowsCarryAppIconFromEmbeddedAssets()
+    {
+        // The avares prefix is the assembly name (StupidDict, not the project
+        // name); a wrong URI throws while loading the XAML, so constructing the
+        // windows pins the wiring. The png is what MacDockIcon hands to
+        // NSApplication on macOS dev runs (the icns travels via package.sh only).
+        using var service = CreateService();
+        var window = new MainWindow(service, autoDownload: false);
+        Assert.NotNull(window.Icon);
+        var settingsWindow = new SettingsWindow(new AppSettings());
+        Assert.NotNull(settingsWindow.Icon);
+        using var icon = AssetLoader.Open(new Uri("avares://StupidDict/Assets/app-icon.png"));
+        Assert.True(icon.Length > 0);
     }
 
     [AvaloniaFact]

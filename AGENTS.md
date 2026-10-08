@@ -64,6 +64,6 @@ cholf5/stupid-dict：.NET 10 + Avalonia 桌面离线英汉词典（Windows / mac
 
 ## 已知平台坑
 
-- macOS Dock 图标不认 XAML `Window.Icon`；本应用没处理（打包走 Info.plist，裸 `dotnet run` 无 Dock 图标，可接受）。
+- 图标三件套在 `src/StupidDict.App/Assets/`（png=1024 母版、ico=Windows/窗口、icns=macOS bundle）：1024 透明画布 + 830 居中圆角矩形（半径 194 ≈ Apple 网格 23.4%）+ 透明边距——运行时图标不走系统圆角蒙版（Windows .ico 同样不加工），圆角必须烤在素材里。接线：csproj `ApplicationIcon`（Windows exe）+ `AvaloniaResource`（avares 前缀是 AssemblyName `StupidDict` 不是项目名；icns 不内嵌，只随 package.sh 进 bundle）+ 两窗口 `Icon="avares://StupidDict/Assets/app-icon.ico"`。macOS Dock 图标不认 XAML `Window.Icon`：打包包由 Info.plist `CFBundleIconFile`（package.sh 拷 icns），裸 `dotnet run` 由 `MacDockIcon` 在 App 空闲优先级把内嵌扁平 PNG 设给 NSApplication（libobjc 手发消息，失败静默，只在桌面生命周期分支调用；运行时喂 PNG 是 Electron/SDL/Godot 的同款做法）。**注意 `NSRunningApplication.icon` 只读 LaunchServices 层、对运行时设置全盲，验证只能人眼看 Dock**（终端截屏需屏幕录制授权，通常没有）。回归测试 `WindowsCarryAppIconFromEmbeddedAssets`。
 - `SelectableTextBlock` 无内置双击选词（Avalonia 11），`OnResultTextPointerPressed` 是自制实现；中文不响应双击（无空格分词，命中无意义）。
 - 发布 Windows 用 `-f net10.0-windows`，漏掉会静默丢 System.Speech 回退。
