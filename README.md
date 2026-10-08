@@ -139,13 +139,19 @@ scripts/release.sh 1.0.1 --watch    # bump 版本 → 打 tag → CI 三平台�
 
 发版脚本把 `StupidDict.App.csproj` 的 `<Version>` 提升到目标版本并打 `v` tag，CI（`.github/workflows/dotnet-desktop.yml`）随后测试、打包 macOS（.app，arm64/x64）/ Windows / Linux 应用包并创建 Release；`--watch` 会等 CI 跑完并核对产物齐全。版本必须与 csproj 一致，CI 在 tag 时强制校验，in-app 更新检查也以它为比较基准。
 
-`dictionary.zip` / `audio-pack.zip` 不随版本变化且无法在 CI 构建（词典 600 MB、发音包需本地生成），release job 会自动把上一版 Release 的这两件资产（含 `.sha256`）接力到新 Release；文件名不可变，应用内下载按 latest + 固定资产名解析。首次发版还没有可接力的对象，等 CI 建好 Release 后手动补传一次，之后每版自动接力：
+数据资产（`dictionary.zip` / `audio-pack.zip`）与 App 版本解耦：它们放在独立的 **prerelease** `data-1`（对应代码里的 `ReleaseAssets.DataTag`），一次发布、基本不再动，应用内下载 URL 钉在该 tag 上（加速镜像前缀对其同样适用）。打 prerelease 标记是刻意的：prerelease 永远不参与 `releases/latest` 竞争，而应用内「检查更新」读的正是那个页面，必须始终指向 App 版本。App 发版不携带、也不需要这两件资产。若将来数据要更新：发布 `data-2`，把 `ReleaseAssets.DataTag` 提到新 tag，随下一个 App 版本生效。
+
+首次发布数据资产（本地打包后一次上传）：
 
 ```bash
-gh release upload v1.0.0 dictionary.zip dictionary.zip.sha256 audio-pack.zip audio-pack.zip.sha256
+scripts/package.sh    # 产出 dist/dictionary.zip + dist/audio-pack.zip（含 .sha256）
+gh release create data-1 dist/dictionary.zip dist/dictionary.zip.sha256 \
+  dist/audio-pack.zip dist/audio-pack.zip.sha256 --prerelease \
+  --title "数据资源包（词典 + 发音包）" \
+  --notes "词典数据库与离线发音包；应用首次启动自动下载，与 App 版本号无关。"
 ```
 
-本地打包（调试或补传数据资产时用）：
+本地打包（调试，或首次发布 / 更新数据资产时用）：
 
 ```bash
 scripts/package.sh                                        # 本机平台

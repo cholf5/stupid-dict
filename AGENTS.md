@@ -10,7 +10,7 @@ cholf5/stupid-dict：.NET 10 + Avalonia 桌面离线英汉词典（Windows / mac
 - **测试永不触碰真实用户数据**：数据目录经 `AppLocations` 注入临时副本（`NewLocations`），设置经 `SettingsService.Load/Save` 的 path 参数注入，`MainWindow` 不传 settings 时默认 `new AppSettings()` 而不是读盘；动过全局主题的测试在 `finally` 里 `App.ApplyTheme(AppTheme.System)` 还原（Application 变体是进程级单例）。
 - 多目标 `net10.0;net10.0-windows`：windows TFM 只为解锁 `System.Speech`（TTS 回退），发布 Windows 用 `-f net10.0-windows`，其余平台 `-f net10.0`。
 - 发版：`scripts/release.sh x.y.z [--skip-test] [--watch]`——校验（main、工作树干净、三段数字版本、本地/远端 tag 不存在）→ 本地 `dotnet test` → sed 提升 `src/StupidDict.App/StupidDict.App.csproj` 的 `<Version>` 并提交 → 打 `v` tag push → CI 测试 + 打包三平台 + 建 GitHub Release；`--watch` 轮询 CI（按 tag 指向的 commit SHA 过滤 run，防止重发时抓到旧 run）并核对产物。**tag 与 csproj 不一致会被 CI 拒绝**；重发同版本必须先删 tag（`git push origin :refs/tags/vX` + `git tag -d vX`）。Agent 收到「发版 x.y.z」即跑该脚本（带 `--watch`），成功后汇报 Release 链接与产物清单。**release.sh 是 POSIX sh，echo 里紧邻全角字符的变量必须写 `${VAR}`**——macOS 的 bash 3.2 会把多字节字符并入变量名报 unbound variable。
-- `scripts/package.sh`：本地打包（`dist/` 下 `StupidDict-{rid}.zip`、`StupidDict-{rid}-with-dictionary.zip`、`dictionary.zip`/`audio-pack.zip` + `.sha256`）。CI 打包只出应用包；数据资产太大不进 CI，由 release job 从上一个 Release 接力（见 README「打包与发布」）。
+- `scripts/package.sh`：本地打包（`dist/` 下 `StupidDict-{rid}.zip`、`StupidDict-{rid}-with-dictionary.zip`、`dictionary.zip`/`audio-pack.zip` + `.sha256`）。CI 打包只出应用包。**数据资产与 App 版本解耦**：`dictionary.zip`/`audio-pack.zip` 放在独立 prerelease `data-1`，应用端 `ReleaseAssets.DataTag` 钉住该 tag 下载（prerelease 保证永不参与 `releases/latest`、不干扰更新检查），一次发布基本不动；数据要更新就发 `data-2` 并 bump 该常量，随下个 App 版生效。首次发布：`scripts/package.sh` 产资产后 `gh release create data-1 … --prerelease`（见 README「打包与发布」）。
 
 ## 目录与分层
 

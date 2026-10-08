@@ -1,8 +1,9 @@
 #!/bin/sh
 # Release script: bump csproj <Version> -> commit -> tag vX.Y.Z -> push; CI
-# (.github/workflows/dotnet-desktop.yml) then tests, packages all three
-# platforms, carries dictionary.zip / audio-pack.zip forward from the previous
-# release, and creates the GitHub Release.
+# (.github/workflows/dotnet-desktop.yml) then tests, packages all platforms,
+# and creates the GitHub Release. App releases carry app packages only: the
+# big data assets (dictionary.zip / audio-pack.zip) live in their own pinned
+# prerelease (data-1, see ReleaseAssets.DataTag) and are published separately.
 #
 # Usage: scripts/release.sh <x.y.z> [--skip-test] [--watch]
 #   --skip-test  skip local dotnet test (CI still runs them; a failing test
@@ -129,13 +130,14 @@ while [ $i -lt 90 ]; do
 done
 [ $i -lt 90 ] || { echo "等待超时（45 分钟），手动看 $RUN_URL/$RUN_ID" >&2; exit 1; }
 
-# Verify the platform builds and the data assets are present. audio-pack is
-# optional (only released once built locally); dictionary.zip is required —
-# the in-app first-run download resolves against the latest release.
+# Verify the platform builds are present. dictionary.zip / audio-pack.zip are
+# not part of app releases: the in-app first-run download pins to the data
+# prerelease below (keep in sync with ReleaseAssets.DataTag).
+DATA_TAG=data-1
 ASSETS=$(gh release view "$TAG" --json assets --jq '[.assets[].name] | join(",")' 2>/dev/null || true)
 MISSING=
 for want in "StupidDict-$VERSION-osx-arm64.zip" "StupidDict-$VERSION-osx-x64.zip" \
-  "StupidDict-$VERSION-win-x64.zip" "StupidDict-$VERSION-linux-x64.zip" "dictionary.zip"; do
+  "StupidDict-$VERSION-win-x64.zip" "StupidDict-$VERSION-linux-x64.zip"; do
   case ",$ASSETS," in
     *",$want,"*) ;;
     *) MISSING="$MISSING $want" ;;
@@ -145,10 +147,9 @@ if [ -n "$MISSING" ]; then
   echo "Release 产物缺失：${MISSING}。可在 Actions 页 Re-run release job，或删 tag 重跑脚本。" >&2
   exit 1
 fi
-case ",$ASSETS," in
-  *,audio-pack.zip,*) ;;
-  *) echo "注意：本版无 audio-pack.zip，发音包回退系统语音；构建后可手动补传。" >&2 ;;
-esac
+if ! gh release view "$DATA_TAG" >/dev/null 2>&1; then
+  echo "注意：数据 Release ${DATA_TAG} 不存在，应用内首次下载词典/发音包会失败。请先发布数据 Release（见 README「打包与发布」）。" >&2
+fi
 
 echo "发版完成 ${TAG}：$REL_URL"
 echo "产物：$ASSETS"

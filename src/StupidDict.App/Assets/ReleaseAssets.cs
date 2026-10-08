@@ -5,11 +5,19 @@ internal static class ReleaseAssets
 {
     internal const string Repository = "cholf5/stupid-dict";
 
+    /// <summary>
+    /// The prerelease holding the big data assets (dictionary / audio pack),
+    /// decoupled from app versions: publish once, bump only if the data ever
+    /// changes. Marked prerelease so it never becomes releases/latest — the
+    /// in-app update check reads that page and expects an app vX.Y.Z tag.
+    /// </summary>
+    internal const string DataTag = "data-1";
+
     public const string DictionaryAsset = "dictionary.zip";
     public const string AudioPackAsset = "audio-pack.zip";
 
     public static string GithubUrl(string assetName) =>
-        $"https://github.com/{Repository}/releases/latest/download/{assetName}";
+        $"https://github.com/{Repository}/releases/download/{DataTag}/{assetName}";
 
     /// <summary>GitHub first, then public accelerator mirrors that work from CN networks.</summary>
     public static IEnumerable<string> MirrorUrls(string githubUrl)

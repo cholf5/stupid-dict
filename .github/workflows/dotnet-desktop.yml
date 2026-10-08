@@ -5,10 +5,10 @@
 #     do not trigger; tag pushes ignore paths filters and always trigger).
 #   - tag v*: after tests pass, package — macOS .app (scripts/package.sh,
 #     arm64+x64, self-contained), Windows win-x64 self-contained zip,
-#     Linux linux-x64 zip — then create the GitHub Release and upload.
-#     dictionary.zip / audio-pack.zip are too big to build in CI; the release
-#     job carries them forward from the previous release so the in-app
-#     first-run download (releases/latest/download/...) keeps resolving.
+#     Linux linux-x64 zip — then create the GitHub Release and upload app
+#     packages only. dictionary.zip / audio-pack.zip are too big to build in
+#     CI and live in their own prerelease (data-1, see ReleaseAssets.DataTag),
+#     decoupled from app versions; the in-app first-run download pins to it.
 #   - workflow_dispatch: manual packaging dry run (no release; artifacts on the run).
 #
 # Version convention: the release tag is vX.Y.Z and must equal the csproj
@@ -92,7 +92,7 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       # No dictionary on the runner, so package.sh skips the with-dictionary
-      # variant and dictionary.zip — data assets are carried forward instead.
+      # variant and dictionary.zip — those live in the data-1 prerelease.
       - name: Package .app bundle
         run: scripts/package.sh --rids "osx-${{ matrix.arch }}"
       - name: Name asset with version
@@ -164,24 +164,6 @@ jobs:
           pattern: package-*
           merge-multiple: true
           path: dist
-      - name: Carry data assets forward from the previous release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          # dictionary.zip / audio-pack.zip do not vary with the app version
-          # and are far too big to build here, so each release re-attaches the
-          # previous release's copies. releases/latest/download/<asset> only
-          # resolves against the LATEST release, so skipping this would break
-          # the in-app first-run download.
-          if PREV_TAG=$(gh release view --json tagName --jq .tagName 2>/dev/null); then
-            echo "Carrying data assets from $PREV_TAG"
-            gh release download "$PREV_TAG" --dir dist \
-              --pattern 'dictionary.zip*' --pattern 'audio-pack.zip*' ||
-              echo "::warning::previous release has no data assets; upload dictionary.zip / audio-pack.zip manually"
-          else
-            echo "::warning::no previous release; upload dictionary.zip / audio-pack.zip manually"
-          fi
       - name: Create release and upload assets
         env:
           GH_TOKEN: ${{ github.token }}
