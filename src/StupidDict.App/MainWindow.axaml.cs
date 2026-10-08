@@ -898,16 +898,14 @@ public partial class MainWindow : Window
         {
             ResultsPanel.Children.Add(Text(Translations.Instance.Synonyms, fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 18, 0, 5)));
             foreach (var line in result.Synonyms)
-                ResultsPanel.Children.Add(BuildLinkText(PosLineSegments(line), fontSize: 15,
-                    margin: new Thickness(2, 0, 0, 0)));
+                ResultsPanel.Children.Add(BuildWordLinksLine(line.Pos, line.Words));
         }
 
         if (result.Antonyms.Count > 0)
         {
             ResultsPanel.Children.Add(Text(Translations.Instance.Antonyms, fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 14, 0, 5)));
             foreach (var line in result.Antonyms)
-                ResultsPanel.Children.Add(BuildLinkText(PosLineSegments(line), fontSize: 15,
-                    margin: new Thickness(2, 0, 0, 0)));
+                ResultsPanel.Children.Add(BuildWordLinksLine(line.Pos, line.Words));
         }
 
         if (result.RelatedWords.Count > 0)
@@ -915,6 +913,37 @@ public partial class MainWindow : Window
             ResultsPanel.Children.Add(Text(Translations.Instance.RelatedWords, fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 14, 0, 5)));
             ResultsPanel.Children.Add(BuildRelatedWordsLine(result.RelatedWords));
         }
+    }
+
+    private SelectableTextBlock ThesaurusText(string value, Thickness? margin = null) => new()
+    {
+        Text = value,
+        FontSize = 15,
+        LineHeight = 22,
+        TextWrapping = TextWrapping.Wrap,
+        Foreground = Palette.Get(Palette.TextSecondary, ActualThemeVariant),
+        Margin = margin ?? new Thickness(0),
+    };
+
+    // Same WrapPanel pattern as the related-words line: a text run sandwiched
+    // directly between two InlineUIContainer links keeps its width but has its
+    // glyphs drawn about a line too low (the commas stray out of the text flow),
+    // and a line break landing on a link clips the word instead of wrapping.
+    // Entries are atomic, so a word never separates from its comma on a wrap.
+    private WrapPanel BuildWordLinksLine(string pos, IReadOnlyList<string> words)
+    {
+        var panel = new WrapPanel { Margin = new Thickness(2, 0, 0, 0), Classes = { "word-links" } };
+        for (var i = 0; i < words.Count; i++)
+        {
+            var entry = new StackPanel { Orientation = Orientation.Horizontal };
+            if (i == 0 && pos.Length > 0)
+                entry.Children.Add(ThesaurusText(pos + " "));
+            entry.Children.Add(CreateLinkSurface(words[i], 15, lineHeight: 22));
+            if (i < words.Count - 1)
+                entry.Children.Add(ThesaurusText(",", new Thickness(0, 0, 4, 0)));
+            panel.Children.Add(entry);
+        }
+        return panel;
     }
 
     // Per-entry blocks in a WrapPanel instead of one wrapping text line: when a
@@ -934,37 +963,12 @@ public partial class MainWindow : Window
             if (related.Gloss.Length > 0)
             {
                 surface.Margin = new Thickness(0, 0, 4, 0);
-                entry.Children.Add(new SelectableTextBlock
-                {
-                    Text = related.Gloss,
-                    FontSize = 15,
-                    LineHeight = 22,
-                    TextWrapping = TextWrapping.Wrap,
-                    Foreground = Palette.Get(Palette.TextSecondary, ActualThemeVariant),
-                });
+                entry.Children.Add(ThesaurusText(related.Gloss));
             }
-            entry.Children.Add(new SelectableTextBlock
-            {
-                Text = ";",
-                FontSize = 15,
-                LineHeight = 22,
-                Foreground = Palette.Get(Palette.TextSecondary, ActualThemeVariant),
-                Margin = new Thickness(0, 0, 5, 0),
-            });
+            entry.Children.Add(ThesaurusText(";", new Thickness(0, 0, 5, 0)));
             panel.Children.Add(entry);
         }
         return panel;
-    }
-
-    private static List<LinkSegment> PosLineSegments(SynonymLine line)
-    {
-        List<LinkSegment> segments = [new LinkSegment(line.Pos + " ", null)];
-        foreach (var word in line.Words)
-        {
-            if (segments.Count > 1) segments.Add(new LinkSegment(", ", null));
-            segments.Add(new LinkSegment(word, word));
-        }
-        return segments;
     }
 
     private void RenderChineseResult(LookupResult result)
@@ -1164,42 +1168,6 @@ public partial class MainWindow : Window
     }
 
     private static bool IsWordChar(char c) => char.IsLetter(c) || c is '\'' or '-';
-
-    /// <summary>One piece of a link line: plain text, or a clickable word link.</summary>
-    private sealed record LinkSegment(string Text, string? Target);
-
-    /// <summary>
-    /// A wrapping text line mixing plain runs and single-click word links. Link
-    /// words are real controls embedded via InlineUIContainer: character
-    /// hit-testing on a multi-run SelectableTextBlock proved unreliable in
-    /// Avalonia 11.3 (clicks resolving to neighbouring characters, occasionally
-    /// even IndexOutOfRangeException inside GlyphRun.FindNearestCharacterHit).
-    /// </summary>
-    private SelectableTextBlock BuildLinkText(IReadOnlyList<LinkSegment> segments, double fontSize,
-        string brushKey = Palette.TextSecondary, Thickness? margin = null)
-    {
-        var inlines = new InlineCollection();
-        foreach (var segment in segments)
-        {
-            if (segment.Target is { } target)
-                inlines.Add(CreateLinkInline(target, fontSize));
-            else
-                inlines.Add(new Run(segment.Text));
-        }
-
-        return new SelectableTextBlock
-        {
-            FontSize = fontSize,
-            Foreground = Palette.Get(brushKey, ActualThemeVariant),
-            TextWrapping = TextWrapping.Wrap,
-            Margin = margin ?? new Thickness(0),
-            LineHeight = 22,
-            Inlines = inlines,
-        };
-    }
-
-    private InlineUIContainer CreateLinkInline(string word, double fontSize) =>
-        new() { Child = CreateLinkSurface(word, fontSize) };
 
     /// <summary>
     /// The Border is the click surface: hit testing on an inline TextBlock

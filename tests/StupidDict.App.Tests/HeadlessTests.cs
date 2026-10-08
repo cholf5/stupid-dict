@@ -462,8 +462,8 @@ public class HeadlessWindowTests
         Assert.Contains("反义词", labels);
         Assert.Contains("联想词", labels);
 
-        // The synonym line reads "n. tiger" — links are inline controls, so the
-        // whole word is the hit area and a plain click on its center looks it up.
+        // The synonym line reads "n. tiger" — the link Border is the whole
+        // hit area, so a plain click on its center looks the word up.
         var link = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
             .OfType<TextBlock>()
             .First(b => b.Classes.Contains("wordlink"));
@@ -475,6 +475,49 @@ public class HeadlessWindowTests
         Assert.Equal(link.Text, searchBox.Text);
         Assert.True(window.FindControl<Button>("NavBackButton")!.IsEnabled);
         SaveScreenshot(window, "stupiddict-thesaurus.png");
+    }
+
+    [AvaloniaFact]
+    public void SynonymLineKeepsCommaInsideWordEntry()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var dictionaryPath = Path.Combine(directory, "dictionary.db");
+        using (var db = DictionaryDatabase.Create(dictionaryPath))
+        {
+            db.BeginTransaction();
+            var cat = db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "a small animal", 1775, 0, "zk gk");
+            db.InsertSynGroup(cat, "syn", "n.", "tiger, lion");
+            var tiger = db.InsertWord("tiger", "", "", "", "n. 老虎", "", 900, 0, "");
+            if (tiger >= 0) db.InsertZhTerm("老虎", tiger);
+            db.InsertWord("lion", "", "", "", "n. 狮子", "", 890, 0, "");
+            db.CommitTransaction();
+        }
+        using var service = new DictionaryService(dictionaryPath, Path.Combine(directory, "history.db"));
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "cat");
+
+        // A plain Run directly between two InlineUIContainer links keeps its
+        // width but draws its glyphs about a line too low (Avalonia 11.3), so
+        // the commas used to stray out of the flow; now word and comma live in
+        // one atomic WrapPanel entry and never separate, on wrap or otherwise.
+        var entries = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
+            .OfType<WrapPanel>()
+            .Single(w => w.Classes.Contains("word-links"))
+            .Children.Cast<StackPanel>().ToList();
+        Assert.Equal(2, entries.Count);
+        Assert.Equal("n. ", Assert.IsType<SelectableTextBlock>(entries[0].Children[0]).Text);
+        Assert.Equal("tiger", Assert.IsType<TextBlock>(Assert.IsType<Border>(entries[0].Children[1]).Child!).Text);
+        Assert.Equal(",", Assert.IsType<SelectableTextBlock>(entries[0].Children[2]).Text);
+        Assert.True(((SelectableTextBlock)entries[0].Children[2]).Margin.Right > 0, "comma gap missing");
+        Assert.Equal("lion", Assert.IsType<TextBlock>(Assert.IsType<Border>(entries[1].Children[0]).Child!).Text);
+        Assert.Single(entries[1].Children);
     }
 
     [AvaloniaFact]

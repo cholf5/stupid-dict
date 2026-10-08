@@ -39,7 +39,7 @@ cholf5/stupid-dict：.NET 10 + Avalonia 桌面离线英汉词典（Windows / mac
 ## UI 约定（App）
 
 - **代码后置渲染，无 MVVM**：查询结果整页由 `MainWindow` 用 C# 构建（`Text()`/`BuildLinkText()`/`BuildChips()`），不用 XAML 数据模板。文本一律 `SelectableTextBlock`（可选中复制），默认挂 `OnResultTextPointerPressed`（`handledEventsToo: true`——要抢在控件自己的拖选处理之前拿到双击）实现双击取词：hit-test 命中字符 → 扩到词边界 → 选中并查询。
-- **词链接是 `InlineUIContainer` 包 Border**，不是 Run+点击：多 run SelectableTextBlock 的字符级命中测试在 Avalonia 11.3 不可靠（点击落到邻字、偶发 GlyphRun 内部异常）；Border 做整词点击面，热区完整。这套坑已修过一次，别改回去。**例外是联想词行**（`BuildRelatedWordsLine`）：按词条整块放 `WrapPanel`——换行点落在 InlineUIContainer 上时 Avalonia 11.3 不换行而是原位溢出视口，链接词被整个裁掉而释义照常渲染；词条原子化后换行只发生在词条之间。词条内间距（词-释义 4px、分号-下词 5px）用 margin 不用空格 run——挨着 CJK 文本的空格整形出来远宽于拉丁空格（分段也救不了）。
+- **词链接的点击面是 Border 包 TextBlock（`CreateLinkSurface`）**，不是 Run+点击：多 run SelectableTextBlock 的字符级命中测试在 Avalonia 11.3 不可靠（点击落到邻字、偶发 GlyphRun 内部异常），Border 做整词点击面热区完整。**近义/反义/联想三行（`BuildWordLinksLine`/`BuildRelatedWordsLine`）一律按词条整块放 `WrapPanel`，别放回流式文本**——两个 Avalonia 11.3 的坑：①换行点落在 InlineUIContainer 上时不换行而是原位溢出视口，链接词整个被裁掉而相邻文本照常渲染；②普通 Run 直接夹在两个 InlineUIContainer 之间时宽度占位但字形画低约一行（逗号集体出逃）。词条内间距用 margin 不用空格 run——挨着 CJK 文本的空格整形出来远宽于拉丁空格（拆成独立 Run 也救不了）。
 - **颜色只从 `Settings/Palette.cs` 的语义 token 取**：XAML 用 `{DynamicResource Token}`（自动跟随主题），代码渲染用 `Palette.Get(token, ActualThemeVariant)`。token 的日/夜值在 `App.axaml` 的 `ThemeDictionaries`（Light 是原始纸面色板，Dark 是配套暖炭色）。**加颜色先加 token，禁止再写 hex 字面量**（CI 之外没有检查，靠自觉 + code review）。
 - 主题切换时 XAML 样式自动换色，但代码渲染的结果页不会——`MainWindow` 订阅 `ActualThemeVariantChanged`，经 `_rebuildResults` 闭包重放当前页渲染；新增渲染路径时记得维护这个闭包（`RenderResult`/`RenderError` 已接，`ShowEmptyState` 置空）。
 - **Fluent 的 TextBox 聚焦态会覆盖模板化 Border 的背景/描边**（`:focus` 状态样式赢过无状态覆盖）：日间是白底看不出来，夜间是一块黑底蓝环。搜索框的无边框化因此有两条样式（基础 + `:focus`），见 `MainWindow.axaml`；给其他输入框去边框时同理，两条都要。
