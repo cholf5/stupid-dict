@@ -76,7 +76,7 @@ dotnet run --project src/StupidDict.App -f net10.0   # 运行（需要先构建�
 1. 可执行文件同目录（打包分发时随包携带）
 2. 用户数据目录（`~/Library/Application Support/StupidDict/`、`%APPDATA%/StupidDict/`）
 
-**自动下载**：首次启动检测不到 `dictionary.db` 时，界面内出现下载面板，自动从 GitHub Releases 拉取预构建的 `dictionary.zip`（约 600 MB），带进度、可取消、支持断点续传；词典就绪后自动排队下载发音包 `audio-pack.zip`（约 500 MB–1 GB）。下载链按序回退，直到成功：
+**自动下载**：首次启动检测不到 `dictionary.db` 时，界面内出现下载面板，自动从 GitHub Releases 拉取预构建的 `dictionary.zip`（约 170 MB），带进度、可取消、支持断点续传；词典就绪后自动排队下载发音包 `audio-pack.zip`（约 570 MB）。下载链按序回退，直到成功：
 
 1. GitHub 直连
 2. 加速镜像前缀（`ghfast.top`、`gh-proxy.com`、`ghproxy.net`，内置于代码，失效可改）
