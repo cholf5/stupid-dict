@@ -490,13 +490,23 @@ public class HeadlessWindowTests
         PressEnter(searchBox);
         WaitUntil(() => Headword(window) == "cat");
 
-        // Links are InlineUIContainer controls, so the visible line is pieced
-        // together from the plain Runs between them plus the linked words.
-        var line = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
-            .OfType<SelectableTextBlock>()
-            .Select(InlineText)
-            .Single(text => text.Contains("老虎"));
-        Assert.Equal("tiger 老虎; ", line);
+        // The line is a WrapPanel of whole-entry blocks so a line break can
+        // never land on a link — an InlineUIContainer at the break overflows
+        // the viewport and clips away instead of wrapping (Avalonia 11.3).
+        // Word/gloss/entry gaps are margins: a space run beside the CJK gloss
+        // shapes far wider than a Latin space.
+        var entry = (StackPanel)window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
+            .OfType<WrapPanel>()
+            .Single(w => w.Classes.Contains("related-words"))
+            .Children.Single();
+        var link = Assert.IsType<Border>(entry.Children[0]);
+        Assert.Equal("tiger", Assert.IsType<TextBlock>(link.Child!).Text);
+        Assert.True(link.Margin.Right > 0, "word/gloss gap missing");
+        Assert.Equal("老虎", Assert.IsType<SelectableTextBlock>(entry.Children[1]).Text);
+        var separator = Assert.IsType<SelectableTextBlock>(entry.Children[2]);
+        Assert.Equal(";", separator.Text);
+        Assert.True(separator.Margin.Right > 0, "entry gap missing");
+        SaveScreenshot(window, "stupiddict-related-words.png");
     }
 
     [AvaloniaFact]
@@ -1081,25 +1091,6 @@ public class HeadlessWindowTests
             db.CommitTransaction();
         }
         return new DictionaryService(dictionaryPath, Path.Combine(directory, "history.db"));
-    }
-
-    private static string InlineText(SelectableTextBlock block)
-    {
-        if (block.Inlines is null) return block.Text ?? "";
-        var sb = new System.Text.StringBuilder();
-        foreach (var inline in block.Inlines)
-        {
-            switch (inline)
-            {
-                case Avalonia.Controls.Documents.Run run:
-                    sb.Append(run.Text);
-                    break;
-                case Avalonia.Controls.Documents.InlineUIContainer { Child: Border border }:
-                    if (border.Child is TextBlock text) sb.Append(text.Text);
-                    break;
-            }
-        }
-        return sb.ToString();
     }
 
     private static void PressEnter(TextBox searchBox) => PressKey(searchBox, Key.Enter);

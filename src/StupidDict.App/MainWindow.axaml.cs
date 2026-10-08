@@ -913,16 +913,47 @@ public partial class MainWindow : Window
         if (result.RelatedWords.Count > 0)
         {
             ResultsPanel.Children.Add(Text(Translations.Instance.RelatedWords, fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 14, 0, 5)));
-            List<LinkSegment> segments = [];
-            foreach (var related in result.RelatedWords)
-            {
-                segments.Add(new LinkSegment(related.Word, related.Word));
-                if (related.Gloss.Length > 0)
-                    segments.Add(new LinkSegment(" " + related.Gloss, null));
-                segments.Add(new LinkSegment("; ", null));
-            }
-            ResultsPanel.Children.Add(BuildLinkText(segments, fontSize: 15, margin: new Thickness(2, 0, 0, 0)));
+            ResultsPanel.Children.Add(BuildRelatedWordsLine(result.RelatedWords));
         }
+    }
+
+    // Per-entry blocks in a WrapPanel instead of one wrapping text line: when a
+    // line break lands on an InlineUIContainer link, Avalonia 11.3 overflows it
+    // past the viewport instead of wrapping (the word clips away while its gloss
+    // renders on). Whole entries are atomic so breaks only fall between them.
+    // Gaps are margins rather than space runs — a space next to the CJK gloss
+    // shapes far wider than a Latin space.
+    private WrapPanel BuildRelatedWordsLine(IReadOnlyList<RelatedWord> relatedWords)
+    {
+        var panel = new WrapPanel { Classes = { "related-words" } };
+        foreach (var related in relatedWords)
+        {
+            var entry = new StackPanel { Orientation = Orientation.Horizontal };
+            var surface = CreateLinkSurface(related.Word, 15, lineHeight: 22);
+            entry.Children.Add(surface);
+            if (related.Gloss.Length > 0)
+            {
+                surface.Margin = new Thickness(0, 0, 4, 0);
+                entry.Children.Add(new SelectableTextBlock
+                {
+                    Text = related.Gloss,
+                    FontSize = 15,
+                    LineHeight = 22,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = Palette.Get(Palette.TextSecondary, ActualThemeVariant),
+                });
+            }
+            entry.Children.Add(new SelectableTextBlock
+            {
+                Text = ";",
+                FontSize = 15,
+                LineHeight = 22,
+                Foreground = Palette.Get(Palette.TextSecondary, ActualThemeVariant),
+                Margin = new Thickness(0, 0, 5, 0),
+            });
+            panel.Children.Add(entry);
+        }
+        return panel;
     }
 
     private static List<LinkSegment> PosLineSegments(SynonymLine line)
@@ -1167,12 +1198,18 @@ public partial class MainWindow : Window
         };
     }
 
-    private InlineUIContainer CreateLinkInline(string word, double fontSize)
+    private InlineUIContainer CreateLinkInline(string word, double fontSize) =>
+        new() { Child = CreateLinkSurface(word, fontSize) };
+
+    /// <summary>
+    /// The Border is the click surface: hit testing on an inline TextBlock
+    /// only covers its currently shaped glyphs (and desyncs inside
+    /// InlineUIContainer), so clicks in glyph gaps used to fall through.
+    /// </summary>
+    private Border CreateLinkSurface(string word, double fontSize, double? lineHeight = null)
     {
-        // The Border is the click surface: hit testing on an inline TextBlock
-        // only covers its currently shaped glyphs (and desyncs inside
-        // InlineUIContainer), so clicks in glyph gaps used to fall through.
         var link = new TextBlock { Text = word, FontSize = fontSize, Classes = { "wordlink" } };
+        if (lineHeight is { } height) link.LineHeight = height;
         var surface = new Border
         {
             Background = Brushes.Transparent,
@@ -1185,7 +1222,7 @@ public partial class MainWindow : Window
             SetQueryText(word);
             RunSearch(word);
         };
-        return new InlineUIContainer { Child = surface };
+        return surface;
     }
 
     private SelectableTextBlock Text(string value, double fontSize, FontWeight weight = FontWeight.Normal,
