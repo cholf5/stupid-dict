@@ -1,10 +1,40 @@
+<div align="center">
+
+<img src="src/StupidDict.App/Assets/app-icon.png" width="110" alt="Stupid Dict 图标"/>
+
 # Stupid Dict — 傻瓜词典
 
-A stupidly simple offline English-Chinese dictionary for Windows, macOS and Linux.
+**A stupidly simple offline English–Chinese dictionary for Windows, macOS and Linux.**
 
 **No account. No dictionary management. Just type and search.**
 
 输入一个词，立即告诉你它是什么意思。不登录，不联网，不选词典；仅有的设置是日间 / 夜间主题和界面语言。
+
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4)
+![Offline](https://img.shields.io/badge/100%25-offline-2EA043)
+![License](https://img.shields.io/badge/license-MIT-blue)
+![Release](https://img.shields.io/github/v/release/cholf5/stupid-dict)
+
+**[⬇ 下载最新版](https://github.com/cholf5/stupid-dict/releases/latest)**
+
+</div>
+
+## 界面预览
+
+<div align="center">
+
+<img src="docs/images/lookup.png" width="720" alt="查词界面"/>
+
+<sub>查「about」：中英释义 + 英英释义，近义词、联想词都是链接，单击继续查；音标行旁的 UK / US 即点即读</sub>
+
+</div>
+
+| ![](docs/images/home.png) | ![](docs/images/settings-about.png) |
+|:---:|:---:|
+| **首页 · 最近搜索** | **设置 · 关于** |
+| ![](docs/images/settings-general.png) | ![](docs/images/settings-shortcuts.png) |
+| **设置 · 主题与语言** | **设置 · 快捷键** |
 
 ## 功能
 
