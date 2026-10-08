@@ -1,0 +1,8 @@
+<Project>
+
+  <!-- 任何工程冒出警告即构建失败；新警告必须在源头修掉，不许靠 NoWarn 压制。 -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>
