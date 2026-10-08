@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using StupidDict.App.Localization;
 using StupidDict.App.Settings;
 using StupidDict.Core.Application;
 
@@ -10,6 +11,22 @@ namespace StupidDict.App;
 
 public partial class App : Application
 {
+    public App()
+    {
+        // The macOS menu-bar app title is Application.Name: AvaloniaNative pushes it
+        // to the native SetApplicationTitle exactly once at platform init, before
+        // settings load (the Application ctor default is "Avalonia Application").
+        // Seed it from the machine UI culture here, then follow Translations — the
+        // same source the window title binds to — replaying the native push on every
+        // language change (MacAppTitle).
+        Name = Translations.Instance.AppName;
+        Translations.Instance.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(Translations.AppName))
+                ApplyAppName();
+        };
+    }
+
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()
@@ -39,6 +56,20 @@ public partial class App : Application
             AppTheme.Dark => ThemeVariant.Dark,
             _ => ThemeVariant.Default,
         };
+
+    /// <summary>
+    /// Keeps Application.Name and the native macOS menu-bar title on the current
+    /// UI language. WireSettings' initial SetLanguage raises AppName, so the boot
+    /// path re-pushes the saved language over the machine-culture seed without a
+    /// dedicated call here.
+    /// </summary>
+    internal static void ApplyAppName()
+    {
+        var name = Translations.Instance.AppName;
+        if (Current is { } app)
+            app.Name = name;
+        MacAppTitle.TrySet(name);
+    }
 
     /// <summary>
     /// Applies theme and language once, then applies and persists every change

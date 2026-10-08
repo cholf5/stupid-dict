@@ -72,6 +72,27 @@ public class HeadlessWindowTests
     }
 
     [AvaloniaFact]
+    public void MacMenuBarAppNameFollowsUiLanguage()
+    {
+        // The menu-bar app title is Application.Current.Name, pushed natively by
+        // AvaloniaNative (SetApplicationTitle) at platform init and replayed on
+        // every language change via MacAppTitle; it must track the UI language
+        // exactly like the window title binding does. The native push itself is
+        // a no-op off macOS and unobservable headlessly, so pin the value wiring.
+        try
+        {
+            Translations.Instance.SetLanguage(AppLanguage.SimplifiedChinese);
+            Assert.Equal("傻瓜词典", App.Current!.Name);
+            Translations.Instance.SetLanguage(AppLanguage.English);
+            Assert.Equal("Stupid Dict", App.Current!.Name);
+        }
+        finally
+        {
+            Translations.Instance.SetLanguage(AppLanguage.SimplifiedChinese);
+        }
+    }
+
+    [AvaloniaFact]
     public void SearchBoxLineHeightFollowsWatermarkScript()
     {
         // The CJK watermark only misaligns with the caret when a CJK fallback
