@@ -643,6 +643,8 @@ public partial class MainWindow : Window
         AudioPackPanel.IsVisible = true;
         AudioPackActionButton.Content = Translations.Instance.Cancel;
         AudioPackActionButton.IsEnabled = true;
+        PickAudioPackButton.IsVisible = false;
+        AudioPackDownloadPageButton.IsVisible = false;
         AudioPackBar.IsVisible = true;
         AudioPackStatus.Text = Translations.Instance.DownloadingAudioPack;
         var cancellation = _audioPackCts.Token;
@@ -663,6 +665,8 @@ public partial class MainWindow : Window
         {
             AudioPackStatus.Text = Translations.Instance.AudioPackCancelled;
             AudioPackActionButton.Content = Translations.Instance.AudioPackDownloadButton;
+            PickAudioPackButton.IsVisible = true;
+            AudioPackDownloadPageButton.IsVisible = true;
             AudioPackBar.IsVisible = false;
         }
         catch (AssetBootstrapException ex)
@@ -670,12 +674,16 @@ public partial class MainWindow : Window
             // Download/checksum failures carry their stage in the message already.
             AudioPackStatus.Text = ex.Message;
             AudioPackActionButton.Content = Translations.Instance.Retry;
+            PickAudioPackButton.IsVisible = true;
+            AudioPackDownloadPageButton.IsVisible = true;
             AudioPackBar.IsVisible = false;
         }
         catch (Exception ex)
         {
             AudioPackStatus.Text = string.Format(Translations.Instance.AudioPackExtractFailedFormat, ex.Message);
             AudioPackActionButton.Content = Translations.Instance.Retry;
+            PickAudioPackButton.IsVisible = true;
+            AudioPackDownloadPageButton.IsVisible = true;
             AudioPackBar.IsVisible = false;
         }
         finally
@@ -719,6 +727,55 @@ public partial class MainWindow : Window
         {
             StartAudioPackDownload();
         }
+    }
+
+    private async void OnPickAudioPackClick(object? sender, RoutedEventArgs e)
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = Translations.Instance.PickerTitleAudioPack,
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType(Translations.Instance.FileTypeAudioPack)
+                { Patterns = ["*.zip"] }],
+        });
+        if (files.Count == 0) return;
+        var path = files[0].TryGetLocalPath();
+        if (path is null) return;
+
+        AudioPackStatus.Text = Translations.Instance.Importing;
+        AudioPackActionButton.IsEnabled = false;
+        try
+        {
+            await Task.Run(() => ImportAudioPack(path, _locations.AudioDirectory));
+            AudioPackPanel.IsVisible = false;
+        }
+        catch (Exception ex)
+        {
+            AudioPackStatus.Text = string.Format(Translations.Instance.ImportFailedFormat, ex.Message);
+            AudioPackActionButton.Content = Translations.Instance.Retry;
+            AudioPackActionButton.IsEnabled = true;
+            PickAudioPackButton.IsVisible = true;
+            AudioPackDownloadPageButton.IsVisible = true;
+        }
+    }
+
+    private void OnOpenDownloadPageClick(object? sender, RoutedEventArgs e) =>
+        _ = TopLevel.GetTopLevel(this)?.Launcher.LaunchUriAsync(new Uri(ReleaseAssets.DataReleasePageUrl));
+
+    /// <summary>
+    /// Validates that the zip really is a pronunciation pack (uk/ or us/ at
+    /// the root) before extracting — importing a wrong zip must not scatter
+    /// junk inside the audio directory.
+    /// </summary>
+    internal static void ImportAudioPack(string zipPath, string audioDirectory)
+    {
+        using var archive = System.IO.Compression.ZipFile.OpenRead(zipPath);
+        var hasPack = archive.Entries.Any(entry =>
+            entry.FullName.StartsWith("uk/", StringComparison.Ordinal) ||
+            entry.FullName.StartsWith("us/", StringComparison.Ordinal));
+        if (!hasPack)
+            throw new InvalidOperationException(Translations.Instance.ImportMissingPack);
+        ExtractZip(zipPath, audioDirectory);
     }
 
     /// <summary>

@@ -27,7 +27,7 @@ cholf5/stupid-dict：.NET 10 + Avalonia 桌面离线英汉词典（Windows / mac
 
 ## 资产下载（Assets/）
 
-- 下载链按序回退（`AssetDownloadService` + `ReleaseAssets.MirrorUrls`）：GitHub 直连 → 加速镜像前缀（ghfast.top、gh-proxy.com、ghproxy.net，写死在代码里方便更新）→ 本机代理探测（`ProxyDetector`：环境变量 → macOS `scutil --proxy` → Clash/V2Ray/Surge 常见端口）→ 全部失败时 UI 出「选择本地文件…」手动导入 zip 或裸 db。断点续传、`.sha256` 校验（远端没有校验文件时跳过，不阻塞）。
+- 下载链按相位回退（`AssetDownloadService.BuildAttempts`）：①平台默认代理（`HttpClient.DefaultProxy`，浏览器同款路由：Windows 走 WinINET 注册表/PAC、unix 走环境变量）过全部源 → ②绕开一切代理直连镜像（防失效系统代理拖死镜像，GitHub 直连不在这一相）→ ③显式检测代理（`ProxyDetector`：环境变量 → Windows 注册表（`ParseWindowsProxyServer` 可单测）→ macOS `scutil --proxy` → Clash/V2Ray/Surge 常见端口）各过前两源。托管只有 GitHub + 镜像前缀（ghfast.top、gh-proxy.com、ghproxy.net，写死在代码里方便更新；R2/manifest 方案评估过被否——域名要长期续费）。断点续传；校验失败删净 zip/.part 自动从零重下一次（仅一次）；失败文案分阶段（下载/校验/解压），续传的进度条显示「断点续传」；解压全有或全无（staging 目录 + 原子进位）。人工兜底：词典「选择本地文件…」导入 zip 或裸 db；发音包有同款导入按钮（`ImportAudioPack` 先校验 uk/、us/ 再解压）；两个下载 UI 都带「用浏览器打开下载页」直链（浏览器走 VPN 是最可靠的通道）。`.sha256` 校验远端没有校验文件时跳过，不阻塞。
 - **zip 解压两条铁律**：防 zip-slip（条目路径逃出目标目录即抛，`MainWindow.ExtractZip`）；全有或全无——半解压的发音包会因 `uk/` 目录存在被误判为已安装。临时下载目录 `stupiddict-downloads`，成功后删 zip。
 - 首启流程：无 `dictionary.db` → 主界面被下载面板接管（查词被禁），就绪后热重建 `DictionaryService` 并排队下载发音包；发音包失败/取消不阻塞任何功能（未覆盖的词回退系统语音）。
 

@@ -46,6 +46,10 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(DownloadFailedFormat)] = "下载失败：{0}",
         [nameof(ImportFailedFormat)] = "导入失败：{0}",
         [nameof(ImportMissingDb)] = "文件里没有 dictionary.db",
+        [nameof(ImportMissingPack)] = "文件里没有发音包（应包含 uk/、us/ 目录）",
+        [nameof(PickerTitleAudioPack)] = "选择 audio-pack.zip",
+        [nameof(FileTypeAudioPack)] = "发音包",
+        [nameof(OpenDownloadPage)] = "用浏览器打开下载页",
         [nameof(AllSourcesFailed)] = "所有下载源都失败了。请检查网络，或手动下载后导入。",
         [nameof(ChecksumFailed)] = "下载文件校验失败，已删除损坏文件。",
         [nameof(ChecksumRedownloading)] = "校验失败，已删除损坏文件，正在重新下载…",
@@ -133,6 +137,10 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(DownloadFailedFormat)] = "Download failed: {0}",
         [nameof(ImportFailedFormat)] = "Import failed: {0}",
         [nameof(ImportMissingDb)] = "The file does not contain dictionary.db",
+        [nameof(ImportMissingPack)] = "The file does not contain the pronunciation pack (uk/ and us/ directories expected)",
+        [nameof(PickerTitleAudioPack)] = "Choose audio-pack.zip",
+        [nameof(FileTypeAudioPack)] = "Pronunciation pack",
+        [nameof(OpenDownloadPage)] = "Open the download page in a browser",
         [nameof(AllSourcesFailed)] = "Every download source failed. Check the network, or download and import manually.",
         [nameof(ChecksumFailed)] = "Checksum verification failed; the corrupted file was deleted.",
         [nameof(ChecksumRedownloading)] = "Checksum failed; the corrupted file was deleted. Downloading again…",
@@ -275,6 +283,10 @@ public sealed class Translations : INotifyPropertyChanged
     public string ExtractFailedFormat => Get();
     public string AudioPackExtractFailedFormat => Get();
     public string ZipSlipFormat => Get();
+    public string ImportMissingPack => Get();
+    public string PickerTitleAudioPack => Get();
+    public string FileTypeAudioPack => Get();
+    public string OpenDownloadPage => Get();
     /// <summary>{0} 已接收 MB，{1} 总 MB。</summary>
     public string DownloadingDictionaryFormat => Get();
     public string DownloadingDictionaryUnsizedFormat => Get();

@@ -8,8 +8,9 @@ namespace StupidDict.App.Assets;
 /// Finds local HTTP proxies when direct downloads fail — the machine may sit
 /// behind a system-wide proxy (Clash, V2Ray, Surge) that the browser uses but
 /// that .NET on macOS does not pick up automatically. Sources, in order:
-/// environment variables, the macOS system proxy settings (scutil), then a
-/// probe of the ports the common local proxies listen on.
+/// environment variables, the Windows per-user proxy (WinINET registry), the
+/// macOS system proxy settings (scutil), then a probe of the ports the common
+/// local proxies listen on.
 /// </summary>
 internal static class ProxyDetector
 {
@@ -36,9 +37,87 @@ internal static class ProxyDetector
             }
         }
 
+        if (OperatingSystem.IsWindows())
+            foreach (var proxy in WindowsSystemProxies())
+                yield return proxy;
+
         if (OperatingSystem.IsMacOS())
             foreach (var proxy in MacSystemProxies())
                 yield return proxy;
+    }
+
+    private static IEnumerable<IWebProxy> WindowsSystemProxies()
+    {
+        if (!OperatingSystem.IsWindows())
+            yield break;
+
+        // WinINET per-user proxy (the "use a proxy server" toggle in Windows
+        // settings). PAC scripts (AutoConfigURL) are not evaluated here —
+        // they are covered by the platform-default proxy attempt, which lets
+        // .NET resolve the user's browser-equivalent route itself.
+        Microsoft.Win32.RegistryKey? key = null;
+        IWebProxy? proxy = null;
+        try
+        {
+            key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Internet Settings");
+            if ((key?.GetValue("ProxyEnable") as int?) == 1)
+            {
+                var server = (key.GetValue("ProxyServer") as string)?.Trim();
+                if (!string.IsNullOrEmpty(server))
+                    proxy = ParseWindowsProxyServer(server);
+            }
+        }
+        catch
+        {
+            // unreadable registry — no proxy
+        }
+        finally
+        {
+            key?.Dispose();
+        }
+        if (proxy is not null)
+            yield return proxy;
+    }
+
+    /// <summary>
+    /// WinINET's ProxyServer value: either "host:port" for all protocols or a
+    /// per-protocol list like "http=h:p;https=h:p;socks=h:p". The https entry
+    /// wins, then http, then socks (downloads ride https).
+    /// </summary>
+    internal static IWebProxy? ParseWindowsProxyServer(string server)
+    {
+        var scheme = "http";
+        var entry = server.Trim();
+        if (entry.Contains('=', StringComparison.Ordinal))
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in entry.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var equals = pair.IndexOf('=');
+                if (equals <= 0) continue;
+                map[pair[..equals].Trim()] = pair[(equals + 1)..].Trim();
+            }
+            if (!map.TryGetValue("https", out entry!) && !map.TryGetValue("http", out entry!))
+            {
+                if (!map.TryGetValue("socks", out entry!))
+                    return null;
+                scheme = "socks5";
+            }
+        }
+        var separator = entry!.LastIndexOf(':');
+        if (separator <= 0) return null;
+        var host = entry[..separator].Trim().Split("://").Last().Trim();
+        if (host.Length == 0 || !int.TryParse(entry[(separator + 1)..].Trim(), out var port) || port is < 1 or > 65535)
+            return null;
+        try
+        {
+            return new WebProxy(new Uri($"{scheme}://{host}:{port}"));
+        }
+        catch (UriFormatException)
+        {
+            return null;
+        }
     }
 
     public static IEnumerable<IWebProxy> ProbeCommonLocalPorts()

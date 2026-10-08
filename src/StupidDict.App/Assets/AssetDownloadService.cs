@@ -32,12 +32,26 @@ public interface IAssetDownloader
     Task<string?> FetchChecksumAsync(string assetName, CancellationToken cancellation);
 }
 
+/// <summary>How a download attempt should route through proxies.</summary>
+internal enum DownloadProxyMode
+{
+    /// <summary>The platform's own system proxy (WinINET settings incl. PAC on
+    /// Windows, env vars on unix) — the route the user's browser takes, which
+    /// is the one route known to work behind VPNs.</summary>
+    PlatformDefault,
+    /// <summary>Bypass every proxy: a dead or stale system proxy must not take
+    /// the mirror connections down with it.</summary>
+    Direct,
+    /// <summary>An explicitly detected proxy (env vars, system settings, probed ports).</summary>
+    Explicit,
+}
+
 /// <summary>
 /// Downloads GitHub release assets with the fallback chain the product needs
-/// for CN networks: direct → mirror prefixes → detected proxies → probed
-/// local proxy ports. Each attempt resumes an interrupted ".part" file via
-/// HTTP Range. This is asset bootstrapping only — dictionary lookups stay
-/// fully offline.
+/// for CN networks: platform-default proxy → direct mirrors → detected
+/// proxies → probed local proxy ports. Each attempt resumes an interrupted
+/// ".part" file via HTTP Range. This is asset bootstrapping only — dictionary
+/// lookups stay fully offline.
 /// </summary>
 public sealed class AssetDownloadService : IAssetDownloader
 {
@@ -48,11 +62,11 @@ public sealed class AssetDownloadService : IAssetDownloader
         IProgress<DownloadProgress>? progress, CancellationToken cancellation)
     {
         var githubUrl = ReleaseAssets.GithubUrl(assetName);
-        foreach (var (url, proxy) in BuildAttempts(githubUrl))
+        foreach (var (url, mode, proxy) in BuildAttempts(githubUrl))
         {
             try
             {
-                return await DownloadFromAsync(url, proxy, destinationFile, progress, cancellation);
+                return await DownloadFromAsync(url, mode, proxy, destinationFile, progress, cancellation);
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
             {
@@ -67,28 +81,34 @@ public sealed class AssetDownloadService : IAssetDownloader
     }
 
     /// <summary>
-    /// Attempts in escalation order. Proxy detection is cheap; probing local
-    /// ports costs a few hundred milliseconds and only runs when the direct
-    /// and mirror attempts are already lost.
+    /// Attempts in escalation order. Phase 1 rides the platform default over
+    /// every source (identical to the user's browser: system proxy when one
+    /// exists, direct otherwise). Phase 2 bypasses proxies so a stale/dead
+    /// system proxy cannot sink the mirrors. Explicitly detected proxies come
+    /// last and only re-try the first two sources each.
     /// </summary>
-    internal IEnumerable<(string Url, IWebProxy? Proxy)> BuildAttempts(string githubUrl)
+    internal IEnumerable<(string Url, DownloadProxyMode Mode, IWebProxy? Proxy)> BuildAttempts(string githubUrl)
     {
         var sources = ReleaseAssets.MirrorUrls(githubUrl).ToList();
+
         foreach (var url in sources)
-            yield return (url, null);
+            yield return (url, DownloadProxyMode.PlatformDefault, null);
+
+        foreach (var url in sources.Skip(1))
+            yield return (url, DownloadProxyMode.Direct, null);
 
         var detected = ProxyDetector.DetectFromEnvironmentAndSystem().ToList();
         foreach (var proxy in detected)
             foreach (var url in sources.Take(2))
-                yield return (url, proxy);
+                yield return (url, DownloadProxyMode.Explicit, proxy);
 
         foreach (var proxy in ProxyDetector.ProbeCommonLocalPorts())
             foreach (var url in sources.Take(2))
-                yield return (url, proxy);
+                yield return (url, DownloadProxyMode.Explicit, proxy);
     }
 
-    private static async Task<DownloadResult> DownloadFromAsync(string url, IWebProxy? proxy, string destinationFile,
-        IProgress<DownloadProgress>? progress, CancellationToken cancellation)
+    private static async Task<DownloadResult> DownloadFromAsync(string url, DownloadProxyMode mode, IWebProxy? proxy,
+        string destinationFile, IProgress<DownloadProgress>? progress, CancellationToken cancellation)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(destinationFile)!);
         var partFile = destinationFile + ".part";
@@ -96,10 +116,22 @@ public sealed class AssetDownloadService : IAssetDownloader
 
         using var handler = new SocketsHttpHandler
         {
-            UseProxy = proxy is not null,
-            Proxy = proxy,
             ConnectTimeout = TimeSpan.FromSeconds(10),
         };
+        switch (mode)
+        {
+            case DownloadProxyMode.PlatformDefault:
+                handler.UseProxy = true;
+                handler.Proxy = HttpClient.DefaultProxy;
+                break;
+            case DownloadProxyMode.Explicit:
+                handler.UseProxy = true;
+                handler.Proxy = proxy;
+                break;
+            case DownloadProxyMode.Direct:
+                handler.UseProxy = false;
+                break;
+        }
         using var client = new HttpClient(handler);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("stupiddict");
 

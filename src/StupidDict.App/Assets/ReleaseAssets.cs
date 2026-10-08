@@ -19,6 +19,10 @@ internal static class ReleaseAssets
     public static string GithubUrl(string assetName) =>
         $"https://github.com/{Repository}/releases/download/{DataTag}/{assetName}";
 
+    /// <summary>Browser-facing release page — the manual-download escape hatch.</summary>
+    public static string DataReleasePageUrl =>
+        $"https://github.com/{Repository}/releases/tag/{DataTag}";
+
     /// <summary>GitHub first, then public accelerator mirrors that work from CN networks.</summary>
     public static IEnumerable<string> MirrorUrls(string githubUrl)
     {

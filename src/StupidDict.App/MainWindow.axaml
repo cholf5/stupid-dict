@@ -125,6 +125,11 @@
                     Content="{Binding Cancel, Source={x:Static loc:Translations.Instance}}"
                     IsVisible="False" Click="OnCancelDictionaryClick" />
           </StackPanel>
+          <!-- The manual escape hatch: the browser (VPN-aware) is the one
+               channel known to work when the in-app chain fails. -->
+          <HyperlinkButton Name="OpenDownloadPageButton" HorizontalAlignment="Center"
+                           Content="{Binding OpenDownloadPage, Source={x:Static loc:Translations.Instance}}"
+                           Click="OnOpenDownloadPageClick" />
         </StackPanel>
 
         <StackPanel Name="ResultsPanel" IsVisible="False" Spacing="4" />
@@ -163,6 +168,13 @@
         <Button Name="AudioPackActionButton" Classes="spk"
                 Content="{Binding Cancel, Source={x:Static loc:Translations.Instance}}"
                 Click="OnAudioPackActionClick" />
+        <Button Name="PickAudioPackButton" Classes="spk" IsVisible="False"
+                Content="{Binding PickLocalFile, Source={x:Static loc:Translations.Instance}}"
+                Click="OnPickAudioPackClick" />
+        <HyperlinkButton Name="AudioPackDownloadPageButton" IsVisible="False" VerticalAlignment="Center"
+                         FontSize="12" Padding="4,0"
+                         Content="{Binding OpenDownloadPage, Source={x:Static loc:Translations.Instance}}"
+                         Click="OnOpenDownloadPageClick" />
       </StackPanel>
     </Border>
 

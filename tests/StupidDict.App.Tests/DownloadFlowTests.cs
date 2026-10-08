@@ -140,6 +140,44 @@ public class DownloadFlowTests
         Assert.False(Directory.Exists(Path.Combine(destination, ".stupiddict-extracting-stale")));
     }
 
+    [AvaloniaFact]
+    public void AudioPackImportRejectsZipWithoutPackEntries()
+    {
+        var scratch = NewScratchDirectory();
+        var source = Path.Combine(scratch, "src");
+        Directory.CreateDirectory(source);
+        File.WriteAllText(Path.Combine(source, "dictionary.db"), "not a pack");
+        var zipPath = Path.Combine(scratch, "wrong.zip");
+        ZipFile.CreateFromDirectory(source, zipPath);
+        var audio = Path.Combine(scratch, "audio");
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => MainWindow.ImportAudioPack(zipPath, audio));
+
+        Assert.Equal(Translations.Instance.ImportMissingPack, ex.Message);
+        // A wrong zip must not scatter its contents into the audio directory.
+        Assert.False(Directory.Exists(audio));
+    }
+
+    [AvaloniaFact]
+    public void AudioPackImportExtractsPack()
+    {
+        var scratch = NewScratchDirectory();
+        var source = Path.Combine(scratch, "src");
+        Directory.CreateDirectory(Path.Combine(source, "uk"));
+        Directory.CreateDirectory(Path.Combine(source, "us"));
+        File.WriteAllText(Path.Combine(source, "uk", "cat.mp3"), "x");
+        File.WriteAllText(Path.Combine(source, "us", "cat.mp3"), "x");
+        var zipPath = Path.Combine(scratch, "pack.zip");
+        ZipFile.CreateFromDirectory(source, zipPath);
+
+        var audio = Path.Combine(scratch, "audio");
+        MainWindow.ImportAudioPack(zipPath, audio);
+
+        Assert.True(File.Exists(Path.Combine(audio, "uk", "cat.mp3")));
+        Assert.True(File.Exists(Path.Combine(audio, "us", "cat.mp3")));
+    }
+
     // ---- helpers ----
 
     private static AppLocations NewLocations(out string dictionaryPath, out string historyPath)
