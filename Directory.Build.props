@@ -5,4 +5,16 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
+  <!-- 唯一的压制例外，三条腿都不在我们手里：GHSA-2m69-gcr7-jv3q（SQLite 内存破坏，
+       需 SQLite >= 3.50.2）在 SQLitePCLRaw.lib.e_sqlite3 里没有修复版——公告 patched
+       一栏为空，nuget.org 上的 3.x 线（3.50.3 / 3.53.3）实测过不去：CI linux-x64 上
+       App.Tests 静默停滞 9 分钟起，macOS 本地整套测试 3 分钟劣化到 16 分钟（此前
+       c61d54c 钉过，见那条提交）。上游只能等 Microsoft.Data.Sqlite 升级它捆绑的
+       SQLitePCLRaw。风险评估：离线本地词典，SQLite 只打开自家打包的 dictionary.db /
+       历史库，唯一不可信输入是手动导入的外部 db/zip，与所有 Microsoft.Data.Sqlite
+       10.x 用户的暴露面相同。移除条件：dotnet list package 的审计清零即可删本段。 -->
+  <ItemGroup>
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
+  </ItemGroup>
+
 </Project>

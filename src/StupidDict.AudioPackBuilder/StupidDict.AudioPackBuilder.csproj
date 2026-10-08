@@ -9,8 +9,6 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
-    <!-- 同 StupidDict.Core：钉修复版 lib.e_sqlite3 过 NU1903（GHSA-2m69-gcr7-jv3q）。 -->
-    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.50.3" />
   </ItemGroup>
 
 </Project>

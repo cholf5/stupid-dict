@@ -8,10 +8,6 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
-    <!-- Microsoft.Data.Sqlite 10.0.0 传递的 lib.e_sqlite3 2.1.11 内置 SQLite < 3.50.2，
-         命中 GHSA-2m69-gcr7-jv3q（高危），TreatWarningsAsErrors 下 NU1903 直接失败；
-         钉修复版原生库（托管层仍走 2.1.x），Microsoft.Data.Sqlite 升级依赖后可移除。 -->
-    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.50.3" />
   </ItemGroup>
 
 </Project>
