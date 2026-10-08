@@ -357,7 +357,7 @@ public partial class MainWindow : Window
             open.Activate();
             return;
         }
-        _settingsWindow = new SettingsWindow(_settings);
+        _settingsWindow = new SettingsWindow(_settings, locations: _locations);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _ = _settingsWindow.ShowDialog(this);
     }

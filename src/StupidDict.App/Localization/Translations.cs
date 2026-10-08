@@ -107,6 +107,13 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(AuthorName)] = "周尔复",
         [nameof(LicenseLabel)] = "开源许可",
         [nameof(RepoLabel)] = "仓库地址",
+        [nameof(DictionaryDataLabel)] = "词典",
+        [nameof(AudioPackDataLabel)] = "发音包",
+        [nameof(AssetInstalled)] = "已安装",
+        [nameof(AssetNotInstalled)] = "未安装",
+        [nameof(OpenDataDirectory)] = "打开数据目录",
+        [nameof(DataDirectoryHint)] = "下载的词典与发音包保存在这个目录；随安装包携带的在应用所在目录。",
+        [nameof(OpenDataDirectoryFailed)] = "打开目录失败：{0}",
         [nameof(CheckUpdate)] = "检查更新",
         [nameof(OpenReleasePage)] = "打开发布页",
         [nameof(CheckingUpdate)] = "正在检查更新…",
@@ -197,6 +204,13 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(AuthorName)] = "Cholf",
         [nameof(LicenseLabel)] = "License",
         [nameof(RepoLabel)] = "Repository",
+        [nameof(DictionaryDataLabel)] = "Dictionary",
+        [nameof(AudioPackDataLabel)] = "Audio pack",
+        [nameof(AssetInstalled)] = "Installed",
+        [nameof(AssetNotInstalled)] = "Not installed",
+        [nameof(OpenDataDirectory)] = "Open data folder",
+        [nameof(DataDirectoryHint)] = "Downloaded dictionary and audio pack live in this folder; bundled ones live next to the application.",
+        [nameof(OpenDataDirectoryFailed)] = "Could not open the folder: {0}",
         [nameof(CheckUpdate)] = "Check for updates",
         [nameof(OpenReleasePage)] = "Open release page",
         [nameof(CheckingUpdate)] = "Checking for updates…",
@@ -347,6 +361,16 @@ public sealed class Translations : INotifyPropertyChanged
     public string AuthorName => Get();
     public string LicenseLabel => Get();
     public string RepoLabel => Get();
+    /// <summary>关于页数据区块：安装状态行的行标签（词典 / 发音包）。</summary>
+    public string DictionaryDataLabel => Get();
+    public string AudioPackDataLabel => Get();
+    public string AssetInstalled => Get();
+    public string AssetNotInstalled => Get();
+    public string OpenDataDirectory => Get();
+    /// <summary>覆盖 exe 同目录优先规则造成的两种资产布局差异。</summary>
+    public string DataDirectoryHint => Get();
+    /// <summary>{0} 为异常消息。</summary>
+    public string OpenDataDirectoryFailed => Get();
     public string CheckUpdate => Get();
     public string OpenReleasePage => Get();
 

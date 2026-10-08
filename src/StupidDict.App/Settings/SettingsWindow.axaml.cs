@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using StupidDict.App.Assets;
 using StupidDict.App.Localization;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -11,6 +12,8 @@ public partial class SettingsWindow : Window
 {
     private readonly AppSettings _settings;
     private readonly UpdateChecker? _updateChecker;
+    private readonly AppLocations _locations;
+    private readonly Action<string> _openDataDirectory;
 
     // 选项实例一次创建、跨语言复用，顺序与枚举下标一一对应；ItemsSource 全程不换
     // （重建会异步清空选区并把旧选中项经双向绑定推回），切语言只更新 Label
@@ -26,11 +29,18 @@ public partial class SettingsWindow : Window
     /// <summary>About 页展示的版本，与更新检查同源（csproj &lt;Version&gt;）。</summary>
     public static string AppVersion => UpdateChecker.CurrentVersion.TrimStart('v');
 
-    public SettingsWindow(AppSettings settings, UpdateChecker? updateChecker = null)
+    // 无参构造仅为满足 XAML 运行时加载器（AVLN3001），生产与测试都走带 settings 的构造
+    public SettingsWindow() : this(new AppSettings()) { }
+
+    public SettingsWindow(AppSettings settings, UpdateChecker? updateChecker = null,
+        AppLocations? locations = null, Action<string>? openDataDirectory = null)
     {
         InitializeComponent();
         _settings = settings;
         _updateChecker = updateChecker;
+        // 数据区块对注入的布局对磁盘求值；测试注入临时副本，绝不碰真实数据。
+        _locations = locations ?? AppLocations.Default;
+        _openDataDirectory = openDataDirectory ?? OpenDirectoryInFileManager;
         var t = Translations.Instance;
         _themeOptions = [new(t.FollowSystem), new(t.ThemeLight), new(t.ThemeDark)];
         _languageOptions = [new(t.FollowSystem), new(t.LangChinese), new(t.LangEnglish)];
@@ -41,6 +51,8 @@ public partial class SettingsWindow : Window
         LanguageComboBox.SelectedIndex = (int)settings.Language;
         LanguageComboBox.SelectionChanged += OnLanguageSelectionChanged;
         Translations.Instance.PropertyChanged += OnTranslationsPropertyChanged;
+        DataDownloadPageButton.Tag = ReleaseAssets.DataReleasePageUrl;
+        RefreshDataStatus();
     }
 
     protected override void OnOpened(EventArgs e)
@@ -88,6 +100,8 @@ public partial class SettingsWindow : Window
         _languageOptions[0].Label = t.FollowSystem;
         _languageOptions[1].Label = t.LangChinese;
         _languageOptions[2].Label = t.LangEnglish;
+        // 安装状态是稳定事实而非瞬态进度，跟随语言一起重算刷新。
+        RefreshDataStatus();
     }
 
     private void OnThemeSelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -101,6 +115,34 @@ public partial class SettingsWindow : Window
         if (LanguageComboBox.SelectedIndex is { } index && index >= 0)
             _settings.Language = (AppLanguage)index;
     }
+
+    // ---- 关于页数据区块：词典/发音包安装状态 + 打开数据目录 ----
+
+    /// <summary>对磁盘求值；与 MainWindow.AudioPackInstalled 的 uk/ 判定同语义。</summary>
+    private void RefreshDataStatus()
+    {
+        var t = Translations.Instance;
+        DictionaryDataStatus.Text = File.Exists(_locations.DictionaryDatabasePath)
+            ? t.AssetInstalled : t.AssetNotInstalled;
+        AudioPackDataStatus.Text = Directory.Exists(Path.Combine(_locations.AudioDirectory, "uk"))
+            ? t.AssetInstalled : t.AssetNotInstalled;
+    }
+
+    private void OnOpenDataDirectoryClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _openDataDirectory(_locations.DataDirectory);
+        }
+        catch (Exception ex)
+        {
+            DataActionStatus.Text = string.Format(Translations.Instance.OpenDataDirectoryFailed, ex.Message);
+        }
+    }
+
+    /// <summary>打开目录与 OnOpenLink 打开浏览器同机制：系统 shell 分派（macOS open、Linux xdg-open、Windows ShellExecute）。</summary>
+    private static void OpenDirectoryInFileManager(string path) =>
+        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
 
     private async void OnCheckUpdateClick(object? sender, RoutedEventArgs e)
     {

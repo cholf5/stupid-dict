@@ -905,7 +905,59 @@ public class HeadlessWindowTests
         Assert.Contains("周尔复", about);
         Assert.Contains(SettingsWindow.AppVersion, about);
         Assert.Equal("MIT", about[about.IndexOf("开源许可") + 1]);
+        Assert.Contains("打开数据目录", about);
         SaveScreenshot(settingsWindow, "stupiddict-settings-about.png");
+        settingsWindow.Close();
+    }
+
+    [AvaloniaFact]
+    public void AboutTabShowsDataStatusAndOpensDataDirectory()
+    {
+        var locations = NewLocations(out var dictionaryPath, out _, out _);
+        var opened = new List<string>();
+        var settingsWindow = new SettingsWindow(new AppSettings(),
+            locations: locations, openDataDirectory: opened.Add);
+        settingsWindow.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        // 空目录：两行都是未安装；打开目录按钮交给注入的缝并收到数据目录。
+        settingsWindow.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = 2;
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("未安装", settingsWindow.FindControl<TextBlock>("DictionaryDataStatus")!.Text);
+        Assert.Equal("未安装", settingsWindow.FindControl<TextBlock>("AudioPackDataStatus")!.Text);
+        RaiseClick(settingsWindow.FindControl<Button>("OpenDataDirectoryButton")!);
+        Assert.Equal([locations.DataDirectory], opened);
+
+        // 装好两件资产后重开窗口：状态按构造时的磁盘求值翻转为已安装。
+        using (var db = DictionaryDatabase.Create(dictionaryPath))
+            db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
+        Directory.CreateDirectory(Path.Combine(locations.AudioDirectory, "uk"));
+        var reopened = new SettingsWindow(new AppSettings(),
+            locations: locations, openDataDirectory: _ => { });
+        reopened.Show();
+        Dispatcher.UIThread.RunJobs();
+        reopened.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = 2;
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("已安装", reopened.FindControl<TextBlock>("DictionaryDataStatus")!.Text);
+        Assert.Equal("已安装", reopened.FindControl<TextBlock>("AudioPackDataStatus")!.Text);
+        reopened.Close();
+        settingsWindow.Close();
+    }
+
+    [AvaloniaFact]
+    public void OpenDataDirectorySurfacesFailureInDataBlock()
+    {
+        var locations = NewLocations(out _, out _, out _);
+        var settingsWindow = new SettingsWindow(new AppSettings(), locations: locations,
+            openDataDirectory: _ => throw new InvalidOperationException("boom"));
+        settingsWindow.Show();
+        Dispatcher.UIThread.RunJobs();
+        settingsWindow.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = 2;
+        Dispatcher.UIThread.RunJobs();
+
+        RaiseClick(settingsWindow.FindControl<Button>("OpenDataDirectoryButton")!);
+        Assert.Equal("打开目录失败：boom",
+            settingsWindow.FindControl<TextBlock>("DataActionStatus")!.Text);
         settingsWindow.Close();
     }
 
