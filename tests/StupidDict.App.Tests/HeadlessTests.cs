@@ -552,6 +552,75 @@ public class HeadlessWindowTests
         SaveScreenshot(window, "stupiddict-related-words.png");
     }
 
+    [AvaloniaTheory]
+    [InlineData(560.0)]
+    [InlineData(780.0)]
+    [InlineData(1000.0)]
+    public void ResultsScrollReachesBottom(double width)
+    {
+        // ScrollViewer.Padding is broken in Avalonia 11.3: the presenter reports
+        // Viewport as its full bounds (padding included) while the extent math
+        // drops the padding, so the bottom padding is unreachable however far
+        // you scroll and the last result line clips away. The padding therefore
+        // lives on the content Panel (Margin), which the extent accounts for;
+        // this test pins that at max scroll nothing renders past the viewport.
+        var directory = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var dictionaryPath = Path.Combine(directory, "dictionary.db");
+        using (var db = DictionaryDatabase.Create(dictionaryPath))
+        {
+            db.BeginTransaction();
+            var candidates = new List<string>();
+            for (var i = 0; i < 20; i++)
+            {
+                var w = db.InsertWord($"cand{i}", "", "", "", "n. 猫科动物之一类", "", 900 - i, 0, "");
+                if (w >= 0) candidates.Add($"cand{i}");
+            }
+            var cat = db.InsertWord("cat", "kæt", "kæt", "n:100",
+                "n. 猫, 恶妇, 猫科动物, 常见的宠物\nvi. 呕吐\nvt. 使呕吐\nn. 猫科动物的统称",
+                "a small animal with four legs, especially one kept as a pet and valued for its companionship, " +
+                "independent character, and ability to catch mice; domesticated since ancient times", 1775, 0, "zk gk");
+            if (cat >= 0)
+            {
+                db.InsertZhTerm("猫", cat);
+                db.InsertSynGroup(cat, "syn", "n.", string.Join(", ", candidates));
+                db.InsertSynGroup(cat, "ant", "adj.", "doglike");
+            }
+            db.CommitTransaction();
+        }
+        using var service = new DictionaryService(dictionaryPath, Path.Combine(directory, "history.db"));
+        var window = new MainWindow(service, autoDownload: false) { Width = width, Height = 460 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        WaitUntil(() => window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
+            .OfType<WrapPanel>().Any(w => w.Classes.Contains("related-words")));
+
+        var results = window.FindControl<StackPanel>("ResultsPanel")!;
+        var sv = results.GetVisualAncestors().OfType<ScrollViewer>().First();
+        Assert.True(sv.Extent.Height > sv.Viewport.Height,
+            $"test content must overflow the viewport (extent {sv.Extent.Height}, viewport {sv.Viewport.Height})");
+
+        sv.Offset = new Vector(0, sv.Extent.Height - sv.Viewport.Height);
+        Dispatcher.UIThread.RunJobs();
+
+        // At max scroll the whole content must sit inside the viewport: any
+        // visual bottom past it is unreachable, however far the user scrolls.
+        foreach (var visual in new[] { results as Visual }.Concat(results.GetVisualDescendants()))
+        {
+            var bottom = visual.TranslatePoint(new Point(visual.Bounds.Width, visual.Bounds.Height), sv);
+            Assert.True(bottom!.Value.Y <= sv.Bounds.Height + 1.0,
+                $"{visual.GetType().Name} bottom {bottom.Value.Y:F1} beyond viewport {sv.Bounds.Height} at width {width}");
+        }
+        // Deliberately no SaveScreenshot here: a headless capture taken after a
+        // scroll can lag the compositor transform and show a stale (pre-scroll)
+        // frame, which reads as the bug still being there. The geometry above
+        // reads live layout bounds and is the reliable signal.
+    }
+
     [AvaloniaFact]
     public void PhoneticLineShowsBritishAndAmerican()
     {

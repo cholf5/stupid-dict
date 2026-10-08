@@ -90,8 +90,13 @@
       </ScrollViewer>
     </Border>
 
-    <ScrollViewer Grid.Row="2" Padding="26,10,26,16">
-      <Panel>
+    <!-- Padding lives on the content, not the ScrollViewer: the 11.3
+         ScrollContentPresenter reports Viewport as its full bounds (padding
+         included) while the extent math drops the padding, so bottom padding
+         is unreachable however far you scroll — the last result line clips.
+         A content margin is accounted in the extent, so it scrolls fully. -->
+    <ScrollViewer Grid.Row="2">
+      <Panel Margin="26,10,26,16">
         <StackPanel Name="HintPanel"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
                     Spacing="10" Margin="0,0,0,60">
