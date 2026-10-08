@@ -604,8 +604,21 @@ public class HeadlessWindowTests
         Assert.True(sv.Extent.Height > sv.Viewport.Height,
             $"test content must overflow the viewport (extent {sv.Extent.Height}, viewport {sv.Viewport.Height})");
 
-        sv.Offset = new Vector(0, sv.Extent.Height - sv.Viewport.Height);
-        Dispatcher.UIThread.RunJobs();
+        // First CJK shaping can land after this point on machines without a
+        // locally installed CJK font (bare CI runners): the fallback resolution
+        // re-measures the thesaurus lines taller, growing Extent under the
+        // already-applied offset. "Scroll to bottom" therefore means re-applying
+        // the max offset until the reported extent stops moving.
+        for (var i = 0; i < 3; i++)
+        {
+            var target = Math.Max(0, sv.Extent.Height - sv.Viewport.Height);
+            if (Math.Abs(sv.Offset.Y - target) < 0.5)
+            {
+                break;
+            }
+            sv.Offset = new Vector(0, target);
+            Dispatcher.UIThread.RunJobs();
+        }
 
         // At max scroll the whole content must sit inside the viewport: any
         // visual bottom past it is unreachable, however far the user scrolls.
