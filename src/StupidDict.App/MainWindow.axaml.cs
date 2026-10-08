@@ -918,8 +918,8 @@ public partial class MainWindow : Window
             {
                 segments.Add(new LinkSegment(related.Word, related.Word));
                 if (related.Gloss.Length > 0)
-                    segments.Add(new LinkSegment(related.Gloss, null));
-                segments.Add(new LinkSegment(";", null));
+                    segments.Add(new LinkSegment(" " + related.Gloss, null));
+                segments.Add(new LinkSegment("; ", null));
             }
             ResultsPanel.Children.Add(BuildLinkText(segments, fontSize: 15, margin: new Thickness(2, 0, 0, 0)));
         }

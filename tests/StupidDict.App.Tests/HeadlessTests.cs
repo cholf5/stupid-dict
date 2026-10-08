@@ -457,6 +457,28 @@ public class HeadlessWindowTests
     }
 
     [AvaloniaFact]
+    public void RelatedWordsLineSeparatesWordGlossAndEntries()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "cat");
+
+        // Links are InlineUIContainer controls, so the visible line is pieced
+        // together from the plain Runs between them plus the linked words.
+        var line = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
+            .OfType<SelectableTextBlock>()
+            .Select(InlineText)
+            .Single(text => text.Contains("老虎"));
+        Assert.Equal("tiger 老虎; ", line);
+    }
+
+    [AvaloniaFact]
     public void PhoneticLineShowsBritishAndAmerican()
     {
         using var service = CreateService();
@@ -982,6 +1004,25 @@ public class HeadlessWindowTests
             db.CommitTransaction();
         }
         return new DictionaryService(dictionaryPath, Path.Combine(directory, "history.db"));
+    }
+
+    private static string InlineText(SelectableTextBlock block)
+    {
+        if (block.Inlines is null) return block.Text ?? "";
+        var sb = new System.Text.StringBuilder();
+        foreach (var inline in block.Inlines)
+        {
+            switch (inline)
+            {
+                case Avalonia.Controls.Documents.Run run:
+                    sb.Append(run.Text);
+                    break;
+                case Avalonia.Controls.Documents.InlineUIContainer { Child: Border border }:
+                    if (border.Child is TextBlock text) sb.Append(text.Text);
+                    break;
+            }
+        }
+        return sb.ToString();
     }
 
     private static void PressEnter(TextBox searchBox) => PressKey(searchBox, Key.Enter);
