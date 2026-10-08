@@ -101,6 +101,7 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(ShortcutBackForward)] = "后退 / 前进（查询历史）",
         [nameof(ShortcutFocusSearch)] = "聚焦搜索框",
         [nameof(ShortcutSettings)] = "打开 / 关闭设置",
+        [nameof(SectionData)] = "数据目录",
         [nameof(SectionAbout)] = "关于",
         [nameof(AboutBlurb)] = "完全离线的英汉词典。查询不联网，联网只发生在首次下载词典与发音包的时候。",
         [nameof(AuthorLabel)] = "作者",
@@ -198,6 +199,7 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(ShortcutBackForward)] = "Back / Forward (lookup history)",
         [nameof(ShortcutFocusSearch)] = "Focus the search box",
         [nameof(ShortcutSettings)] = "Open / close settings",
+        [nameof(SectionData)] = "Data folder",
         [nameof(SectionAbout)] = "About",
         [nameof(AboutBlurb)] = "A fully offline English-Chinese dictionary. Lookups never touch the network; the network is only used for the first dictionary and pronunciation pack download.",
         [nameof(AuthorLabel)] = "Author",
@@ -355,6 +357,8 @@ public sealed class Translations : INotifyPropertyChanged
     public string ShortcutBackForward => Get();
     public string ShortcutFocusSearch => Get();
     public string ShortcutSettings => Get();
+    /// <summary>数据页签：词典/发音包安装状态 + 打开数据目录 + 下载页直链。</summary>
+    public string SectionData => Get();
     public string SectionAbout => Get();
     public string AboutBlurb => Get();
     public string AuthorLabel => Get();

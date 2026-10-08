@@ -98,6 +98,38 @@
       </StackPanel>
     </TabItem>
 
+    <TabItem Header="{Binding SectionData, Source={x:Static loc:Translations.Instance}}">
+      <StackPanel Margin="16,14" Spacing="12">
+        <!-- 数据目录：词典/发音包安装状态 + 打开数据目录。曾以区块形态放在
+             「关于」页底部，复核发现关于页高度突涨后独立成页签。状态由
+             code-behind 在窗口打开时按注入的 AppLocations 对磁盘求值（而非
+             绑定），语言切换经 PropertyChanged 重算；「打开目录失败」错误行
+             是瞬态渲染，保持出现时的语言。下载页直链的 Tag 在 code-behind
+             赋值（ReleaseAssets 是 internal 类）。 -->
+        <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+          <TextBlock Grid.Row="0" VerticalAlignment="Center"
+                     Text="{Binding DictionaryDataLabel, Source={x:Static loc:Translations.Instance}}" />
+          <TextBlock Grid.Row="0" Grid.Column="1" Name="DictionaryDataStatus"
+                     VerticalAlignment="Center" Classes="hint" />
+          <TextBlock Grid.Row="1" VerticalAlignment="Center"
+                     Text="{Binding AudioPackDataLabel, Source={x:Static loc:Translations.Instance}}" />
+          <TextBlock Grid.Row="1" Grid.Column="1" Name="AudioPackDataStatus"
+                     VerticalAlignment="Center" Classes="hint" />
+        </Grid>
+        <TextBlock TextWrapping="Wrap" Classes="hint"
+                   Text="{Binding DataDirectoryHint, Source={x:Static loc:Translations.Instance}}" />
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <Button Name="OpenDataDirectoryButton" Classes="chip"
+                  Content="{Binding OpenDataDirectory, Source={x:Static loc:Translations.Instance}}"
+                  Click="OnOpenDataDirectoryClick" />
+          <HyperlinkButton Name="DataDownloadPageButton" VerticalAlignment="Center" Padding="0"
+                           Content="{Binding OpenDownloadPage, Source={x:Static loc:Translations.Instance}}"
+                           Click="OnOpenLink" />
+        </StackPanel>
+        <TextBlock Name="DataActionStatus" TextWrapping="Wrap" Classes="hint" />
+      </StackPanel>
+    </TabItem>
+
     <TabItem Header="{Binding SectionAbout, Source={x:Static loc:Translations.Instance}}">
       <StackPanel Margin="16,14" Spacing="12">
         <StackPanel Orientation="Horizontal" Spacing="10">
@@ -150,36 +182,6 @@
                     IsVisible="False" Click="OnOpenLink" />
           </StackPanel>
           <TextBlock Name="UpdateStatusText" TextWrapping="Wrap" Classes="hint" />
-        </StackPanel>
-
-        <!-- 数据区块：词典/发音包安装状态 + 打开数据目录。状态由 code-behind
-             在窗口打开时按注入的 AppLocations 对磁盘求值（而非绑定），语言
-             切换经 PropertyChanged 重算；「打开目录失败」错误行是瞬态渲染，
-             保持出现时的语言。下载页直链的 Tag 在 code-behind 赋值
-             （ReleaseAssets 是 internal 类）。 -->
-        <Separator />
-        <StackPanel Spacing="8">
-          <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto" RowSpacing="6">
-            <TextBlock Grid.Row="0" VerticalAlignment="Center"
-                       Text="{Binding DictionaryDataLabel, Source={x:Static loc:Translations.Instance}}" />
-            <TextBlock Grid.Row="0" Grid.Column="1" Name="DictionaryDataStatus"
-                       VerticalAlignment="Center" Classes="hint" />
-            <TextBlock Grid.Row="1" VerticalAlignment="Center"
-                       Text="{Binding AudioPackDataLabel, Source={x:Static loc:Translations.Instance}}" />
-            <TextBlock Grid.Row="1" Grid.Column="1" Name="AudioPackDataStatus"
-                       VerticalAlignment="Center" Classes="hint" />
-          </Grid>
-          <TextBlock TextWrapping="Wrap" Classes="hint"
-                     Text="{Binding DataDirectoryHint, Source={x:Static loc:Translations.Instance}}" />
-          <StackPanel Orientation="Horizontal" Spacing="10">
-            <Button Name="OpenDataDirectoryButton" Classes="chip"
-                    Content="{Binding OpenDataDirectory, Source={x:Static loc:Translations.Instance}}"
-                    Click="OnOpenDataDirectoryClick" />
-            <HyperlinkButton Name="DataDownloadPageButton" VerticalAlignment="Center" Padding="0"
-                             Content="{Binding OpenDownloadPage, Source={x:Static loc:Translations.Instance}}"
-                             Click="OnOpenLink" />
-          </StackPanel>
-          <TextBlock Name="DataActionStatus" TextWrapping="Wrap" Classes="hint" />
         </StackPanel>
       </StackPanel>
     </TabItem>

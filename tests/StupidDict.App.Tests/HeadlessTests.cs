@@ -775,9 +775,9 @@ public class HeadlessWindowTests
         settingsWindow.Show();
         Dispatcher.UIThread.RunJobs();
 
-        // The update controls live on the About tab; tab content is
-        // instantiated on selection only.
-        settingsWindow.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = 2;
+        // The update controls live on the About tab (index 3, after the data
+        // tab); tab content is instantiated on selection only.
+        settingsWindow.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = 3;
         Dispatcher.UIThread.RunJobs();
 
         RaiseClick(settingsWindow.FindControl<Button>("CheckUpdateButton")!);
@@ -919,20 +919,19 @@ public class HeadlessWindowTests
         Assert.Contains(SettingsWindow.BackForwardKeycap, keycaps);
         Assert.Contains("Enter", keycaps);
 
-        tabs.SelectedIndex = 2;
+        tabs.SelectedIndex = 3;
         Dispatcher.UIThread.RunJobs();
         var about = settingsWindow.GetVisualDescendants().OfType<TextBlock>()
             .Select(b => b.Text).ToList();
         Assert.Contains("周尔复", about);
         Assert.Contains(SettingsWindow.AppVersion, about);
         Assert.Equal("MIT", about[about.IndexOf("开源许可") + 1]);
-        Assert.Contains("打开数据目录", about);
         SaveScreenshot(settingsWindow, "stupiddict-settings-about.png");
         settingsWindow.Close();
     }
 
     [AvaloniaFact]
-    public void AboutTabShowsDataStatusAndOpensDataDirectory()
+    public void DataTabShowsStatusAndOpensDataDirectory()
     {
         var locations = NewLocations(out var dictionaryPath, out _, out _);
         var opened = new List<string>();
@@ -944,6 +943,11 @@ public class HeadlessWindowTests
         // 空目录：两行都是未安装；打开目录按钮交给注入的缝并收到数据目录。
         settingsWindow.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = 2;
         Dispatcher.UIThread.RunJobs();
+        var dataTexts = settingsWindow.GetVisualDescendants().OfType<TextBlock>()
+            .Select(b => b.Text).ToList();
+        Assert.Contains("词典", dataTexts);
+        Assert.Contains("发音包", dataTexts);
+        Assert.Contains("打开数据目录", dataTexts);
         Assert.Equal("未安装", settingsWindow.FindControl<TextBlock>("DictionaryDataStatus")!.Text);
         Assert.Equal("未安装", settingsWindow.FindControl<TextBlock>("AudioPackDataStatus")!.Text);
         RaiseClick(settingsWindow.FindControl<Button>("OpenDataDirectoryButton")!);
@@ -966,7 +970,7 @@ public class HeadlessWindowTests
     }
 
     [AvaloniaFact]
-    public void OpenDataDirectorySurfacesFailureInDataBlock()
+    public void OpenDataDirectorySurfacesFailureInDataTab()
     {
         var locations = NewLocations(out _, out _, out _);
         var settingsWindow = new SettingsWindow(new AppSettings(), locations: locations,
