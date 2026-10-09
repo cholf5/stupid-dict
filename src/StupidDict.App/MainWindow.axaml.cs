@@ -669,8 +669,15 @@ public partial class MainWindow : Window
             DictionaryDownloadStatus.Text = Translations.Instance.Extracting;
             await Task.Run(() => ExtractZip(zipPath, _locations.DataDirectory, cancellation: cancellation),
                 cancellation);
-            File.Delete(zipPath);
+            // The install lands first, the zip delete comes last as pure
+            // cleanup: a transient lock on the just-written file (Windows
+            // antivirus, indexer) must not surface as "extraction failed"
+            // with a working dictionary left uninstalled (B-009). The delete
+            // is best-effort — a kept zip is harmless, the reuse path
+            // re-verifies it and the known-good bytes pass.
             FinishDictionarySetup();
+            try { File.Delete(zipPath); }
+            catch { /* the zip stays behind for the reuse path */ }
         }
         catch (OperationCanceledException)
         {
@@ -714,6 +721,11 @@ public partial class MainWindow : Window
         {
             _dictionaryDownloadCts.Dispose();
             _dictionaryDownloadCts = null;
+            // Every terminal state clears the bar (B-009): cancel and
+            // failure used to leave it frozen at the last percentage; on
+            // success the panel is already gone and this only resets the
+            // flag. Same outcome as the audio pack flow's per-branch hides.
+            DictionaryDownloadBar.IsVisible = false;
             DownloadDictionaryButton.IsVisible = true;
             PickDictionaryButton.IsVisible = true;
             CancelDictionaryButton.IsVisible = false;
@@ -944,8 +956,15 @@ public partial class MainWindow : Window
                 () => ExtractZip(zipPath, _locations.AudioDirectory,
                     (done, total) => extractProgress.Report((done, total)), cancellation),
                 cancellation);
-            File.Delete(zipPath);
+            // Same shape as the dictionary flow (B-009): the completion
+            // action lands first, the zip delete comes last as pure cleanup —
+            // a transient lock on the just-written file (Windows antivirus,
+            // indexer) must not surface as "extraction failed" with Retry as
+            // the only way out (a retry AudioPackInstalled() would
+            // short-circuit into a no-op, freezing this panel until restart).
             AudioPackPanel.IsVisible = false;
+            try { File.Delete(zipPath); }
+            catch { /* the zip stays behind for the reuse path */ }
         }
         catch (OperationCanceledException)
         {

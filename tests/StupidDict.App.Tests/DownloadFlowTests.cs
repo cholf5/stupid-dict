@@ -17,8 +17,10 @@ namespace StupidDict.App.Tests;
 /// <summary>
 /// Bootstrap download semantics: the checksum failure recovery (purge +
 /// automatic clean retry), the resume label on a second progress pass,
-/// all-or-nothing extraction, and kept-zip reuse (an extraction failure
-/// retries from the downloaded zip instead of re-downloading it). Flow tests
+/// all-or-nothing extraction, kept-zip reuse (an extraction failure
+/// retries from the downloaded zip instead of re-downloading it), and the
+/// terminal-state cleanups (the bar hides on cancel/failure; the success
+/// path's zip delete is best-effort after the install, B-009). Flow tests
 /// run the dictionary and audio pack downloads against scripted stubs with a
 /// scratch download directory; the pure extraction shapes are the static
 /// ExtractZip / ImportAudioPack cases below.
@@ -73,6 +75,9 @@ public class DownloadFlowTests
 
         Assert.Equal(2, downloader.RequestCount);
         Assert.True(window.FindControl<Button>("DownloadDictionaryButton")!.IsVisible);
+        // B-009: the failure terminal state hides the bar too — it used to
+        // stay visible, frozen at whatever the last progress report drew.
+        Assert.False(window.FindControl<ProgressBar>("DictionaryDownloadBar")!.IsVisible);
         Assert.False(File.Exists(destination));
         Assert.False(File.Exists(destination + ".part"));
     }
@@ -236,6 +241,38 @@ public class DownloadFlowTests
     }
 
     /// <summary>
+    /// B-009 TC-002: cancelling mid-download hides the progress bar. The bar
+    /// used to survive the cancel frozen at the last percentage — the
+    /// finally only restored the three buttons. The bar is drawn determinate
+    /// first (one progress tick), so the hide cannot pass vacuously on a bar
+    /// that never showed.
+    /// </summary>
+    [AvaloniaFact]
+    public void DictionaryDownloadCancelledHidesProgressBar()
+    {
+        var locations = NewLocations(out var dictionaryPath, out _);
+        // No db on disk: the download panel owns the window and the download
+        // starts on construction; with the dictionary never installing, the
+        // audio pack flow never starts either, so the two bars cannot
+        // interact.
+        var window = new MainWindow(new DictionaryService(dictionaryPath, locations.HistoryDatabasePath),
+            downloader: new HangAfterProgressDownloader(), locations: locations, autoDownload: true,
+            downloadDirectory: NewScratchDirectory());
+        window.Show();
+
+        var bar = window.FindControl<ProgressBar>("DictionaryDownloadBar")!;
+        var cancel = window.FindControl<Button>("CancelDictionaryButton")!;
+        WaitUntil(() => bar.IsVisible && !bar.IsIndeterminate && bar.Value > 40);
+        cancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        WaitUntil(() => !bar.IsVisible);
+        Assert.Equal(Translations.Instance.DownloadCancelled,
+            window.FindControl<TextBlock>("DictionaryDownloadStatus")!.Text);
+        Assert.True(window.FindControl<Button>("DownloadDictionaryButton")!.IsVisible);
+        Assert.False(cancel.IsVisible);
+    }
+
+    /// <summary>
     /// B-008 TC-001, the full death-loop scenario: a corrupt zip and NO
     /// published checksum — the exact precondition where checksum-less reuse
     /// used to trust the kept zip and re-fail extraction forever. Extraction
@@ -333,6 +370,88 @@ public class DownloadFlowTests
         WaitUntil(() => File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
         Assert.Equal(2, downloader.RequestCount);
         Assert.False(downloader.DestinationExisted[1]);
+    }
+
+    /// <summary>
+    /// B-009 TC-001: the success path's zip delete used to run before
+    /// FinishDictionarySetup, so a transient lock on the just-written file
+    /// (Windows antivirus, indexer) surfaced as "解压失败" with a working
+    /// dictionary left uninstalled and the download panel stuck. The delete
+    /// is best-effort cleanup after the install now. Fault injection follows
+    /// the PurgeFailure… shape — pure filesystem state that makes File.Delete
+    /// throw on every platform: Windows blocks deletion via the read-only
+    /// file attribute, unix via a non-writable containing directory.
+    /// </summary>
+    [AvaloniaFact]
+    public void ZipDeleteFailureStillCompletesSetup()
+    {
+        var locations = NewLocations(out var dictionaryPath, out _);
+        var (zipPath, _) = MakeDictionaryZipWithHash();
+        var downloadDirectory = NewScratchDirectory();
+        var destination = Path.Combine(downloadDirectory, ReleaseAssets.DictionaryAsset);
+        var downloader = new UndeletableZipDownloader(zipPath, ReleaseAssets.DictionaryAsset);
+        var window = new MainWindow(new DictionaryService(dictionaryPath, locations.HistoryDatabasePath),
+            downloader: downloader, locations: locations, autoDownload: true,
+            downloadDirectory: downloadDirectory);
+        window.Show();
+
+        // Setup completed despite the deletion fault: the panel went away
+        // and the dictionary is installed.
+        WaitUntil(() => !window.FindControl<StackPanel>("DictionaryDownloadPanel")!.IsVisible);
+
+        Assert.True(File.Exists(locations.DictionaryDatabasePath));
+        // The success path's last status write is "解压中…" — never the
+        // extraction-failure text the unguarded delete used to produce.
+        Assert.Equal(Translations.Instance.Extracting,
+            window.FindControl<TextBlock>("DictionaryDownloadStatus")!.Text);
+        // The fault really fired: the zip is still on disk, kept for the
+        // reuse path.
+        Assert.True(File.Exists(destination));
+    }
+
+    /// <summary>
+    /// B-009 scope extension (reviewer-confirmed adjacent bug, same root,
+    /// same fix): the audio pack flow's zip delete also ran before its
+    /// completion action — a transient lock on the just-written file (the
+    /// pack is ~10⁵ small files, so the delete is the most AV/indexer-exposed
+    /// moment) surfaced as "发音包解压失败" with Retry as the only way out,
+    /// and that retry is short-circuited by AudioPackInstalled() (uk/ already
+    /// exists), freezing the panel until restart. The completion action
+    /// (hiding the panel) lands first now; the delete is best-effort
+    /// cleanup. Same fault injection as the dictionary side.
+    /// </summary>
+    [AvaloniaFact]
+    public void AudioPackZipDeleteFailureStillCompletesInstall()
+    {
+        var locations = NewLocations(out var dictionaryPath, out _);
+        // The dictionary db exists, so the constructor starts the audio pack
+        // download directly and the dictionary flow never runs.
+        using (DictionaryDatabase.Create(dictionaryPath)) { }
+        var downloadDirectory = NewScratchDirectory();
+        var destination = Path.Combine(downloadDirectory, ReleaseAssets.AudioPackAsset);
+        var pack = MakeAudioPackZip(NewScratchDirectory(), "pack.zip", "cat.mp3");
+        var downloader = new UndeletableZipDownloader(pack, ReleaseAssets.AudioPackAsset);
+        var window = new MainWindow(new DictionaryService(dictionaryPath, locations.HistoryDatabasePath),
+            downloader: downloader, locations: locations, autoDownload: true,
+            downloadDirectory: downloadDirectory);
+        window.Show();
+
+        // The completion action landed despite the deletion fault: the panel
+        // went away and the pack is installed.
+        WaitUntil(() => !window.FindControl<Border>("AudioPackPanel")!.IsVisible);
+
+        Assert.True(File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
+        Assert.True(File.Exists(Path.Combine(locations.AudioDirectory, "us", "cat.mp3")));
+        // The last status write is the per-entry extraction progress (the
+        // two-entry pack reports its final (2, 2)) — never the
+        // extraction-failure text, never the Retry button: the misleading
+        // terminal state the unguarded delete used to produce.
+        Assert.Equal(string.Format(Translations.Instance.ExtractingFilesFormat, 2, 2),
+            window.FindControl<TextBlock>("AudioPackStatus")!.Text);
+        Assert.NotEqual(Translations.Instance.Retry,
+            window.FindControl<Button>("AudioPackActionButton")!.Content as string);
+        // The fault really fired: the zip is still on disk.
+        Assert.True(File.Exists(destination));
     }
 
     [AvaloniaFact]
@@ -739,6 +858,59 @@ public class DownloadFlowTests
         public async Task<DownloadResult> DownloadAsync(string assetName, string destinationFile,
             IProgress<DownloadProgress>? progress, CancellationToken cancellation)
         {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellation);
+            throw new InvalidOperationException("unreachable: the delay only ends by cancellation");
+        }
+
+        public Task<string?> FetchChecksumAsync(string assetName, CancellationToken cancellation) =>
+            Task.FromResult<string?>(null);
+    }
+
+    /// <summary>
+    /// Serves a real asset zip and then makes it undeletable on every
+    /// platform — the stand-in for a Windows antivirus/indexer lock on the
+    /// just-written file (B-009): Windows blocks deletion via the read-only
+    /// file attribute, unix via a non-writable containing directory. The
+    /// checksum source answers null, so the download installs without a
+    /// verification round trip. Requests for any other asset are declined
+    /// with a plain exception, NOT an xunit assert: the flows' catch chains
+    /// are designed to absorb those, and a swallowed assert failure would be
+    /// indistinguishable from a passing flow (the dictionary-side test's
+    /// auto-queued audio pack download rides this decline).
+    /// </summary>
+    private sealed class UndeletableZipDownloader(string zipPath, string expectedAsset) : IAssetDownloader
+    {
+        public Task<DownloadResult> DownloadAsync(string assetName, string destinationFile,
+            IProgress<DownloadProgress>? progress, CancellationToken cancellation)
+        {
+            if (assetName != expectedAsset)
+                throw new InvalidOperationException($"stub only serves {expectedAsset}, got {assetName}");
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationFile)!);
+            File.Copy(zipPath, destinationFile, overwrite: true);
+            if (OperatingSystem.IsWindows())
+                File.SetAttributes(destinationFile, FileAttributes.ReadOnly);
+            else
+                File.SetUnixFileMode(Path.GetDirectoryName(destinationFile)!,
+                    UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            return Task.FromResult(new DownloadResult(destinationFile, "stub://undeletable"));
+        }
+
+        public Task<string?> FetchChecksumAsync(string assetName, CancellationToken cancellation) =>
+            Task.FromResult<string?>(null);
+    }
+
+    /// <summary>
+    /// One determinate progress tick (47 of 100 MB), then a download that
+    /// only ends when the flow cancels it: the bar is visibly drawn at a
+    /// percentage before the test cancels.
+    /// </summary>
+    private sealed class HangAfterProgressDownloader : IAssetDownloader
+    {
+        public async Task<DownloadResult> DownloadAsync(string assetName, string destinationFile,
+            IProgress<DownloadProgress>? progress, CancellationToken cancellation)
+        {
+            Assert.Equal(ReleaseAssets.DictionaryAsset, assetName);
+            progress?.Report(new DownloadProgress(47L << 20, 100L << 20, "stub://hang"));
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellation);
             throw new InvalidOperationException("unreachable: the delay only ends by cancellation");
         }
