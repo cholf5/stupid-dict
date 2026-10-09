@@ -57,6 +57,8 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(ChecksumRedownloading)] = "校验失败，已删除损坏文件，正在重新下载…",
         [nameof(ExtractFailedFormat)] = "解压失败：{0}",
         [nameof(AudioPackExtractFailedFormat)] = "发音包解压失败：{0}",
+        [nameof(ExtractCorruptPurged)] = "压缩包数据损坏，已删除；重试将重新下载。",
+        [nameof(ZipCrcMismatchFormat)] = "压缩包数据损坏：条目 {0} 的 CRC 校验不符",
         [nameof(ZipSlipFormat)] = "压缩包内出现非法路径：{0}",
         [nameof(DownloadingDictionaryFormat)] = "正在下载词典 {0:F0} / {1:F0} MB",
         [nameof(DownloadingDictionaryUnsizedFormat)] = "正在下载词典 {0:F0} MB",
@@ -160,6 +162,8 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(ChecksumRedownloading)] = "Checksum failed; the corrupted file was deleted. Downloading again…",
         [nameof(ExtractFailedFormat)] = "Extraction failed: {0}",
         [nameof(AudioPackExtractFailedFormat)] = "Pronunciation pack extraction failed: {0}",
+        [nameof(ExtractCorruptPurged)] = "The archive data is corrupted; it was deleted and retrying downloads again.",
+        [nameof(ZipCrcMismatchFormat)] = "The archive data is corrupted: entry {0} failed its CRC check",
         [nameof(ZipSlipFormat)] = "Illegal path inside the archive: {0}",
         [nameof(DownloadingDictionaryFormat)] = "Downloading dictionary {0:F0} / {1:F0} MB",
         [nameof(DownloadingDictionaryUnsizedFormat)] = "Downloading dictionary {0:F0} MB",
@@ -308,6 +312,10 @@ public sealed class Translations : INotifyPropertyChanged
     public string ChecksumRedownloading => Get();
     public string ExtractFailedFormat => Get();
     public string AudioPackExtractFailedFormat => Get();
+    /// <summary>解压发现压缩包字节损坏并已清除（重试会重新下载）。</summary>
+    public string ExtractCorruptPurged => Get();
+    /// <summary>{0} CRC 校验不符的条目名。</summary>
+    public string ZipCrcMismatchFormat => Get();
     public string ZipSlipFormat => Get();
     public string ImportMissingPack => Get();
     public string PickerTitleAudioPack => Get();

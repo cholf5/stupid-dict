@@ -104,10 +104,13 @@ public class DownloadFlowTests
     }
 
     /// <summary>
-    /// The kept-zip reuse the Windows audio-pack loop motivated: attempt 1
-    /// downloads, verifies and fails at extraction; the retry must pick up
-    /// from the kept zip — no second download, no second checksum fetch — and
-    /// once the file is made well-formed, install without any network.
+    /// The kept-zip reuse for extraction failures that are NOT byte damage
+    /// (B-008 narrowed the 6fd870d semantics to exactly this family — damaged
+    /// bytes purge and redownload, see CrcMismatchZipIsPurged…): attempt 1
+    /// downloads, verifies and fails extraction on a zip-slip entry; the
+    /// retry must pick up from the kept zip — no second download, no second
+    /// checksum fetch — and once the file is made well-formed, install
+    /// without any network.
     /// </summary>
     [AvaloniaFact]
     public void ExtractionFailureRetryReusesKeptZipWithoutRedownloading()
@@ -117,18 +120,18 @@ public class DownloadFlowTests
             db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
         var downloadDirectory = NewScratchDirectory();
         var destination = Path.Combine(downloadDirectory, ReleaseAssets.AudioPackAsset);
-        var corrupt = MakeCorruptZip(NewScratchDirectory());
+        var slip = MakeZipSlipZip(NewScratchDirectory());
         var good = MakeAudioPackZip(NewScratchDirectory(), "pack.zip", "cat.mp3");
-        var corruptBytes = File.ReadAllBytes(corrupt);
+        var slipBytes = File.ReadAllBytes(slip);
         var downloader = new ScriptedDownloader(ReleaseAssets.AudioPackAsset,
-            _ => corruptBytes, _ => HashFile(corrupt));
+            _ => slipBytes, _ => HashFile(slip));
         var window = new MainWindow(new DictionaryService(dictionaryPath, locations.HistoryDatabasePath),
             downloader: downloader, locations: locations, autoDownload: true,
             downloadDirectory: downloadDirectory);
         window.Show();
 
         // Attempt 1: download and checksum pass, extraction dies on the
-        // corrupt entry — the zip stays behind for the retry.
+        // zip-slip entry (no byte damage) — the zip stays behind for retry.
         WaitUntil(() => window.FindControl<Button>("AudioPackActionButton")!.Content as string
             == Translations.Instance.Retry);
         Assert.Equal(1, downloader.RequestCount);
@@ -230,6 +233,106 @@ public class DownloadFlowTests
         Assert.True(button.IsEnabled);
         Assert.Equal(Translations.Instance.AudioPackCancelled,
             window.FindControl<TextBlock>("AudioPackStatus")!.Text);
+    }
+
+    /// <summary>
+    /// B-008 TC-001, the full death-loop scenario: a corrupt zip and NO
+    /// published checksum — the exact precondition where checksum-less reuse
+    /// used to trust the kept zip and re-fail extraction forever. Extraction
+    /// now proves the bytes damaged (CRC), the artifacts are purged, and the
+    /// retry downloads again; the second download is good, so the loop ends
+    /// in a working install.
+    /// </summary>
+    [AvaloniaFact]
+    public void CrcMismatchZipIsPurgedAndRetriedByDownloadingAgain()
+    {
+        var locations = NewLocations(out var dictionaryPath, out _);
+        using (var db = DictionaryDatabase.Create(dictionaryPath))
+            db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
+        var downloadDirectory = NewScratchDirectory();
+        var destination = Path.Combine(downloadDirectory, ReleaseAssets.AudioPackAsset);
+        var crcMismatch = MakeCrcMismatchZip(NewScratchDirectory());
+        var good = MakeAudioPackZip(NewScratchDirectory(), "pack.zip", "cat.mp3");
+        var crcMismatchBytes = File.ReadAllBytes(crcMismatch);
+        var downloader = new ScriptedDownloader(ReleaseAssets.AudioPackAsset,
+            callIndex => callIndex == 0 ? crcMismatchBytes : File.ReadAllBytes(good),
+            _ => null); // no checksum published: the entry CRC is the only defense
+        var window = new MainWindow(new DictionaryService(dictionaryPath, locations.HistoryDatabasePath),
+            downloader: downloader, locations: locations, autoDownload: true,
+            downloadDirectory: downloadDirectory);
+        window.Show();
+
+        // Attempt 1: download, nothing to verify against, extraction dies on
+        // the CRC mismatch — the damaged zip is purged, not kept.
+        WaitUntil(() => window.FindControl<Button>("AudioPackActionButton")!.Content as string
+            == Translations.Instance.Retry);
+        Assert.Equal(Translations.Instance.ExtractCorruptPurged,
+            window.FindControl<TextBlock>("AudioPackStatus")!.Text);
+        Assert.Equal(1, downloader.RequestCount);
+
+        // The retry cannot reuse the purged zip: it downloads again, and the
+        // second download (good bytes) installs cleanly.
+        window.FindControl<Button>("AudioPackActionButton")!
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        WaitUntil(() => File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
+        Assert.Equal(2, downloader.RequestCount);
+        // Purge proof: the destination did not exist when the retry started.
+        Assert.False(downloader.DestinationExisted[1]);
+        Assert.True(File.Exists(Path.Combine(locations.AudioDirectory, "us", "cat.mp3")));
+    }
+
+    /// <summary>
+    /// The purge inside the corrupt-extraction catch is best-effort: a
+    /// transient Windows lock (antivirus, indexer) makes File.Delete throw,
+    /// and one escaping this async void would kill the process. Fault
+    /// injection: the ".part" path is made a DIRECTORY, so the purge's second
+    /// File.Delete throws on every platform (UnauthorizedAccessException) —
+    /// the flow must degrade to the plain extraction-failure text with the
+    /// real error (a "deleted" claim would be a lie) and still converge on
+    /// the next retry.
+    /// </summary>
+    [AvaloniaFact]
+    public void PurgeFailureDegradesToPlainExtractFailedTextAndFlowSurvives()
+    {
+        var locations = NewLocations(out var dictionaryPath, out _);
+        using (var db = DictionaryDatabase.Create(dictionaryPath))
+            db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
+        var downloadDirectory = NewScratchDirectory();
+        var destination = Path.Combine(downloadDirectory, ReleaseAssets.AudioPackAsset);
+        // The fault: a directory where the purge expects the ".part" file.
+        Directory.CreateDirectory(destination + ".part");
+        var crcMismatch = MakeCrcMismatchZip(NewScratchDirectory());
+        var good = MakeAudioPackZip(NewScratchDirectory(), "pack.zip", "cat.mp3");
+        var crcMismatchBytes = File.ReadAllBytes(crcMismatch);
+        var downloader = new ScriptedDownloader(ReleaseAssets.AudioPackAsset,
+            callIndex => callIndex == 0 ? crcMismatchBytes : File.ReadAllBytes(good),
+            _ => null);
+        var window = new MainWindow(new DictionaryService(dictionaryPath, locations.HistoryDatabasePath),
+            downloader: downloader, locations: locations, autoDownload: true,
+            downloadDirectory: downloadDirectory);
+        window.Show();
+
+        // Attempt 1: extraction dies on the CRC mismatch, the purge dies on
+        // the locked ".part" — the flow surfaces the REAL extraction error
+        // through the plain extraction-failure text and does not claim a
+        // deletion that did not happen.
+        WaitUntil(() => window.FindControl<Button>("AudioPackActionButton")!.Content as string
+            == Translations.Instance.Retry);
+        var crcError = string.Format(Translations.Instance.ZipCrcMismatchFormat, "uk/cat.mp3");
+        Assert.Equal(string.Format(Translations.Instance.AudioPackExtractFailedFormat, crcError),
+            window.FindControl<TextBlock>("AudioPackStatus")!.Text);
+        Assert.NotEqual(Translations.Instance.ExtractCorruptPurged,
+            window.FindControl<TextBlock>("AudioPackStatus")!.Text);
+        Assert.True(Directory.Exists(destination + ".part"));
+
+        // The flow is alive: the next retry downloads again and installs.
+        window.FindControl<Button>("AudioPackActionButton")!
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        WaitUntil(() => File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
+        Assert.Equal(2, downloader.RequestCount);
+        Assert.False(downloader.DestinationExisted[1]);
     }
 
     [AvaloniaFact]
@@ -376,6 +479,82 @@ public class DownloadFlowTests
         Assert.Empty(Directory.EnumerateFileSystemEntries(destination));
     }
 
+    /// <summary>
+    /// B-008: ZipFile does not verify entry CRCs while streaming — a
+    /// corrupted-but-decodable entry (flipped byte inside a stored entry)
+    /// reads back silently on .NET 10 — so ExtractZip computes the CRC over
+    /// the decompressed bytes itself and refuses the entry. This is the
+    /// per-entry backstop the checksum-less reuse path stands on; without it
+    /// a damaged kept zip installs corrupted content with no error at all.
+    /// </summary>
+    [AvaloniaFact]
+    public void ExtractZipRejectsEntryWithCrcMismatch()
+    {
+        var scratch = NewScratchDirectory();
+        var destination = Path.Combine(scratch, "dest");
+        Directory.CreateDirectory(destination);
+        var zipPath = MakeCrcMismatchZip(scratch);
+
+        var ex = Assert.Throws<InvalidDataException>(() => MainWindow.ExtractZip(zipPath, destination));
+
+        Assert.Contains("cat.mp3", ex.Message);
+        // All-or-nothing still holds: nothing lands in the destination.
+        Assert.Empty(Directory.EnumerateFileSystemEntries(destination));
+    }
+
+    /// <summary>Regression: intact entries — stored and deflated alike — extract unchanged.</summary>
+    [AvaloniaFact]
+    public void ExtractZipAcceptsWellFormedEntriesWithoutFalseAlarm()
+    {
+        var scratch = NewScratchDirectory();
+        var destination = Path.Combine(scratch, "dest");
+        var zipPath = Path.Combine(scratch, "mixed.zip");
+        using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            AddStoredEntry(archive, "uk/cat.mp3", "stored-cat");
+            AddEntry(archive, "us/cat.mp3", "deflated-cat");
+            archive.CreateEntry("empty.txt"); // zero bytes: CRC 0, no data
+        }
+
+        MainWindow.ExtractZip(zipPath, destination);
+
+        Assert.Equal("stored-cat", File.ReadAllText(Path.Combine(destination, "uk", "cat.mp3")));
+        Assert.Equal("deflated-cat", File.ReadAllText(Path.Combine(destination, "us", "cat.mp3")));
+        Assert.True(File.Exists(Path.Combine(destination, "empty.txt")));
+    }
+
+    /// <summary>The CRC-32 algorithm itself: known answer, composition, zip agreement.
+    /// AvaloniaFact like every test here: the class constructor's SetLanguage
+    /// needs the headless application bootstrapped.</summary>
+    [AvaloniaFact]
+    public void Crc32MatchesKnownAnswerAndZipEntries()
+    {
+        // The classic CRC-32 check value.
+        Assert.Equal(0xCBF43926u, Crc32.Compute("123456789"u8));
+
+        // Incremental updates compose: chunked feeding equals one-shot.
+        var data = "The quick brown fox jumps over the lazy dog"u8;
+        var incremental = Crc32.Value(Crc32.Update(Crc32.Update(Crc32.InitialState, data[..10]), data[10..]));
+        Assert.Equal(Crc32.Compute(data), incremental);
+
+        // And it agrees with what ZipArchive publishes for a real entry.
+        var scratch = NewScratchDirectory();
+        var zipPath = Path.Combine(scratch, "roundtrip.zip");
+        var payload = "some arbitrary entry payload for the crc roundtrip"u8;
+        using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            using var stream = archive.CreateEntry("payload.bin").Open();
+            stream.Write(payload);
+        }
+        using var read = ZipFile.OpenRead(zipPath);
+        var entry = read.Entries[0];
+        using var decompressed = entry.Open();
+        using var buffer = new MemoryStream();
+        decompressed.CopyTo(buffer);
+        Assert.Equal(Crc32.Compute(payload), entry.Crc32);
+        Assert.Equal(Crc32.Compute(payload), Crc32.Compute(buffer.ToArray()));
+    }
+
     // ---- helpers ----
 
     private static AppLocations NewLocations(out string dictionaryPath, out string historyPath)
@@ -392,6 +571,33 @@ public class DownloadFlowTests
         using var stream = entry.Open();
         using var writer = new StreamWriter(stream);
         writer.Write(content);
+    }
+
+    private static void AddStoredEntry(ZipArchive archive, string name, string content)
+    {
+        var entry = archive.CreateEntry(name, CompressionLevel.NoCompression);
+        using var stream = entry.Open();
+        using var writer = new StreamWriter(stream);
+        writer.Write(content);
+    }
+
+    /// <summary>
+    /// A zip whose only entry decodes fine but does not match its published
+    /// CRC: the stored entry's data is flipped after the fact, so the damage
+    /// is invisible to decompression — exactly the corruption class a B-006
+    /// weld or a truncated redownload produces.
+    /// </summary>
+    private static string MakeCrcMismatchZip(string directory)
+    {
+        var zipPath = Path.Combine(directory, "crc-mismatch.zip");
+        using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+            AddStoredEntry(archive, "uk/cat.mp3", "cat sound bytes");
+        var raw = File.ReadAllBytes(zipPath);
+        var nameLength = raw[26] | (raw[27] << 8);
+        var extraLength = raw[28] | (raw[29] << 8);
+        raw[30 + nameLength + extraLength] ^= 0xFF;
+        File.WriteAllBytes(zipPath, raw);
+        return zipPath;
     }
 
     private static string NewScratchDirectory()
@@ -462,6 +668,22 @@ public class DownloadFlowTests
         var extraLength = raw[28] | (raw[29] << 8);
         raw[30 + nameLength + extraLength] |= 0x06;
         File.WriteAllBytes(zipPath, raw);
+        return zipPath;
+    }
+
+    /// <summary>
+    /// A well-formed zip whose entry paths escape the destination: extraction
+    /// fails without any byte damage — the keep-and-reuse family, since the
+    /// same file extracts fine once fixed in place.
+    /// </summary>
+    private static string MakeZipSlipZip(string directory)
+    {
+        var zipPath = Path.Combine(directory, "slip.zip");
+        using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            AddEntry(archive, "uk/cat.mp3", "x");
+            AddEntry(archive, "../evil.mp3", "evil");
+        }
         return zipPath;
     }
 

@@ -683,7 +683,32 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            DictionaryDownloadStatus.Text = string.Format(Translations.Instance.ExtractFailedFormat, ex.Message);
+            if (ex is InvalidDataException)
+            {
+                // Damaged archive bytes: reusing the kept zip can never
+                // succeed — same bytes, same decoder, same failure — so purge
+                // and let the retry download again. Every other extraction
+                // failure keeps the zip: the bytes already passed the
+                // checksum, and re-downloading cannot fix them. The purge is
+                // best-effort (same shape as the reuse-path purge): File.Delete
+                // can hit a transient Windows lock (antivirus, indexer), and
+                // one thrown out of this async void would kill the process —
+                // degrade to the plain extraction-failure text instead, so the
+                // real error surfaces and the purge must not claim a deletion
+                // that did not happen.
+                try
+                {
+                    PurgeDownloadArtifacts(destination);
+                    _verifiedZips.Remove(destination);
+                    DictionaryDownloadStatus.Text = Translations.Instance.ExtractCorruptPurged;
+                }
+                catch
+                {
+                    DictionaryDownloadStatus.Text = string.Format(Translations.Instance.ExtractFailedFormat, ex.Message);
+                }
+            }
+            else
+                DictionaryDownloadStatus.Text = string.Format(Translations.Instance.ExtractFailedFormat, ex.Message);
         }
         finally
         {
@@ -944,7 +969,27 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            AudioPackStatus.Text = string.Format(Translations.Instance.AudioPackExtractFailedFormat, ex.Message);
+            if (ex is InvalidDataException)
+            {
+                // Same classification as the dictionary flow: damaged archive
+                // bytes purge (a retry from the same file can never work),
+                // everything else keeps the zip for the checksum-passed reuse.
+                // The purge is best-effort there for the same reason — a
+                // transient lock must not escape this async void; degrade to
+                // the plain extraction-failure text with the real error.
+                try
+                {
+                    PurgeDownloadArtifacts(destination);
+                    _verifiedZips.Remove(destination);
+                    AudioPackStatus.Text = Translations.Instance.ExtractCorruptPurged;
+                }
+                catch
+                {
+                    AudioPackStatus.Text = string.Format(Translations.Instance.AudioPackExtractFailedFormat, ex.Message);
+                }
+            }
+            else
+                AudioPackStatus.Text = string.Format(Translations.Instance.AudioPackExtractFailedFormat, ex.Message);
             AudioPackActionButton.Content = Translations.Instance.Retry;
             PickAudioPackButton.IsVisible = true;
             AudioPackDownloadPageButton.IsVisible = true;
@@ -1181,7 +1226,27 @@ public partial class MainWindow : Window
         Directory.CreateDirectory(ToExtendedPath(Path.GetDirectoryName(target)!));
         using var source = entry.Open();
         using var destination = File.Create(ToExtendedPath(target));
-        source.CopyTo(destination);
+
+        // ZipFile does not verify entry CRCs while streaming — verified on
+        // .NET 10, a corrupted-but-decodable entry (a flipped byte inside a
+        // stored entry) reads back silently — so the CRC is computed over the
+        // decompressed bytes as they pass and compared with the central
+        // directory's published value. This is the per-entry integrity
+        // backstop the checksum-less reuse path stands on (B-008), and the
+        // signal the download flow purges a damaged zip on: an
+        // InvalidDataException here means the archive bytes are bad, and
+        // reusing the same file can never extract differently.
+        var buffer = new byte[1 << 16];
+        var crc = Crc32.InitialState;
+        int read;
+        while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            destination.Write(buffer, 0, read);
+            crc = Crc32.Update(crc, buffer.AsSpan(0, read));
+        }
+        if (Crc32.Value(crc) != entry.Crc32)
+            throw new InvalidDataException(string.Format(
+                Translations.Instance.ZipCrcMismatchFormat, entry.FullName));
     }
 
     // The slip gate has rejected rooted names and ".." segments, so joining
