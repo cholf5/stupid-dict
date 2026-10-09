@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- B v5 · 裸版定稿：炭黑全出血板 + 奶油脸直绘，无衬垫。
+       脸相对 v4 裸版放大 1.35×——原尺寸是相对 824 内缩标签定的标，
+       全出血后按 1024 整板重定标，16px 下眼睛仍有 ≈2.6px。
+       安全区：左眼最左 270 > 239.4（圆角区界），右眼顶 344 > 丝带底 200 -->
+  <rect width="1024" height="1024" fill="#2A2926"/>
+  <g transform="rotate(-3 512 515)" fill="#F2F0E7">
+    <circle cx="361" cy="381" r="84"/>
+    <circle cx="685" cy="418" r="65"/>
+    <path d="M 455 660 L 628 639" stroke="#F2F0E7" stroke-width="38" stroke-linecap="round" fill="none"/>
+  </g>
+  <!-- 书签带（挂在板缘，避开右上圆角区） -->
+  <path d="M 660 0 H 760 V 200 L 710 144 L 660 200 Z" fill="#C4553C"/>
+</svg>

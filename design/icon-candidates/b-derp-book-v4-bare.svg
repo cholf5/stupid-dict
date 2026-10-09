@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- B v4 裸版 · 炭黑全出血底板 + 奶油脸直绘，无标签。浅色背景下最饱满；
+       深色背景下轮廓全靠脸上几点，16–24px 偏弱——仅作对照 -->
+  <rect width="1024" height="1024" fill="#2A2926"/>
+  <g transform="rotate(-3 512 515)" fill="#F2F0E7">
+    <circle cx="400" cy="415" r="62"/>
+    <circle cx="640" cy="442" r="48"/>
+    <path d="M 470 622 L 598 606" stroke="#F2F0E7" stroke-width="28" stroke-linecap="round" fill="none"/>
+  </g>
+  <!-- 书签带（挂在底板上缘，避开右上圆角区） -->
+  <path d="M 660 0 H 760 V 200 L 710 144 L 660 200 Z" fill="#C4553C"/>
+</svg>
