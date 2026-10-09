@@ -22,7 +22,8 @@ internal static partial class WordNetThesaurus
     private const int MaxWordsPerLine = 12;
 
     private static readonly string[] PosFiles = ["noun", "verb", "adj", "adv"];
-    private static readonly char[] InsertionOrder = ['n', 'v', 'a', 'r'];
+    // 's'（卫星形容词）的 synset 出现在 data.adj 里，池按 ss_type 落 's'，也要输出成 adj. 行。
+    private static readonly char[] InsertionOrder = ['n', 'v', 'a', 's', 'r'];
 
     private static readonly Regex MarkerRegex = new(@"\([^)]*\)$", RegexOptions.Compiled);
 
@@ -84,7 +85,7 @@ internal static partial class WordNetThesaurus
     }
 
     /// <summary>Synonyms per source-sense POS: synset co-lemmas + hypernyms (n/v) + similar satellites (adj).</summary>
-    private static Dictionary<char, List<string>> Collect(Dictionary<int, Synset> data, string lemma,
+    private static Dictionary<char, List<string>> Collect(Dictionary<(char Pos, int Offset), Synset> data, string lemma,
         List<(char Pos, int[] Offsets)> entries)
     {
         Dictionary<char, List<string>> pools = new();
@@ -99,19 +100,19 @@ internal static partial class WordNetThesaurus
                     pool.Add(word);
         }
 
-        foreach (var (_, offsets) in entries)
+        foreach (var (entryPos, offsets) in entries)
             foreach (var offset in offsets)
             {
-                if (!data.TryGetValue(offset, out var synset)) continue;
+                if (!data.TryGetValue((entryPos, offset), out var synset)) continue;
                 Add(synset.Pos, synset.Lemmas);
 
                 foreach (var pointer in synset.Pointers)
                 {
                     if (pointer.Symbol == '@' && synset.Pos is 'n' or 'v'
-                        && data.TryGetValue(pointer.Offset, out var hypernym))
+                        && data.TryGetValue((pointer.Pos, pointer.Offset), out var hypernym))
                         Add(synset.Pos, hypernym.Lemmas);
                     else if (pointer.Symbol == '&' && synset.Pos is 'a' or 's'
-                        && data.TryGetValue(pointer.Offset, out var similar))
+                        && data.TryGetValue((pointer.Pos, pointer.Offset), out var similar))
                         Add(synset.Pos, similar.Lemmas);
                 }
             }
@@ -119,7 +120,7 @@ internal static partial class WordNetThesaurus
     }
 
     /// <summary>Antonyms per source-sense POS: every lemma of each antonym synset, plus its satellites.</summary>
-    private static Dictionary<char, List<string>> CollectAntonyms(Dictionary<int, Synset> data, string lemma,
+    private static Dictionary<char, List<string>> CollectAntonyms(Dictionary<(char Pos, int Offset), Synset> data, string lemma,
         List<(char Pos, int[] Offsets)> entries)
     {
         Dictionary<char, List<string>> pools = new();
@@ -134,15 +135,15 @@ internal static partial class WordNetThesaurus
                     pool.Add(word);
         }
 
-        foreach (var (_, offsets) in entries)
+        foreach (var (entryPos, offsets) in entries)
             foreach (var offset in offsets)
-                foreach (var pointer in data.TryGetValue(offset, out var synset) ? synset.Pointers : [])
+                foreach (var pointer in data.TryGetValue((entryPos, offset), out var synset) ? synset.Pointers : [])
                 {
-                    if (pointer.Symbol != '!' || !data.TryGetValue(pointer.Offset, out var antonym)) continue;
+                    if (pointer.Symbol != '!' || !data.TryGetValue((pointer.Pos, pointer.Offset), out var antonym)) continue;
                     Add(synset!.Pos, antonym.Lemmas);
                     if (antonym.Pos is not ('a' or 's')) continue;
                     foreach (var satellite in antonym.Pointers.Where(p => p.Symbol == '&'))
-                        if (data.TryGetValue(satellite.Offset, out var target))
+                        if (data.TryGetValue((satellite.Pos, satellite.Offset), out var target))
                             Add(synset.Pos, target.Lemmas);
                 }
         return pools;
@@ -159,7 +160,7 @@ internal static partial class WordNetThesaurus
 
     /// <summary>WordNet lemmas use "_" for spaces and carry trailing markers like "not_bad(p)".</summary>
     private static string Normalize(string lemma) =>
-        MarkerRegex.Replace(lemma.Replace('_', ' '), "").Trim();
+        MarkerRegex.Replace(lemma.Replace('_', ' '), "").Trim().ToLowerInvariant();
 
     /// <summary>index.&lt;pos&gt; lines: lemma pos synset_cnt p_cnt [ptr symbols] sense_cnt tagsense_cnt offsets…</summary>
     private static Dictionary<string, List<(char Pos, int[] Offsets)>> ReadIndex(string dir)
@@ -173,7 +174,10 @@ internal static partial class WordNetThesaurus
             {
                 if (line.StartsWith(' ')) continue;
                 var tokens = line.Split(' ');
-                if (tokens.Length < 9) continue;
+                // 结构下限只挡截断残片：合法最短行也要容得下六个固定字段；
+                // synset 偏移是否齐全完全由下面的精确校验把关，再按总长预检会把
+                // 合法的 7–8 token 短行（p_cnt=0、synset_cnt=1）整批丢掉。
+                if (tokens.Length < 6) continue;
                 var lemma = Normalize(tokens[0]);
                 var pos = tokens[1][0];
                 var synsetCount = int.Parse(tokens[2], CultureInfo.InvariantCulture);
@@ -196,11 +200,17 @@ internal static partial class WordNetThesaurus
     /// p_cnt (DEC) (symbol offset pos source_target)… [frames] | gloss.
     /// Parsing stops after the pointers; frames and gloss are ignored.
     /// </summary>
-    private static Dictionary<int, Synset> ReadSynsets(string dir)
+    private static Dictionary<(char Pos, int Offset), Synset> ReadSynsets(string dir)
     {
-        Dictionary<int, Synset> data = new();
+        // WordNet 的 offset 是单个 data.* 文件内的字节偏移，四个文件都从 00001740
+        // 起编——裸 offset 当键会让后解析的文件整段覆盖前面的。键用文件的 POS
+        // 命名空间（file[0]：noun→n / verb→v / adj→a / adv→r），而不是行内 ss_type：
+        // adj 文件里卫星形容词的 ss_type 是 's'，但 index 与指针记录里形容词
+        // 一律记 'a'（实测 3.0 全量数据按文件命名空间键 0 丢失）。
+        Dictionary<(char, int), Synset> data = new();
         foreach (var file in PosFiles)
         {
+            var ns = file[0];
             var path = Path.Combine(dir, $"data.{file}");
             if (!File.Exists(path)) continue;
             foreach (var line in File.ReadLines(path))
@@ -226,7 +236,7 @@ internal static partial class WordNetThesaurus
                     pointers.Add(new Pointer(symbol[0], target, tokens[index + 2][0]));
                     index += 4;
                 }
-                data[offset] = new Synset(pos, lemmas, pointers);
+                data[(ns, offset)] = new Synset(pos, lemmas, pointers);
             }
         }
         return data;

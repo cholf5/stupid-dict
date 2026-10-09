@@ -4,7 +4,7 @@ title: 修 WordNetThesaurus 四处数据质量缺陷（近/反义词行缺失与
 type: bug
 priority: P1
 size: M
-status: todo
+status: done
 created: 2026-10-09
 updated: 2026-10-09
 blocked: none
@@ -27,20 +27,20 @@ blocked: none
 
 ## Acceptance Criteria
 
-- [ ] 短行（7–8 token）不再被丢，index 解析完全由 :182 的精确校验把关
-- [ ] synset 缓存键含 POS（复合键），跨 data.\* 文件不再互相覆盖
-- [ ] `'s'`（卫星形容词）池输出为 adj. 行
-- [ ] WordNet 链路归一化与查询侧一致（小写），专有名词词头有近/反义词行
-- [ ] 用真实 WordNet 3.0 数据全量重建跑通，修复前后 words/lines 计数对比记录在 Verification
+- [x] 短行（7–8 token）不再被丢，index 解析完全由 :182 的精确校验把关（结构下限收为 6 个固定字段；TC-001；真实数据实测见 Verification 的修正①）
+- [x] synset 缓存键含 POS（复合键），跨 data.\* 文件不再互相覆盖（TC-002；键 = 文件 POS 命名空间，真实数据 377,592 指针 0 丢失）
+- [x] `'s'`（卫星形容词）池输出为 adj. 行（TC-003；真实数据 muggy 抽查吻合）
+- [x] WordNet 链路归一化与查询侧一致（小写），专有名词词头有近/反义词行（TC-004；after 库 Rome 有 syn 行）
+- [x] 用真实 WordNet 3.0 数据全量重建跑通，修复前后 words/lines 计数对比记录在 Verification（基线与生产 meta 完全一致后 +15,225 行）
 
 ## Subtasks
 
-- [ ] 移除 `tokens.Length < 9` 预检（保留精确校验）
-- [ ] synset 字典改 (POS, offset) 复合键
-- [ ] `InsertionOrder` 加入 `'s'`
-- [ ] `Normalize`/查找链路统一小写归一化
-- [ ] 补齐单测夹具（迷你 index/data 文件）并跑通
-- [ ] 真实数据重建并记录前后计数对比
+- [x] 移除 `tokens.Length < 9` 预检（保留精确校验）——落地为 6 固定字段的结构下限，见 Dev Log
+- [x] synset 字典改 (POS, offset) 复合键
+- [x] `InsertionOrder` 加入 `'s'`
+- [x] `Normalize`/查找链路统一小写归一化
+- [x] 补齐单测夹具（迷你 index/data 文件）并跑通
+- [x] 真实数据重建并记录前后计数对比
 
 ## Dependencies
 
@@ -57,6 +57,8 @@ Steps:
 Expected:
 - 词条的 syn 行存在（现行代码会丢）
 
+Result: ✅ `ShortIndexLineIsKeptAndGarbageLineSkipped`——修复前失败（行被丢）、修复后通过；同夹具的 3-token 截断残片被结构下限跳过不炸。
+
 ### TC-002: 跨文件同 offset 不覆盖
 
 Steps:
@@ -66,6 +68,8 @@ Steps:
 Expected:
 - 互不覆盖，词性正确
 
+Result: ✅ `SameOffsetInDifferentPosFilesDoesNotClobber`——修复前 animal 拿到 warm 的 synset（bogus adj. 行、无 n. 行），修复后两词性行各自正确。
+
 ### TC-003: 卫星形容词输出
 
 Steps:
@@ -73,6 +77,8 @@ Steps:
 
 Expected:
 - 产出 kind=syn、pos=adj. 的行
+
+Result: ✅ `SatelliteAdjectiveSynonymsAreWritten`——夹具按真实数据语法（index 侧 pos 记 'a'、data 侧 ss_type='s'、`&` 指针 pos 记 'a'），修复前 's' 池不输出、修复后产出 `syn/adj./humid`。
 
 ### TC-004: 专有名词词头有近义词行
 
@@ -82,7 +88,16 @@ Steps:
 Expected:
 - Build 后 Rome 词条（wordId 命中 rome）有近义词行
 
+Result: ✅ `ProperNounLemmasMatchLowercaseHeadwords`——修复前 WordId("Rome") 断链无行，修复后命中。注意：真实 WordNet 3.0 的 index lemma 本就全小写（见 Verification 修正②），本 TC 防护的是归一化规则与查询侧契约，以及 data 侧大写 lemma 池成员。
+
 ## Development Log
+
+### 2026-10-09
+
+- 四处修复全部落在 `WordNetThesaurus.cs`：①index 预检改为「6 个固定字段」结构下限（挡截断残片，不再按总长丢短行，偏移齐全仍由精确校验把关）；②synset 缓存键改 (POS, offset) 复合键，**键用文件 POS 命名空间 `file[0]` 而非行内 ss_type**——data.adj 里卫星词 ss_type 是 's'，但 index 与指针记录里形容词一律记 'a'（实测 3.0 全量：377,592 个指针目标按命名空间键 0 丢失；按 ss_type 键会有 10,693 个 `&` 目标 miss）；③`InsertionOrder` 加 's'；④`Normalize` 补 `ToLowerInvariant()`。
+- 测试：新增 `tests/StupidDict.Core.Tests/WordNetThesaurusTests.cs`（4 TC，迷你夹具不带真实文件的尾随空格）；DataBuilder csproj 加 `InternalsVisibleTo StupidDict.Core.Tests`、Core.Tests 加 DataBuilder 项目引用。4 个新测试对修复前代码全部失败（咬合确认），修复后 Core 45/45 + App 126/126 全绿（套件数据查询走独立只读连接，`Pooling=false` 遵守 Windows 铁律）。
+- 真实数据重建（ECDICT 1.0.28 sqlite release 的 stardict.db，3,402,564 行与生产 meta 的 entries 完全一致 + Princeton WordNet 3.0）：基线 145,674/141,847 与生产 meta 完全一致（同源同码，基线可信）；修复后 145,674/**157,072**（+15,225 行）。两处卡片前提实测修正（见 Verification）。
+- 下一步：P-003（重建 dictionary.db 发 data-2）依赖本卡，仍待开。
 
 ## Bugs
 
@@ -91,6 +106,22 @@ Expected:
 
 ## Verification
 
-- Related files: `src/StupidDict.DataBuilder/WordNetThesaurus.cs`、`src/StupidDict.Core/Dictionary/DictionaryDatabase.cs`
-- How to run/verify: `dotnet test StupidDict.slnx`；真实数据重建 `dotnet run --project src/StupidDict.DataBuilder -- <ecdict.csv …> --wordnet <WordNet3.0 目录>`
-- Results: 未运行（待修复会话）
+- Related files: `src/StupidDict.DataBuilder/WordNetThesaurus.cs`、`tests/StupidDict.Core.Tests/WordNetThesaurusTests.cs`、`src/StupidDict.DataBuilder/StupidDict.DataBuilder.csproj`、`tests/StupidDict.Core.Tests/StupidDict.Core.Tests.csproj`、`src/StupidDict.Core/Dictionary/DictionaryDatabase.cs`（FindWordId 小写精确比对，未改动）
+- How to run/verify: `dotnet test StupidDict.slnx`；真实数据重建 `dotnet run -c Release --project src/StupidDict.DataBuilder -- <stardict.db> <输出.db> --wordnet <WordNet3.0 dict 目录>`
+- Results:
+  - 测试：Core 45/45（+4 新增）+ App 126/126 全绿；4 个新测试修复前 4 败。
+  - 真实数据重建对比（同源：ECDICT 1.0.28 `stardict.db` 3,402,564 行 + WordNet 3.0 dict）：
+
+    | 指标 | 修复前 | 修复后 |
+    |---|---|---|
+    | thesaurus_words（index lemma 命中 word 表） | 145,674 | 145,674 |
+    | thesaurus_lines（syn_group 行） | 141,847 | **157,072**（+15,225，+10.7%） |
+    | 有行的去重词头 | 127,590 | **140,197**（+12,607） |
+    | 命中但零行的词头 | 18,084 | 5,477 |
+    | 原文非全小写词头上的行 | 31,626 | 34,800 |
+
+  - 修复前基线与生产 dictionary.db 的 meta（145674/141847）完全一致，证明对比同源可信。
+  - 抽样语义验证：muggy（卫星形容词）行 `steamy, sticky, wet` 与其 data.adj 原始行（co-lemmas steamy/sticky + `&` 指向头形容词 wet）逐成员吻合；Rome 行修复前是裸 offset 污染产物（`national capital, leadership, leaders`，缺实例 lemma），修复后 `roma, eternal city, italian capital, capital of italy, national capital, leadership, leaders`。
+  - **修正①（对 Background 第 1 条）**：真实 WordNet 3.0 原始文件每行末尾带两个尾随空格，Split 后最短的 7 字段行恰为 9 token，`<9` 预检实测**零丢弃**（四文件 parsed=total；卡片所记 36%/47%/77% 丢弃率在原始发行件上不成立，应是把行尾空白剥掉后再数的——恰好证明清洗过的输入会整批丢行）。修复保留：规则正确性 + TC-001 钉住。
+  - **修正②（对 Background 第 4 条）**：WordNet 3.0 原始 index lemma **全为小写**（四文件大写 lemma 计数为 0），「Adam/Rome 大写断链」在 index 侧不成立（thesaurus_words 前后不变的原因）；该修复的真实影响在 data 侧——data.noun 有 42,998 个大写 lemma token（Rome、Eternal_City 等实例与多词专名），修复前作为池成员 FindWordId 必 miss 被丢（修复前 Rome 行缺 roma/eternal city 等），修复后并入行。归一化与查询侧小写契约的对齐保留为防御性正确。
+  - 重建产物：`/tmp/b001/before.db`、`/tmp/b001/after.db`（各 ~575MB，重启即清）。

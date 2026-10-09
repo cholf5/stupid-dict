@@ -9,7 +9,6 @@
 
 | ID | Title | Priority | Size | Blocked | Dependencies |
 |---|---|---|---|---|---|
-| B-001 | 修 WordNetThesaurus 四处数据质量缺陷（近/反义词行缺失与词性错乱） | P1 | M | | |
 | B-002 | 切语言一次触发约 98 次结果页全量重建（UI 冻结） | P1 | S | | |
 | B-003 | Navigate 不推进 _searchGeneration，在途查询反噬导航页 | P1 | S | | |
 | B-004 | 下载 body 无空闲超时，服务器停发即永久挂起 | P1 | S | | |
@@ -36,3 +35,4 @@
 
 | ID | Title | Priority | Done At |
 |---|---|---|---|
+| B-001 | 修 WordNetThesaurus 四处数据质量缺陷（近/反义词行缺失与词性错乱） | P1 | 2026-10-09 |

@@ -12,6 +12,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="StupidDict.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\StupidDict.Core\StupidDict.Core.csproj" />
   </ItemGroup>
 
