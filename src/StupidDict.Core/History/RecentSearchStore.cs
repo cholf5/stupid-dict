@@ -18,8 +18,7 @@ public sealed class RecentSearchStore : IDisposable
     {
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-        _connection = new SqliteConnection($"Data Source={path}");
-        _connection.Open();
+        _connection = SqliteConnections.Open(path, SqliteOpenMode.ReadWriteCreate);
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = """
             CREATE TABLE IF NOT EXISTS recent_search (

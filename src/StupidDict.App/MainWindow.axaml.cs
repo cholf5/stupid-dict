@@ -968,8 +968,12 @@ public partial class MainWindow : Window
 
     // Extended-length prefix, Windows only (Unix paths must stay untouched).
     // Requires an absolute backslash path — the staging directory is built
-    // from Path.GetFullPath output.
-    private static string ToExtendedPath(string path)
+    // from Path.GetFullPath output. Internal so tests can read an extracted
+    // reserved-name file (us/con.mp3) back through the same prefix: an
+    // ordinary Win32 path redirects it to the CON device, and reading CON
+    // blocks on the console forever.
+    internal static string ToExtendedPath(string path)
+
     {
         if (!OperatingSystem.IsWindows()) return path;
         if (path.StartsWith(@"\\?\")) return path;

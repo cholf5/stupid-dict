@@ -196,9 +196,9 @@ public class DownloadFlowTests
         // "con" is a real headword (and so are aux/nul/com1 lookalikes in
         // principle): a legitimate pack carries device-name files, and the
         // zip-slip gate must not mistake them for path attacks.
-        Assert.Equal("us-con", File.ReadAllText(Path.Combine(audio, "us", "con.mp3")));
-        Assert.Equal("uk-con", File.ReadAllText(Path.Combine(audio, "uk", "con.mp3")));
-        Assert.Equal("us-cat", File.ReadAllText(Path.Combine(audio, "us", "cat.mp3")));
+        Assert.Equal("us-con", ReadExtracted(Path.Combine(audio, "us", "con.mp3")));
+        Assert.Equal("uk-con", ReadExtracted(Path.Combine(audio, "uk", "con.mp3")));
+        Assert.Equal("us-cat", ReadExtracted(Path.Combine(audio, "us", "cat.mp3")));
     }
 
     [AvaloniaFact]
@@ -263,6 +263,15 @@ public class DownloadFlowTests
         Directory.CreateDirectory(directory);
         return directory;
     }
+
+    /// <summary>
+    /// Reads an extracted file back. Reserved DOS device names must go through
+    /// the \\?\ prefix: an ordinary Win32 path redirects us/con.mp3 to the CON
+    /// device, where File.Exists says false and File.ReadAllText blocks on the
+    /// console forever (which hung the whole suite on Windows 10).
+    /// </summary>
+    private static string ReadExtracted(string path) =>
+        File.ReadAllText(OperatingSystem.IsWindows() ? MainWindow.ToExtendedPath(path) : path);
 
     private static (string ZipPath, string Hash) MakeDictionaryZipWithHash()
     {

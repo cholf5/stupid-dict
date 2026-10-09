@@ -22,8 +22,9 @@
 
 ## 测试边界与残留
 
-- Windows 分支（`\\?\` 解压）在本机 macOS 与 CI ubuntu 都不可达，正确性纯靠推理 + 文档语义；测试覆盖语法校验判定表和 macOS 全链路导入。
-- 已知残留（刻意不修）：Windows 11 之前的机器上 `AudioPackPlayer` 的 `File.Exists(…\us\con.mp3)` 探测会被设备重定向吞掉（看不到已安装的文件），`con` 一词回退系统 TTS 发音——降级可接受；修复需把扩展路径贯穿 `IAudioFilePlayer` 各后端，等真实反馈再说。
+- Windows 分支（`\\?\` 解压）在 CI（ubuntu）不可达，只有 Windows 本机能真跑；`AudioPackImportAcceptsReservedDeviceNameEntry` 现在真正覆盖了它（2026-10-09 在 Windows 10 上跑通）。
+- **读回保留名文件同样必须走 `\\?\`**：该测试原先用普通路径 `File.ReadAllText(…\us\con.mp3)` 校验内容，Windows 把这条路重定向到 CON 设备——`File.Exists` 返回 false、`File.ReadAllText` **永久阻塞**（本机探针实测 35 秒未返回），整套 `dotnet test` 因此挂死，还顺带堵死排在其后的非 Avalonia 测试（`ZipSlipGateTests` 一个都跑不完）。修复是测试助手 `DownloadFlowTests.ReadExtracted` → `MainWindow.ToExtendedPath`（该方法为此从 private 放开到 internal，让解压端与读回端共用同一份前缀知识）。
+- 已知残留（刻意不修）：Windows 11 之前的机器上 `AudioPackPlayer` 的 `File.Exists(…\us\con.mp3)` 探测会被设备重定向吞掉（看不到已安装的文件），`con` 一词回退系统 TTS 发音——降级可接受；`ToExtendedPath` 内部化之后修复只剩一行（探测改走扩展路径），仍按原判断不动，等真实反馈再说。
 
 ## 教训
 

@@ -16,12 +16,7 @@ public sealed class DictionaryDatabase : IDisposable
     /// <summary>Opens an existing dictionary file for reading.</summary>
     public static DictionaryDatabase OpenRead(string path)
     {
-        var connection = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = path,
-            Mode = SqliteOpenMode.ReadOnly,
-        }.ToString());
-        connection.Open();
+        var connection = SqliteConnections.Open(path, SqliteOpenMode.ReadOnly);
         return new DictionaryDatabase(connection);
     }
 
@@ -33,8 +28,7 @@ public sealed class DictionaryDatabase : IDisposable
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
         if (File.Exists(path)) File.Delete(path);
 
-        var connection = new SqliteConnection($"Data Source={path}");
-        connection.Open();
+        var connection = SqliteConnections.Open(path, SqliteOpenMode.ReadWriteCreate);
         using (var pragma = connection.CreateCommand())
         {
             pragma.CommandText = "PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF;";
