@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- A · 词典书：整块底板即书封（纸白），左书脊 + 大「词」+ 朱红书签带 -->
+  <rect width="1024" height="1024" fill="#F7F7F4"/>
+  <!-- 书脊 -->
+  <rect x="0" y="0" width="84" height="1024" fill="#ECEAE0"/>
+  <rect x="84" y="0" width="7" height="1024" fill="#DAD6C8"/>
+  <!-- 词条大字 -->
+  <text x="560" y="700" text-anchor="middle" font-family="Songti SC, Noto Serif CJK SC, STSong, serif"
+        font-weight="700" font-size="620" fill="#26241E">词</text>
+  <!-- 书签带（顶端挂在书封上缘，末端燕尾） -->
+  <path d="M 668 0 H 780 V 212 L 724 154 L 668 212 Z" fill="#A8432F"/>
+</svg>

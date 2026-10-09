@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- C · 词条式：头词 A（墨）+ 分隔细线 + 释义 中（应用内链接蓝），竖排词条排版 -->
+  <rect width="1024" height="1024" fill="#F7F7F4"/>
+  <text x="512" y="455" text-anchor="middle" font-family="Songti SC, Noto Serif CJK SC, STSong, serif"
+        font-weight="700" font-size="500" fill="#26241E">A</text>
+  <rect x="330" y="536" width="364" height="10" fill="#CCC8B9"/>
+  <text x="512" y="940" text-anchor="middle" font-family="Songti SC, Noto Serif CJK SC, STSong, serif"
+        font-weight="700" font-size="395" fill="#3E6D9C">中</text>
+</svg>

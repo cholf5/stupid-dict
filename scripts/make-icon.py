@@ -52,7 +52,7 @@ def styled_icon(source: Path, content: int, radius: int) -> Image.Image:
     im = Image.open(source)
     if im.mode in ("RGBA", "LA", "PA"):
         flattened = Image.new("RGB", im.size, (255, 255, 255))
-        flattened.paste(im.convert("RGB"), (0, 0), im.convert("L"))
+        flattened.paste(im.convert("RGBA"), (0, 0), im.convert("RGBA"))
         im = flattened
     else:
         im = im.convert("RGB")
@@ -86,11 +86,10 @@ def write_icns(master: Path, out: Path) -> bool:
     return True
 
 
-def write_preview(candidate: Image.Image, out: Path) -> None:
-    current_path = ASSETS / "app-icon.png"
+def write_preview(candidate: Image.Image, out: Path, previous=None) -> None:
     columns = [("candidate", candidate)]
-    if current_path.exists():
-        columns.append(("current", Image.open(current_path).convert("RGBA")))
+    if previous is not None:
+        columns.append(("previous", previous))
     cell = PREVIEW_SIZES[-1] * PREVIEW_SCALE + 24
     pad = 30
     row_h = PREVIEW_SIZES[-1] * PREVIEW_SCALE + 18
@@ -125,6 +124,7 @@ def main() -> None:
 
     styled = styled_icon(args.source, args.content, args.radius)
     png = ASSETS / "app-icon.png"
+    previous = Image.open(png).convert("RGBA") if png.exists() else None
     styled.save(png)
     styled.save(ASSETS / "app-icon.ico", format="ICO")
     icns_ok = write_icns(png, ASSETS / "app-icon.icns")
@@ -136,7 +136,7 @@ def main() -> None:
     assert bbox == (margin, margin, margin + args.content, margin + args.content), f"内容区异常: {bbox}"
 
     preview = Path(tempfile.gettempdir()) / "app-icon-preview.png"
-    write_preview(styled, preview)
+    write_preview(styled, preview, previous)
     print(f"已写出 {png}")
     print(f"已写出 {ASSETS / 'app-icon.ico'}")
     if icns_ok:

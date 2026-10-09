@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- A v2 · 词典书：书脊保留做书证，「词」改为整版居中（不再偏封面），书签带上移让位 -->
+  <rect width="1024" height="1024" fill="#F7F7F4"/>
+  <!-- 书脊 -->
+  <rect x="0" y="0" width="84" height="1024" fill="#ECEAE0"/>
+  <rect x="84" y="0" width="7" height="1024" fill="#DAD6C8"/>
+  <!-- 词条大字：整版居中 -->
+  <text x="512" y="690" text-anchor="middle" font-family="Songti SC, Noto Serif CJK SC, STSong, serif"
+        font-weight="700" font-size="620" fill="#26241E">词</text>
+  <!-- 书签带（书证：这是一本书） -->
+  <path d="M 680 0 H 780 V 190 L 730 138 L 680 190 Z" fill="#A8432F"/>
+</svg>

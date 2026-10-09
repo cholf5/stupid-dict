@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- B v2 · 呆萌书脸：暖炭书封（应用深色卡片色 #2A2926）+ 纸色呆脸，特征放大提小尺寸识别；
+       整脸微倾 3°，红书签带保留做书证。去掉书脊，脸在整版居中 -->
+  <rect width="1024" height="1024" fill="#F7F7F4"/>
+  <!-- 书封块 -->
+  <rect x="120" y="100" width="784" height="824" rx="48" fill="#2A2926"/>
+  <!-- 呆脸（纸色，右眼偏小偏低，微倾） -->
+  <g transform="rotate(-3 512 515)" fill="#F2F0E7">
+    <circle cx="400" cy="415" r="62"/>
+    <circle cx="640" cy="442" r="48"/>
+    <path d="M 470 622 L 598 606" stroke="#F2F0E7" stroke-width="28" stroke-linecap="round" fill="none"/>
+  </g>
+  <!-- 书签带 -->
+  <path d="M 690 100 H 790 V 300 L 740 244 L 690 300 Z" fill="#C4553C"/>
+</svg>

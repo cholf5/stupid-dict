@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- B v3 · 呆萌书脸：同心圆角修正。嵌套圆角规则 r内 = r外 − 内缩：
+       外板 239.4（194/0.81）− 白边 100 = 139，内外曲线平行；此前 rx 48 过紧即别扭根源。
+       白边必须保留：深色图标在深色任务栏的轮廓靠它（v1 藏青融底教训） -->
+  <rect width="1024" height="1024" fill="#F7F7F4"/>
+  <!-- 书封块：inset 统一 100，824×824 正方居中 -->
+  <rect x="100" y="100" width="824" height="824" rx="139" fill="#2A2926"/>
+  <!-- 呆脸（纸色，右眼偏小偏低，微倾） -->
+  <g transform="rotate(-3 512 515)" fill="#F2F0E7">
+    <circle cx="400" cy="415" r="62"/>
+    <circle cx="640" cy="442" r="48"/>
+    <path d="M 470 622 L 598 606" stroke="#F2F0E7" stroke-width="28" stroke-linecap="round" fill="none"/>
+  </g>
+  <!-- 书签带 -->
+  <path d="M 690 100 H 790 V 300 L 740 244 L 690 300 Z" fill="#C4553C"/>
+</svg>

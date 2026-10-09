@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- B · 呆萌书脸：书封（书脊 + 细框）上两点一嘴，两点一高一低一小，把"傻瓜"画出来 -->
+  <rect width="1024" height="1024" fill="#F7F7F4"/>
+  <!-- 书脊 -->
+  <rect x="0" y="0" width="84" height="1024" fill="#ECEAE0"/>
+  <rect x="84" y="0" width="7" height="1024" fill="#DAD6C8"/>
+  <!-- 封面细框 -->
+  <rect x="150" y="140" width="810" height="744" rx="48" fill="none" stroke="#DAD6C8" stroke-width="9"/>
+  <!-- 眼睛：右眼偏小偏低（呆） -->
+  <circle cx="445" cy="430" r="54" fill="#26241E"/>
+  <circle cx="672" cy="456" r="44" fill="#26241E"/>
+  <!-- 嘴：微微歪的一横 -->
+  <path d="M 500 640 L 618 626" stroke="#26241E" stroke-width="24" stroke-linecap="round" fill="none"/>
+</svg>

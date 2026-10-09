@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- A′ · 朱印极简：大「词」+ 右下角朱红印章（印文「傻」，品牌彩蛋，小尺寸退化为红点） -->
+  <rect width="1024" height="1024" fill="#F7F7F4"/>
+  <text x="512" y="690" text-anchor="middle" font-family="Songti SC, Noto Serif CJK SC, STSong, serif"
+        font-weight="700" font-size="680" fill="#26241E">词</text>
+  <rect x="742" y="742" width="164" height="164" rx="24" fill="#A8432F"/>
+  <text x="824" y="872" text-anchor="middle" font-family="Songti SC, Noto Serif CJK SC, STSong, serif"
+        font-weight="700" font-size="124" fill="#F7F7F4">傻</text>
+</svg>
