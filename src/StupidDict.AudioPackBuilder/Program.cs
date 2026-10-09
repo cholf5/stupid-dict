@@ -7,32 +7,27 @@ using Microsoft.Data.Sqlite;
 // offline with the Piper TTS engine, ready to ship as a GitHub Release asset
 // the app can download. One-off, hours-long, fully local — no cloud calls.
 
+var options = AudioPackOptions.Parse(args, out var parseError);
+if (options is null)
+{
+    Console.Error.WriteLine(parseError);
+    return 1;
+}
+
 var defaultDictionary = Path.Combine(
     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
     "StupidDict", "dictionary.db");
 
-string? dictionary = null, outDirectory = null, zipPath = "audio-pack.zip", piper = "piper", ffmpeg = "ffmpeg";
-string? modelUk = null, modelUs = null;
-var top = 80_000;
-var workers = Math.Max(1, Environment.ProcessorCount / 2);
-var makeZip = true;
-
-for (var i = 0; i < args.Length; i++)
-{
-    switch (args[i])
-    {
-        case "--out" when i + 1 < args.Length: outDirectory = Path.GetFullPath(args[++i]); break;
-        case "--zip" when i + 1 < args.Length: zipPath = Path.GetFullPath(args[++i]); break;
-        case "--no-zip": makeZip = false; break;
-        case "--top" when i + 1 < args.Length && int.TryParse(args[++i], out var t): top = t; break;
-        case "--workers" when i + 1 < args.Length && int.TryParse(args[++i], out var w): workers = Math.Max(1, w); break;
-        case "--piper" when i + 1 < args.Length: piper = args[++i]; break;
-        case "--ffmpeg" when i + 1 < args.Length: ffmpeg = args[++i]; break;
-        case "--model-uk" when i + 1 < args.Length: modelUk = Path.GetFullPath(args[++i]); break;
-        case "--model-us" when i + 1 < args.Length: modelUs = Path.GetFullPath(args[++i]); break;
-        default: dictionary = Path.GetFullPath(args[i]); break;
-    }
-}
+string? dictionary = options.Dictionary;
+string? outDirectory = options.OutDirectory;
+var zipPath = options.ZipPath;
+var piper = options.Piper;
+var ffmpeg = options.Ffmpeg;
+string? modelUk = options.ModelUk;
+string? modelUs = options.ModelUs;
+var top = options.Top;
+var workers = options.Workers;
+var makeZip = options.MakeZip;
 
 dictionary ??= defaultDictionary;
 outDirectory ??= Path.Combine(Environment.CurrentDirectory, "audio-pack");
@@ -212,5 +207,64 @@ bool Generate(string word, string model, string target)
             Console.Error.WriteLine($"  {program} 启动失败: {ex.Message}");
             return false;
         }
+    }
+}
+
+/// <summary>AudioPackBuilder 命令行解析结果。</summary>
+internal sealed record AudioPackOptions(
+    string? Dictionary,
+    string? OutDirectory,
+    string ZipPath,
+    bool MakeZip,
+    int Top,
+    int Workers,
+    string Piper,
+    string Ffmpeg,
+    string? ModelUk,
+    string? ModelUs)
+{
+    /// <summary>解析命令行；失败返回 null 并给出 error（调用方直接报错退出）。</summary>
+    public static AudioPackOptions? Parse(IReadOnlyList<string> args, out string? error)
+    {
+        string? dictionary = null, outDirectory = null, zipPath = "audio-pack.zip", piper = "piper", ffmpeg = "ffmpeg";
+        string? modelUk = null, modelUs = null;
+        var top = 80_000;
+        var workers = Math.Max(1, Environment.ProcessorCount / 2);
+        var makeZip = true;
+
+        for (var i = 0; i < args.Count; i++)
+        {
+            switch (args[i])
+            {
+                case "--out" when i + 1 < args.Count: outDirectory = Path.GetFullPath(args[++i]); break;
+                case "--zip" when i + 1 < args.Count: zipPath = Path.GetFullPath(args[++i]); break;
+                case "--no-zip": makeZip = false; break;
+
+                // --top 的值解析失败必须显式报错退出：旧写法 `when i + 1 < Length &&
+                // int.TryParse(...)` 失败时落 default，把值当词典路径，最后报出误导性
+                // 的「词典不存在： abc」（kanban Q-003-3）。三个 case 依次覆盖：
+                // 缺值、值可解析、值不可解析。
+                case "--top" when i + 1 >= args.Count:
+                    error = "--top 需要一个整数参数（例如 --top 80000）";
+                    return null;
+                case "--top" when int.TryParse(args[i + 1], out var t):
+                    top = t;
+                    i++;
+                    break;
+                case "--top":
+                    error = $"--top 需要整数，收到: \"{args[i + 1]}\"";
+                    return null;
+
+                case "--workers" when i + 1 < args.Count && int.TryParse(args[++i], out var w): workers = Math.Max(1, w); break;
+                case "--piper" when i + 1 < args.Count: piper = args[++i]; break;
+                case "--ffmpeg" when i + 1 < args.Count: ffmpeg = args[++i]; break;
+                case "--model-uk" when i + 1 < args.Count: modelUk = Path.GetFullPath(args[++i]); break;
+                case "--model-us" when i + 1 < args.Count: modelUs = Path.GetFullPath(args[++i]); break;
+                default: dictionary = Path.GetFullPath(args[i]); break;
+            }
+        }
+
+        error = null;
+        return new AudioPackOptions(dictionary, outDirectory, zipPath, makeZip, top, workers, piper, ffmpeg, modelUk, modelUs);
     }
 }

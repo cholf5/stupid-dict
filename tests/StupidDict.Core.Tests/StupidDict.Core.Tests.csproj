@@ -16,6 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\StupidDict.Core\StupidDict.Core.csproj" />
     <ProjectReference Include="..\..\src\StupidDict.DataBuilder\StupidDict.DataBuilder.csproj" />
+    <ProjectReference Include="..\..\src\StupidDict.AudioPackBuilder\StupidDict.AudioPackBuilder.csproj" />
   </ItemGroup>
 
 </Project>
