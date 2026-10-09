@@ -44,6 +44,15 @@ public partial class App : Application
             desktop.MainWindow = new MainWindow(
                 new DictionaryService(AppPaths.DictionaryDatabasePath, AppPaths.HistoryDatabasePath),
                 settings: settings);
+            // Second-launch activation: the guard raises it on its listener thread,
+            // hence the dispatcher hop. A closed (invisible) main window means the
+            // app is already shutting down and there is nothing to raise.
+            SingleInstanceGuard.Current?.ActivationRequested +=
+                () => Dispatcher.UIThread.Post(() =>
+                {
+                    if (desktop.MainWindow is { } window && window.IsVisible)
+                        SingleInstanceGuard.BringToFront(window);
+                });
         }
         base.OnFrameworkInitializationCompleted();
     }
