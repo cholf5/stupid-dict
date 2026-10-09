@@ -18,6 +18,7 @@ using StupidDict.App.Speech;
 using StupidDict.Core.Application;
 using StupidDict.Core.Dictionary;
 using Xunit;
+using System.ComponentModel;
 
 [assembly: AvaloniaTestApplication(typeof(StupidDict.App.Tests.TestAppBuilder))]
 
@@ -1079,6 +1080,124 @@ public class HeadlessWindowTests
 
     private static List<string?> ComboTexts(ComboBox combo) =>
         combo.GetVisualDescendants().OfType<TextBlock>().Select(b => b.Text).ToList();
+
+    [AvaloniaFact]
+    public void LanguageSwitchRebuildsResultPageExactlyOnce()
+    {
+        // TC-001 (B-002): SetLanguage raises PropertyChanged for every
+        // property (~98) in one synchronous burst; the result page must be
+        // rebuilt once per switch, not once per raise. Counted through the
+        // ResultRendered seam — one invocation per rebuild-closure run.
+        using var service = CreateService();
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "cat");
+
+        var rebuilds = 0;
+        window.ResultRendered += () => rebuilds++;
+        try
+        {
+            Translations.Instance.SetLanguage(AppLanguage.English);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(1, rebuilds);
+            Assert.Equal("cat", Headword(window));
+            Assert.Contains("Synonyms", ResultLabels(window));
+
+            // And once per switch on the way back too.
+            Translations.Instance.SetLanguage(AppLanguage.SimplifiedChinese);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(2, rebuilds);
+            Assert.Contains("近义词", ResultLabels(window));
+        }
+        finally
+        {
+            Translations.Instance.SetLanguage(AppLanguage.SimplifiedChinese);
+        }
+    }
+
+    [AvaloniaFact]
+    public void LanguageSwitchOnEmptyStateDoesNotRebuildResults()
+    {
+        // No result page is visible, so a language switch must not render
+        // one — the XAML-bound chrome (hint text, title) still refreshes
+        // through the untouched per-property raises.
+        using var service = CreateService();
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var rebuilds = 0;
+        window.ResultRendered += () => rebuilds++;
+        try
+        {
+            Translations.Instance.SetLanguage(AppLanguage.English);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(0, rebuilds);
+            Assert.False(window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+            Assert.Equal("Type an English word or Chinese, then press Enter",
+                window.FindControl<TextBlock>("HintText")!.Text);
+        }
+        finally
+        {
+            Translations.Instance.SetLanguage(AppLanguage.SimplifiedChinese);
+        }
+    }
+
+    [AvaloniaFact]
+    public void SettingsWindowLanguageSwitchConsolidatesRebindWork()
+    {
+        // The settings window rebinds six option labels and re-stats the disk
+        // (RefreshDataStatus) per language change; all of that shares the same
+        // once-per-switch gate as the result page. OptionItem.Label raises
+        // INPC on every assignment, so six raises = one consolidated handler
+        // run (before the fix each of the ~98 property raises re-ran it).
+        var settings = new AppSettings { Language = AppLanguage.SimplifiedChinese };
+        var savePath = Path.Combine(Path.GetTempPath(), "stupiddict-uitests",
+            Guid.NewGuid().ToString("N"), "settings.json");
+        App.WireSettings(settings, savePath);
+        // Empty injected layout: the data-status lines read deterministically.
+        var locations = NewLocations(out _, out _, out _);
+        var settingsWindow = new SettingsWindow(settings, locations: locations);
+        settingsWindow.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var labelRaises = 0;
+        void CountLabelRaise(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(OptionItem.Label)) labelRaises++;
+        }
+        foreach (var combo in new[] { "ThemeComboBox", "LanguageComboBox" })
+            foreach (var option in settingsWindow.FindControl<ComboBox>(combo)!.ItemsSource!.Cast<OptionItem>())
+                option.PropertyChanged += CountLabelRaise;
+
+        try
+        {
+            // Real chain: select English → shared settings → WireSettings →
+            // Translations.SetLanguage.
+            settingsWindow.FindControl<ComboBox>("LanguageComboBox")!.SelectedIndex = (int)AppLanguage.English;
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(6, labelRaises);
+            Assert.Equal(["System", "Light", "Dark"],
+                settingsWindow.FindControl<ComboBox>("ThemeComboBox")!.ItemsSource!.Cast<OptionItem>()
+                    .Select(o => o.Label).ToList());
+            Assert.Equal("Not installed", settingsWindow.FindControl<TextBlock>("DictionaryDataStatus")!.Text);
+            Assert.Equal("Not installed", settingsWindow.FindControl<TextBlock>("AudioPackDataStatus")!.Text);
+
+            settingsWindow.Close();
+        }
+        finally
+        {
+            Translations.Instance.SetLanguage(AppLanguage.SimplifiedChinese);
+        }
+    }
 
     private static List<string?> ResultLabels(Window window) =>
         window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()

@@ -63,6 +63,13 @@ public partial class MainWindow : Window
     /// </summary>
     private Action? _rebuildResults;
 
+    /// <summary>
+    /// Test seam (InternalsVisibleTo): raised after every result-page render,
+    /// i.e. once per <c>_rebuildResults</c> closure execution — the
+    /// language-switch consolidation test counts these (B-002).
+    /// </summary>
+    internal Action? ResultRendered;
+
     public MainWindow() : this(new DictionaryService(AppPaths.DictionaryDatabasePath, AppPaths.HistoryDatabasePath))
     {
     }
@@ -433,6 +440,13 @@ public partial class MainWindow : Window
 
     private void OnTranslationsChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // SetLanguage raises PropertyChanged for every property in one burst
+        // (XAML bindings refresh off each raise; do not disturb that). The
+        // resolved CurrentLanguage is part of the burst, is assigned before
+        // any raise fires, and is the once-per-switch signal: reacting to
+        // every raise used to rebuild the result page 98 times per switch.
+        if (e.PropertyName != nameof(Translations.CurrentLanguage))
+            return;
         UpdateSearchBoxLineMetrics();
         if (ResultsPanel.IsVisible)
             _rebuildResults?.Invoke();
@@ -1091,6 +1105,7 @@ public partial class MainWindow : Window
             RenderChineseResult(result);
         else
             RenderEnglishResult(result);
+        ResultRendered?.Invoke();
     }
 
     private void RenderEnglishResult(LookupResult result)
@@ -1267,6 +1282,7 @@ public partial class MainWindow : Window
         ResultsPanel.Children.Add(Text(string.Format(Translations.Instance.LookupErrorFormat, query),
             20, FontWeight.SemiBold, Palette.ErrorForeground, margin: new Thickness(2, 8, 0, 0)));
         ResultsPanel.Children.Add(Text(ex.Message, fontSize: 13, brushKey: Palette.TextMuted, margin: new Thickness(2, 8, 0, 0)));
+        ResultRendered?.Invoke();
     }
 
     private WrapPanel BuildChips(IEnumerable<string> items)

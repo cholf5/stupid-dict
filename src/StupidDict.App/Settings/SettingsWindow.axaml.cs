@@ -90,9 +90,13 @@ public partial class SettingsWindow : Window
         Translations.Instance.PropertyChanged -= OnTranslationsPropertyChanged;
     }
 
-    /// <summary>语言切换后更新选项文案；选项实例与 ItemsSource 全程不变，选区无扰。</summary>
+    /// <summary>语言切换后更新选项文案；选项实例与 ItemsSource 全程不变，选区无扰。
+    /// SetLanguage 逐属性 raise 的风暴里只在 CurrentLanguage 一拍收敛执行一次
+    /// （~98 遍降为 1 遍，含 RefreshDataStatus 的两次磁盘 stat）。</summary>
     private void OnTranslationsPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName != nameof(Translations.CurrentLanguage))
+            return;
         var t = Translations.Instance;
         _themeOptions[0].Label = t.FollowSystem;
         _themeOptions[1].Label = t.ThemeLight;
