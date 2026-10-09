@@ -178,6 +178,67 @@ public class DownloadFlowTests
         Assert.True(File.Exists(Path.Combine(audio, "us", "cat.mp3")));
     }
 
+    [AvaloniaFact]
+    public void AudioPackImportAcceptsReservedDeviceNameEntry()
+    {
+        var scratch = NewScratchDirectory();
+        var zipPath = Path.Combine(scratch, "pack.zip");
+        using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            AddEntry(archive, "us/con.mp3", "us-con");
+            AddEntry(archive, "uk/con.mp3", "uk-con");
+            AddEntry(archive, "us/cat.mp3", "us-cat");
+        }
+
+        var audio = Path.Combine(scratch, "audio");
+        MainWindow.ImportAudioPack(zipPath, audio);
+
+        // "con" is a real headword (and so are aux/nul/com1 lookalikes in
+        // principle): a legitimate pack carries device-name files, and the
+        // zip-slip gate must not mistake them for path attacks.
+        Assert.Equal("us-con", File.ReadAllText(Path.Combine(audio, "us", "con.mp3")));
+        Assert.Equal("uk-con", File.ReadAllText(Path.Combine(audio, "uk", "con.mp3")));
+        Assert.Equal("us-cat", File.ReadAllText(Path.Combine(audio, "us", "cat.mp3")));
+    }
+
+    [AvaloniaFact]
+    public void ExtractZipRejectsParentTraversalEntry()
+    {
+        var scratch = NewScratchDirectory();
+        var destination = Path.Combine(scratch, "dest");
+        Directory.CreateDirectory(destination);
+        var zipPath = Path.Combine(scratch, "evil.zip");
+        using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            AddEntry(archive, "us/ok.mp3", "ok");
+            AddEntry(archive, "../evil.mp3", "evil");
+        }
+
+        var ex = Assert.Throws<InvalidOperationException>(() => MainWindow.ExtractZip(zipPath, destination));
+
+        Assert.Contains("../evil.mp3", ex.Message);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(destination));
+    }
+
+    [AvaloniaFact]
+    public void ExtractZipRejectsRootedEntry()
+    {
+        var scratch = NewScratchDirectory();
+        var destination = Path.Combine(scratch, "dest");
+        Directory.CreateDirectory(destination);
+        var zipPath = Path.Combine(scratch, "evil.zip");
+        using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            AddEntry(archive, "us/ok.mp3", "ok");
+            AddEntry(archive, "/abs/evil.mp3", "evil");
+        }
+
+        var ex = Assert.Throws<InvalidOperationException>(() => MainWindow.ExtractZip(zipPath, destination));
+
+        Assert.Contains("/abs/evil.mp3", ex.Message);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(destination));
+    }
+
     // ---- helpers ----
 
     private static AppLocations NewLocations(out string dictionaryPath, out string historyPath)
@@ -186,6 +247,14 @@ public class DownloadFlowTests
         dictionaryPath = Path.Combine(directory, "dictionary.db");
         historyPath = Path.Combine(directory, "history.db");
         return new AppLocations(directory, dictionaryPath, historyPath, Path.Combine(directory, "audio"));
+    }
+
+    private static void AddEntry(ZipArchive archive, string name, string content)
+    {
+        var entry = archive.CreateEntry(name);
+        using var stream = entry.Open();
+        using var writer = new StreamWriter(stream);
+        writer.Write(content);
     }
 
     private static string NewScratchDirectory()

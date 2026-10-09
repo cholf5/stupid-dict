@@ -845,8 +845,7 @@ public partial class MainWindow : Window
             foreach (var entry in archive.Entries)
             {
                 if (entry.FullName.Length == 0) continue;
-                var target = Path.GetFullPath(Path.Combine(destinationDirectory, entry.FullName));
-                if (!target.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal) && target != root)
+                if (EntryEscapesDestination(entry.FullName))
                     throw new InvalidOperationException(
                         string.Format(Translations.Instance.ZipSlipFormat, entry.FullName));
             }
@@ -854,23 +853,100 @@ public partial class MainWindow : Window
 
         // Sweep staging directories a crashed run may have left behind.
         const string stagingPrefix = ".stupiddict-extracting-";
-        foreach (var stale in Directory.EnumerateDirectories(destinationDirectory, stagingPrefix + "*"))
+        foreach (var stale in Directory.EnumerateDirectories(root, stagingPrefix + "*"))
             Directory.Delete(stale, recursive: true);
 
-        var staging = Path.Combine(destinationDirectory, stagingPrefix + Guid.NewGuid().ToString("N"));
+        var staging = Path.Combine(root, stagingPrefix + Guid.NewGuid().ToString("N"));
         try
         {
-            System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, staging);
+            if (OperatingSystem.IsWindows())
+            {
+                // Reserved device names in the final segment (us/con.mp3) are
+                // unwritable through normal paths — see ExtractEntries.
+                using var extraction = System.IO.Compression.ZipFile.OpenRead(zipPath);
+                ExtractEntries(extraction, staging);
+            }
+            else
+            {
+                System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, staging);
+            }
+
             // Materialize before moving: moving entries out of staging while
             // lazily enumerating it races the enumerator (the pack has two).
             foreach (var entry in Directory.EnumerateFileSystemEntries(staging).ToArray())
-                MoveIntoPlace(entry, Path.Combine(destinationDirectory, Path.GetFileName(entry)));
+                MoveIntoPlace(entry, Path.Combine(root, Path.GetFileName(entry)));
         }
         finally
         {
             if (Directory.Exists(staging))
                 Directory.Delete(staging, recursive: true);
         }
+    }
+
+    /// <summary>
+    /// Zip-slip gate, purely syntactic: an entry escapes only by being rooted
+    /// (drive/UNC/leading separator) or carrying a ".." segment; anything else
+    /// stays inside the destination. Deliberately NOT a GetFullPath + prefix
+    /// comparison — on Windows, GetFullPath rewrites a path whose final segment
+    /// is a reserved DOS device name (CON/PRN/AUX/NUL/COM1-9/LPT1-9, extension
+    /// ignored; "con" is a real headword) into "\\.\CON" form, which always
+    /// fails the prefix check and makes a legitimate us/con.mp3 look like an
+    /// attack. Both separators are matched: the zip spec says '/', but Win32
+    /// treats '\' identically.
+    /// </summary>
+    internal static bool EntryEscapesDestination(string entryName)
+    {
+        if (Path.IsPathRooted(entryName)) return true;
+        return entryName.Split('/', '\\').Any(segment => segment == "..");
+    }
+
+    // Windows-only extraction. ZipFile.ExtractToDirectory writes entries
+    // through normal paths, and pre-Windows 11 CreateFile redirects a final
+    // reserved device name (us/con.mp3 → the CON device) — the MP3 silently
+    // never lands. Writing through the \\?\ prefix skips Win32 path
+    // normalization so the name is taken literally; on Windows 11, where the
+    // restriction is lifted, the prefix behaves identically.
+    private static void ExtractEntries(System.IO.Compression.ZipArchive archive, string stagingDirectory)
+    {
+        foreach (var entry in archive.Entries)
+        {
+            if (entry.FullName.Length == 0) continue;
+            var target = JoinEntryPath(stagingDirectory, entry.FullName);
+            if (entry.FullName.EndsWith("/"))
+            {
+                Directory.CreateDirectory(ToExtendedPath(target));
+                continue;
+            }
+            Directory.CreateDirectory(ToExtendedPath(Path.GetDirectoryName(target)!));
+            using var source = entry.Open();
+            using var destination = File.Create(ToExtendedPath(target));
+            source.CopyTo(destination);
+        }
+    }
+
+    // The slip gate has rejected rooted names and ".." segments, so joining
+    // the remaining literal segments can only land inside staging. String
+    // joining is deliberate: Path.Combine + GetFullPath would re-normalize,
+    // and the whole point of the \\?\ prefix below is that nothing normalized
+    // touches the name. '.' segments are dropped (\\?\ does not normalize
+    // them away); '\' counts as a separator (a literal backslash cannot be
+    // part of a Windows filename anyway).
+    private static string JoinEntryPath(string stagingDirectory, string entryName)
+    {
+        var segments = entryName.Split('/', '\\')
+            .Where(segment => segment.Length > 0 && segment != ".");
+        return stagingDirectory + Path.DirectorySeparatorChar
+            + string.Join(Path.DirectorySeparatorChar, segments);
+    }
+
+    // Extended-length prefix. Requires an absolute backslash path — the
+    // staging directory is built from Path.GetFullPath output.
+    private static string ToExtendedPath(string path)
+    {
+        if (path.StartsWith(@"\\?\")) return path;
+        if (path.StartsWith(@"\\")) // UNC keeps working under the prefix via \\?\UNC\
+            return @"\\?\UNC\" + path[2..];
+        return @"\\?\" + path;
     }
 
     // Same-volume renames, so moving is cheap and the destination never holds
