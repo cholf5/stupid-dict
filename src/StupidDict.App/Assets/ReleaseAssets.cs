@@ -11,7 +11,7 @@ internal static class ReleaseAssets
     /// changes. Marked prerelease so it never becomes releases/latest — the
     /// in-app update check reads that page and expects an app vX.Y.Z tag.
     /// </summary>
-    internal const string DataTag = "data-1";
+    internal const string DataTag = "data-2";
 
     public const string DictionaryAsset = "dictionary.zip";
     public const string AudioPackAsset = "audio-pack.zip";

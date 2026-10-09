@@ -9,7 +9,6 @@
 
 | ID | Title | Priority | Size | Blocked | Dependencies |
 |---|---|---|---|---|---|
-| P-003 | 修复 WordNetThesaurus 后重建 dictionary.db 并发 data-2 | P2 | M | | B-001 |
 
 ## Done
 
@@ -27,6 +26,7 @@
 | Q-002 | Core 查询质量三小项（排序一致性 / Words 首访竞态 / CJK 判定区间） | P2 | 2026-10-09 |
 | Q-003 | 构建器 CLI 与构建健壮性三小项（参数越界 / journal 半成品库 / --top 解析） | P2 | 2026-10-09 |
 | DOC-001 | 文档对齐：AGENTS.md 幽灵方法名 BuildLinkText + README 代理顺序表述 | P2 | 2026-10-09 |
+| P-003 | 修复 WordNetThesaurus 后重建 dictionary.db 并发 data-2（含 B-001 残留 adv 命名空间缺陷修复） | P2 | 2026-10-09 |
 | P-002 | 打包/发布脚本健壮性小项（8 处，2 项可选） | P2 | 2026-10-09 |
 | P-001 | package.sh 发布步骤注释纠正为数据解耦流程 | P2 | 2026-10-09 |
 | B-013 | 设置枚举未知字符串值导致整个 settings.json 回退默认 | P2 | 2026-10-09 |

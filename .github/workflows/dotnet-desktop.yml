@@ -8,7 +8,7 @@
 #     Setup per-user installer (scripts/StupidDict.iss),
 #     Linux linux-x64 zip — then create the GitHub Release and upload app
 #     packages only. dictionary.zip / audio-pack.zip are too big to build in
-#     CI and live in their own prerelease (data-1, see ReleaseAssets.DataTag),
+#     CI and live in their own prerelease (data-2, see ReleaseAssets.DataTag),
 #     decoupled from app versions; the in-app first-run download pins to it.
 #   - workflow_dispatch: manual packaging dry run (no release; artifacts on the run).
 #
@@ -101,7 +101,7 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       # No dictionary on the runner, so package.sh skips the with-dictionary
-      # variant and dictionary.zip — those live in the data-1 prerelease.
+      # variant and dictionary.zip — those live in the data-2 prerelease.
       - name: Package .app bundle
         run: scripts/package.sh --rids "osx-${{ matrix.arch }}"
       - name: Name asset with version

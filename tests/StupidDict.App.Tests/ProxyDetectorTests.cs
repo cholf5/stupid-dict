@@ -42,7 +42,10 @@ public class ProxyDetectorTests
     [Fact]
     public void BuildAttemptsEscalatesPlatformDefaultThenDirectThenDetected()
     {
-        var githubUrl = "https://github.com/cholf5/stupid-dict/releases/download/data-1/dictionary.zip";
+        // The production URL shape (DataTag-constructed, not a baked tag literal:
+        // the tag bumps with data releases and this test only pins the
+        // escalation order over whatever URL it is given).
+        var githubUrl = ReleaseAssets.GithubUrl(ReleaseAssets.DictionaryAsset);
         var attempts = new AssetDownloadService().BuildAttempts(githubUrl).ToList();
 
         // Phase 1: the platform default rides every source, GitHub first —
