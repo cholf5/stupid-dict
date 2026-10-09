@@ -72,6 +72,35 @@ public class SettingsServiceTests
         Assert.Contains("\"Theme\": \"Dark\"", File.ReadAllText(path));
     }
 
+    [Fact]
+    public void RoundTripsWindowBounds()
+    {
+        var path = NewPath();
+        var settings = new AppSettings { WindowWidth = 900.5, WindowHeight = 640.25, WindowMaximized = true };
+
+        SettingsService.Save(settings, path);
+
+        var loaded = SettingsService.Load(path);
+        Assert.Equal(900.5, loaded.WindowWidth);
+        Assert.Equal(640.25, loaded.WindowHeight);
+        Assert.True(loaded.WindowMaximized);
+    }
+
+    [Fact]
+    public void MissingWindowBoundsFallBackToDefaults()
+    {
+        var path = NewPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, """{ "Theme": "Dark" }""");
+
+        var loaded = SettingsService.Load(path);
+
+        Assert.Equal(AppTheme.Dark, loaded.Theme);
+        Assert.Null(loaded.WindowWidth);
+        Assert.Null(loaded.WindowHeight);
+        Assert.False(loaded.WindowMaximized);
+    }
+
     private static string NewPath()
     {
         var directory = Path.Combine(Path.GetTempPath(), "stupiddict-settings-tests", Guid.NewGuid().ToString("N"));

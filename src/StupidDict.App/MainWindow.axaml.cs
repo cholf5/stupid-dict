@@ -40,6 +40,11 @@ public partial class MainWindow : Window
     private readonly bool _autoDownload;
     private readonly AppSettings _settings;
     private SettingsWindow? _settingsWindow;
+    // Last client size seen while the window was Normal; Width/Height are
+    // clobbered by maximize (Window.HandleResized assigns them on every
+    // platform resize), so a close in a maximized state saves these instead.
+    private double _lastNormalWidth;
+    private double _lastNormalHeight;
 
     /// <summary>
     /// Rebuilds the currently rendered result page with fresh palette values;
@@ -66,10 +71,21 @@ public partial class MainWindow : Window
         _downloader = downloader ?? new AssetDownloadService();
         _dictionaryAvailable = File.Exists(service.DictionaryPath);
 
+        // Restore the size recorded at last close (XAML defaults otherwise);
+        // the maximized flag rides along. WindowState is a styled property,
+        // so setting it before Show reaches the platform at show time.
+        if (_settings.WindowWidth is { } savedWidth) Width = Math.Max(MinWidth, savedWidth);
+        if (_settings.WindowHeight is { } savedHeight) Height = Math.Max(MinHeight, savedHeight);
+        _lastNormalWidth = Width;
+        _lastNormalHeight = Height;
+        if (_settings.WindowMaximized)
+            WindowState = WindowState.Maximized;
+
         Opened += (_, _) =>
         {
             SearchBox.Focus();
             UpdateSearchBoxLineMetrics();
+            ClampWindowToScreen();
         };
         SearchBox.KeyDown += OnSearchBoxKeyDown;
         SearchBox.TextChanged += OnSearchTextChanged;
@@ -79,6 +95,7 @@ public partial class MainWindow : Window
         // switch does; XAML bindings refresh themselves.
         Translations.Instance.PropertyChanged += OnTranslationsChanged;
         Closed += (_, _) => Translations.Instance.PropertyChanged -= OnTranslationsChanged;
+        Closed += (_, _) => SaveWindowBounds();
 
         ShowEmptyState();
         UpdateNavButtons();
@@ -95,6 +112,41 @@ public partial class MainWindow : Window
             if (_autoDownload)
                 StartDictionaryDownload();
         }
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+        // Bounds only counts as the user's chosen size while the window is
+        // Normal (maximize/fullscreen own the bounds otherwise); the min-size
+        // gate keeps the pre-layout 0x0 out.
+        if (e.Property == Visual.BoundsProperty && WindowState == WindowState.Normal
+            && Bounds.Width >= MinWidth && Bounds.Height >= MinHeight)
+        {
+            _lastNormalWidth = Bounds.Width;
+            _lastNormalHeight = Bounds.Height;
+        }
+    }
+
+    private void SaveWindowBounds()
+    {
+        // Setting the properties persists them: WireSettings saves on any of
+        // the Window* changes. Unwired instances (tests) just mutate in memory.
+        _settings.WindowWidth = _lastNormalWidth;
+        _settings.WindowHeight = _lastNormalHeight;
+        _settings.WindowMaximized = WindowState == WindowState.Maximized;
+    }
+
+    private void ClampWindowToScreen()
+    {
+        // A size recorded on a larger (or since-unplugged) monitor must not
+        // open past the current screen's edge; drop it to the work area.
+        if (Screens.ScreenCount == 0) return;
+        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        if (screen is null) return;
+        var area = screen.WorkingArea;
+        if (Width > area.Width) Width = area.Width;
+        if (Height > area.Height) Height = area.Height;
     }
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)

@@ -90,6 +90,12 @@ public partial class App : Application
                 case nameof(AppSettings.Language):
                     Localization.Translations.Instance.SetLanguage(settings.Language);
                     break;
+                // Window bounds are recorded by MainWindow at close; nothing to
+                // apply live, the write below is the whole job.
+                case nameof(AppSettings.WindowWidth):
+                case nameof(AppSettings.WindowHeight):
+                case nameof(AppSettings.WindowMaximized):
+                    break;
                 default:
                     return;
             }
