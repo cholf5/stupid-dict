@@ -82,6 +82,15 @@ public sealed class SingleInstanceGuard : IDisposable
 
     internal static SingleInstanceGuard? TryAcquire(string lockPath, string pipeName)
     {
+        // A directory squatting on the lock path (the identity is a computable
+        // name in a possibly shared /tmp) makes the exclusive open throw
+        // IOException — which the catch below must keep reading as "another
+        // live instance", the case that makes the caller exit. Distinguish
+        // the squat up front and fail open instead: run unguarded rather than
+        // never start.
+        if (Directory.Exists(lockPath))
+            return new SingleInstanceGuard(lockFile: null, pipeName: null);
+
         FileStream? lockFile;
         try
         {

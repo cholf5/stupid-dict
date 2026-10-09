@@ -31,6 +31,18 @@ public class SingleInstanceTests
     }
 
     [Fact]
+    public void DirectorySquattingOnLockPathFailsOpenInsteadOfExiting()
+    {
+        // A null return means "another live instance" and the caller exits,
+        // so a directory squatting on the lock path (shared /tmp, computable
+        // name) must fail open to an unguarded instance instead.
+        var lockPath = UniqueLockPath();
+        Directory.CreateDirectory(lockPath);
+        using var guard = SingleInstanceGuard.TryAcquire(lockPath, UniqueName());
+        Assert.NotNull(guard);
+    }
+
+    [Fact]
     public void NotifyRunningInstanceRaisesActivation()
     {
         var mutexName = UniqueName();

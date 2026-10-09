@@ -205,6 +205,33 @@ public class DownloadFlowTests
         Assert.False(File.Exists(Path.Combine(locations.AudioDirectory, "uk", "old.mp3")));
     }
 
+    /// <summary>
+    /// Cancelling the audio pack download must hand the (single) action
+    /// button back usable: the cancel click disables it ("取消中…") and the
+    /// cancelled flow is the last thing that runs — without a re-enable the
+    /// button shows 下载 but never responds again, blocking every later
+    /// attempt until the app restarts.
+    /// </summary>
+    [AvaloniaFact]
+    public void AudioPackDownloadCancelledRestoresEnabledActionButton()
+    {
+        var locations = NewLocations(out var dictionaryPath, out _);
+        using (DictionaryDatabase.Create(dictionaryPath)) { }
+        var window = new MainWindow(new DictionaryService(dictionaryPath, locations.HistoryDatabasePath),
+            downloader: new NeverFinishingDownloader(), locations: locations, autoDownload: true,
+            downloadDirectory: NewScratchDirectory());
+        window.Show();
+
+        var button = window.FindControl<Button>("AudioPackActionButton")!;
+        WaitUntil(() => button.Content as string == Translations.Instance.Cancel);
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        WaitUntil(() => button.Content as string == Translations.Instance.AudioPackDownloadButton);
+        Assert.True(button.IsEnabled);
+        Assert.Equal(Translations.Instance.AudioPackCancelled,
+            window.FindControl<TextBlock>("AudioPackStatus")!.Text);
+    }
+
     [AvaloniaFact]
     public void ExtractZipFailureLeavesDestinationUntouched()
     {
@@ -479,6 +506,23 @@ public class DownloadFlowTests
             ChecksumCalls++;
             return Task.FromResult(checksum(assetName));
         }
+    }
+
+    /// <summary>
+    /// A download that only ends when the flow cancels it: exercises the
+    /// cancellation path (status text, button state) without serving bytes.
+    /// </summary>
+    private sealed class NeverFinishingDownloader : IAssetDownloader
+    {
+        public async Task<DownloadResult> DownloadAsync(string assetName, string destinationFile,
+            IProgress<DownloadProgress>? progress, CancellationToken cancellation)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellation);
+            throw new InvalidOperationException("unreachable: the delay only ends by cancellation");
+        }
+
+        public Task<string?> FetchChecksumAsync(string assetName, CancellationToken cancellation) =>
+            Task.FromResult<string?>(null);
     }
 
     /// <summary>

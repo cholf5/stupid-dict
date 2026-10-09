@@ -101,6 +101,24 @@ public class SettingsServiceTests
         Assert.False(loaded.WindowMaximized);
     }
 
+    [Fact]
+    public void SaveToUnwritableLocationDoesNotThrow()
+    {
+        // A file where the settings directory should be: CreateDirectory
+        // throws IOException, and persistence is best-effort — the write
+        // rides property changes (including window close), which must never
+        // crash over a locked or unwritable settings file.
+        var directory = Path.Combine(Path.GetTempPath(), "stupiddict-settings-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var blocked = Path.Combine(directory, "blocked");
+        File.WriteAllText(blocked, "occupied");
+        var path = Path.Combine(blocked, "settings.json");
+
+        SettingsService.Save(new AppSettings { Theme = AppTheme.Dark }, path);
+
+        Assert.False(File.Exists(path));
+    }
+
     private static string NewPath()
     {
         var directory = Path.Combine(Path.GetTempPath(), "stupiddict-settings-tests", Guid.NewGuid().ToString("N"));

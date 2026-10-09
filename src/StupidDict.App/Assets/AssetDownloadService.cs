@@ -66,7 +66,8 @@ public sealed class AssetDownloadService : IAssetDownloader
         {
             try
             {
-                return await DownloadFromAsync(url, mode, proxy, destinationFile, progress, cancellation);
+                return await DownloadFromAsync(url, mode, proxy, destinationFile, progress, cancellation)
+                    .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
             {
@@ -87,6 +88,10 @@ public sealed class AssetDownloadService : IAssetDownloader
     /// system proxy cannot sink the mirrors. Explicitly detected proxies come
     /// last and only re-try the first two sources each.
     /// </summary>
+    // The enumerator is evaluated lazily between attempts, and detecting the
+    // proxies for the late phases blocks (macOS scutil subprocess, local port
+    // probes) — every await below must therefore use ConfigureAwait(false) so
+    // those probes never run on the UI thread that started the download.
     internal IEnumerable<(string Url, DownloadProxyMode Mode, IWebProxy? Proxy)> BuildAttempts(string githubUrl)
     {
         var sources = ReleaseAssets.MirrorUrls(githubUrl).ToList();
@@ -140,7 +145,8 @@ public sealed class AssetDownloadService : IAssetDownloader
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         if (resumeFrom > 0)
             request.Headers.Range = new RangeHeaderValue(resumeFrom, null);
-        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, firstByte.Token);
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
+            firstByte.Token).ConfigureAwait(false);
 
         if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
         {
@@ -154,15 +160,15 @@ public sealed class AssetDownloadService : IAssetDownloader
         if (!append) resumeFrom = 0;
         var total = append ? response.Content.Headers.ContentLength + resumeFrom : response.Content.Headers.ContentLength;
 
-        await using var source = await response.Content.ReadAsStreamAsync(cancellation);
+        await using var source = await response.Content.ReadAsStreamAsync(cancellation).ConfigureAwait(false);
         await using var target = new FileStream(partFile, append ? FileMode.Append : FileMode.Create);
         var received = resumeFrom;
         var resumed = append ? resumeFrom : 0;
         var buffer = new byte[1 << 16];
         int read;
-        while ((read = await source.ReadAsync(buffer, cancellation)) > 0)
+        while ((read = await source.ReadAsync(buffer, cancellation).ConfigureAwait(false)) > 0)
         {
-            await target.WriteAsync(buffer.AsMemory(0, read), cancellation);
+            await target.WriteAsync(buffer.AsMemory(0, read), cancellation).ConfigureAwait(false);
             received += read;
             progress?.Report(new DownloadProgress(received, total, url, resumed));
         }
@@ -183,7 +189,7 @@ public sealed class AssetDownloadService : IAssetDownloader
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("stupiddict");
                 using var firstByte = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
                 firstByte.CancelAfter(ChecksumTimeout);
-                var text = await client.GetStringAsync(url, firstByte.Token);
+                var text = await client.GetStringAsync(url, firstByte.Token).ConfigureAwait(false);
                 var hex = text.Split(' ')[0].Trim();
                 if (hex.Length == 64) return hex.ToLowerInvariant();
             }

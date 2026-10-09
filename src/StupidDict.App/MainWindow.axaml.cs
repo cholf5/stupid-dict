@@ -551,7 +551,8 @@ public partial class MainWindow : Window
                 text => DictionaryDownloadStatus.Text = text,
                 Translations.Instance.DownloadFailedFormat, cancellation);
             DictionaryDownloadStatus.Text = Translations.Instance.Extracting;
-            await Task.Run(() => ExtractZip(zipPath, _locations.DataDirectory), cancellation);
+            await Task.Run(() => ExtractZip(zipPath, _locations.DataDirectory, cancellation: cancellation),
+                cancellation);
             File.Delete(zipPath);
             FinishDictionarySetup();
         }
@@ -777,8 +778,10 @@ public partial class MainWindow : Window
             IProgress<(int Done, int Total)> extractProgress =
                 new Progress<(int Done, int Total)>(p =>
                     UpdateAudioPackFileProgress(p, Translations.Instance.ExtractingFilesFormat));
-            await Task.Run(() => ExtractZip(zipPath, _locations.AudioDirectory,
-                (done, total) => extractProgress.Report((done, total))), cancellation);
+            await Task.Run(
+                () => ExtractZip(zipPath, _locations.AudioDirectory,
+                    (done, total) => extractProgress.Report((done, total)), cancellation),
+                cancellation);
             File.Delete(zipPath);
             AudioPackPanel.IsVisible = false;
         }
@@ -786,6 +789,9 @@ public partial class MainWindow : Window
         {
             AudioPackStatus.Text = Translations.Instance.AudioPackCancelled;
             AudioPackActionButton.Content = Translations.Instance.AudioPackDownloadButton;
+            // The cancel click disabled the button ("取消中…"); the next
+            // attempt starts from this same button, so it must come back up.
+            AudioPackActionButton.IsEnabled = true;
             PickAudioPackButton.IsVisible = true;
             AudioPackDownloadPageButton.IsVisible = true;
             AudioPackBar.IsVisible = false;
@@ -827,9 +833,9 @@ public partial class MainWindow : Window
 
     private void UpdateAudioPackProgress(DownloadProgress progress)
     {
-        AudioPackBar.IsIndeterminate = false;
         if (progress.TotalBytes is { } total && total > 0)
         {
+            AudioPackBar.IsIndeterminate = false;
             AudioPackBar.Value = 100.0 * progress.ReceivedBytes / total;
             AudioPackStatus.Text = progress.ResumedFromBytes > 0
                 ? string.Format(Translations.Instance.DownloadResumeFormat,
@@ -839,6 +845,7 @@ public partial class MainWindow : Window
         }
         else
         {
+            AudioPackBar.IsIndeterminate = true;
             AudioPackStatus.Text = string.Format(
                 progress.ResumedFromBytes > 0
                     ? Translations.Instance.DownloadResumeUnsizedFormat
@@ -906,10 +913,11 @@ public partial class MainWindow : Window
     /// the root) before extracting — importing a wrong zip must not scatter
     /// junk inside the audio directory. <paramref name="progress"/> forwards
     /// extraction progress (entries done, entries total); the pack carries
-    /// ~10⁵ files, so the status line counts them.
+    /// ~10⁵ files, so the status line counts them. <paramref
+    /// name="cancellation"/> aborts between entries.
     /// </summary>
     internal static void ImportAudioPack(string zipPath, string audioDirectory,
-        Action<int, int>? progress = null)
+        Action<int, int>? progress = null, CancellationToken cancellation = default)
     {
         using var archive = System.IO.Compression.ZipFile.OpenRead(zipPath);
         var hasPack = archive.Entries.Any(entry =>
@@ -917,7 +925,7 @@ public partial class MainWindow : Window
             entry.FullName.StartsWith("us/", StringComparison.Ordinal));
         if (!hasPack)
             throw new InvalidOperationException(Translations.Instance.ImportMissingPack);
-        ExtractZip(zipPath, audioDirectory, progress);
+        ExtractZip(zipPath, audioDirectory, progress, cancellation);
     }
 
     /// <summary>
@@ -928,9 +936,11 @@ public partial class MainWindow : Window
     /// Every platform extracts entry by entry, which is what per-entry
     /// progress reporting rides on: <paramref name="progress"/> receives
     /// (entries done, entries total), reported every ProgressStride entries.
+    /// <paramref name="cancellation"/> is checked between entries (and before
+    /// the move), so cancelling mid-extract leaves the destination untouched.
     /// </summary>
     internal static void ExtractZip(string zipPath, string destinationDirectory,
-        Action<int, int>? progress = null)
+        Action<int, int>? progress = null, CancellationToken cancellation = default)
     {
         Directory.CreateDirectory(destinationDirectory);
         var root = Path.GetFullPath(destinationDirectory);
@@ -946,9 +956,12 @@ public partial class MainWindow : Window
         var total = archive.Entries.Count(entry => entry.FullName.Length > 0);
 
         // Sweep staging directories a crashed run may have left behind.
+        // Deletion rides the \\?\ prefix like extraction: a stale staging dir
+        // already holds entries such as us/con.mp3, and on Windows 10 a plain
+        // Win32 delete of a reserved device name fails.
         const string stagingPrefix = ".stupiddict-extracting-";
         foreach (var stale in Directory.EnumerateDirectories(root, stagingPrefix + "*"))
-            Directory.Delete(stale, recursive: true);
+            Directory.Delete(ToExtendedPath(stale), recursive: true);
 
         var staging = Path.Combine(root, stagingPrefix + Guid.NewGuid().ToString("N"));
         try
@@ -958,6 +971,7 @@ public partial class MainWindow : Window
             progress?.Invoke(0, total);
             foreach (var entry in archive.Entries)
             {
+                cancellation.ThrowIfCancellationRequested();
                 if (entry.FullName.Length == 0) continue;
                 ExtractEntry(entry, staging);
                 done++;
@@ -967,13 +981,14 @@ public partial class MainWindow : Window
 
             // Materialize before moving: moving entries out of staging while
             // lazily enumerating it races the enumerator (the pack has two).
+            cancellation.ThrowIfCancellationRequested();
             foreach (var entry in Directory.EnumerateFileSystemEntries(staging).ToArray())
                 MoveIntoPlace(entry, Path.Combine(root, Path.GetFileName(entry)));
         }
         finally
         {
             if (Directory.Exists(staging))
-                Directory.Delete(staging, recursive: true);
+                Directory.Delete(ToExtendedPath(staging), recursive: true);
         }
     }
 
@@ -1049,13 +1064,15 @@ public partial class MainWindow : Window
 
     // Same-volume renames, so moving is cheap and the destination never holds
     // half-written data. Existing entries are replaced wholesale, matching the
-    // overwriteFiles behaviour this replaced.
+    // overwriteFiles behaviour this replaced. Deletion goes through the \\?\
+    // prefix: the target directory being replaced (e.g. audio/us on Windows 10)
+    // can hold reserved-device-name entries that a plain Win32 delete misses.
     private static void MoveIntoPlace(string source, string target)
     {
         if (File.Exists(target))
-            File.Delete(target);
+            File.Delete(ToExtendedPath(target));
         else if (Directory.Exists(target))
-            Directory.Delete(target, recursive: true);
+            Directory.Delete(ToExtendedPath(target), recursive: true);
         if (File.Exists(source))
             File.Move(source, target, overwrite: true);
         else

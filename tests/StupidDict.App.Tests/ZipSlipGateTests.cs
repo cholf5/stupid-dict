@@ -69,6 +69,32 @@ public class ZipSlipGateTests
         Assert.Equal((fileCount, fileCount), reports[^1]);
     }
 
+    [Fact]
+    public void ExtractZipHonoursCancellationMidExtraction()
+    {
+        var scratch = NewScratchDirectory();
+        var zipPath = Path.Combine(scratch, "pack.zip");
+        const int fileCount = 600; // crosses the 256-entry report stride
+        using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+            for (var i = 0; i < fileCount; i++)
+            {
+                var entry = archive.CreateEntry($"us/w{i:D4}.mp3");
+                using var stream = entry.Open();
+                stream.WriteByte((byte)'x');
+            }
+
+        // The loop invokes progress inline, so cancelling from the callback
+        // is the deterministic way to abort partway through the entries.
+        using var cancellation = new CancellationTokenSource();
+        var audio = Path.Combine(scratch, "audio");
+        Assert.Throws<OperationCanceledException>(() => MainWindow.ExtractZip(zipPath, audio,
+            (done, _) => { if (done >= 256) cancellation.Cancel(); }, cancellation.Token));
+
+        // All-or-nothing holds under cancellation: nothing lands in the
+        // destination and the staging directory is swept away.
+        Assert.Empty(Directory.EnumerateFileSystemEntries(audio));
+    }
+
     private static string NewScratchDirectory()
     {
         var directory = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Guid.NewGuid().ToString("N"));

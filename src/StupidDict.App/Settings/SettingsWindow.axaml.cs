@@ -150,7 +150,19 @@ public partial class SettingsWindow : Window
         OpenReleaseButton.IsVisible = false;
         UpdateStatusText.Text = Translations.Instance.CheckingUpdate;
         var checker = _updateChecker ?? new UpdateChecker();
-        var result = await checker.CheckAsync();
+        UpdateCheckResult result;
+        try
+        {
+            result = await checker.CheckAsync();
+        }
+        catch (Exception ex)
+        {
+            // CheckAsync already turns HTTP/network failures into results; this
+            // only backs the unlikely non-network escape — an async void click
+            // handler must never throw.
+            result = new UpdateCheckResult(UpdateCheckOutcome.Failed, Error: ex.Message,
+                ErrorKind: UpdateCheckErrorKind.Network);
+        }
         UpdateStatusText.Text = result.Outcome switch
         {
             UpdateCheckOutcome.UpToDate =>
