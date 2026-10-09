@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform;
+using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -356,6 +357,228 @@ public class HeadlessWindowTests
         // An explicit selection replaces the query; the first suggestion wins.
         Assert.Equal(firstSuggestion, searchBox.Text);
         Assert.False(window.FindControl<Border>("SuggestPanel")!.IsVisible);
+    }
+
+    [AvaloniaFact]
+    public void SelectingSuggestionDoesNotFlashEmptyStateHint()
+    {
+        // TC-001 (Q-001 item 4): with the suggest panel open the watermark is
+        // hidden (ShowSuggestions); clicking a candidate used to run the
+        // programmatic-text branch of TextChanged, which resurrected the
+        // empty-state hint while no result existed yet — a flash until the
+        // lookup's first render. Hold the lookup in flight so the moment
+        // under test is deterministic.
+        using var service = CreateService();
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "ca";
+        WaitUntil(() => window.FindControl<Border>("SuggestPanel")!.IsVisible);
+        Assert.False(window.FindControl<StackPanel>("HintPanel")!.IsVisible);
+
+        var gate = new TaskCompletionSource<LookupResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        window.LookupOverride = _ => gate.Task;
+        try
+        {
+            var candidate = window.FindControl<ItemsControl>("SuggestList")!.GetVisualDescendants()
+                .OfType<Button>().First(b => b.Content as string == "cat");
+            RaiseClick(candidate);
+
+            // TextChanged lands on the next dispatcher pass (Avalonia posts
+            // it); pump so the suppress branch has definitely run — before
+            // the fix it pulled the watermark back up right here.
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(window.FindControl<StackPanel>("HintPanel")!.IsVisible,
+                "the empty-state hint must not flash between selection and first render");
+            Assert.False(window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+            Assert.False(window.FindControl<Border>("SuggestPanel")!.IsVisible);
+
+            gate.SetResult(service.Lookup("cat"));
+            WaitUntil(() => window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+            Assert.False(window.FindControl<StackPanel>("HintPanel")!.IsVisible);
+        }
+        finally
+        {
+            window.LookupOverride = null;
+        }
+    }
+
+    [AvaloniaFact]
+    public void ArrowingToLastSuggestionKeepsItInsideViewport()
+    {
+        // TC-002 (Q-001 item 5): keyboard selection must scroll the highlight
+        // into view. Eight suggestions (the SuggestLimit) sit right at the
+        // panel's MaxHeight cap, so whether the last row clips is a
+        // font-metrics coin toss; the test shrinks the cap to make the
+        // overflow deterministic on every machine. The scroll-into-view logic
+        // under test is the same at any cap.
+        var directory = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var dictionaryPath = Path.Combine(directory, "dictionary.db");
+        using (var db = DictionaryDatabase.Create(dictionaryPath))
+        {
+            db.BeginTransaction();
+            for (var i = 1; i <= 8; i++)
+                db.InsertWord($"caa{i}", "", "", "", "", "", 900 - i, 0, "");
+            db.CommitTransaction();
+        }
+        using var service = new DictionaryService(dictionaryPath, Path.Combine(directory, "history.db"));
+        var window = new MainWindow(service, autoDownload: false) { Height = 460 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "caa";
+        WaitUntil(() => window.FindControl<Border>("SuggestPanel")!.IsVisible);
+
+        var scroll = window.FindControl<ScrollViewer>("SuggestScroll")!;
+        var list = window.FindControl<ItemsControl>("SuggestList")!;
+        WaitUntil(() => list.GetVisualDescendants().OfType<Button>().Count() == 8);
+        var buttons = list.GetVisualDescendants().OfType<Button>().ToList();
+
+        scroll.MaxHeight = 150;
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(scroll.Extent.Height > scroll.Viewport.Height,
+            $"test needs an overflowing panel (extent {scroll.Extent.Height}, viewport {scroll.Viewport.Height})");
+
+        // Selection starts at -1, so reaching the last of eight needs eight
+        // presses.
+        for (var i = 0; i < buttons.Count; i++)
+            PressKey(searchBox, Key.Down);
+
+        var last = buttons[^1];
+        Assert.Contains("selected", last.Classes);
+
+        // Layout-geometry assertion (same discipline as ResultsScrollReachesBottom):
+        // the highlighted row sits fully inside the viewport, not half-clipped.
+        var content = (Visual)scroll.Content!;
+        var top = last.TranslatePoint(new Point(0, 0), content)!.Value.Y;
+        Assert.True(top >= scroll.Offset.Y - 0.5,
+            $"last item top {top:F1} above viewport top {scroll.Offset.Y:F1}");
+        Assert.True(top + last.Bounds.Height <= scroll.Offset.Y + scroll.Viewport.Height + 0.5,
+            $"last item bottom {top + last.Bounds.Height:F1} below viewport bottom {scroll.Offset.Y + scroll.Viewport.Height:F1}");
+
+        // And arrowing back up restores the top (seven steps down from the
+        // last of eight).
+        for (var i = 0; i < buttons.Count - 1; i++)
+            PressKey(searchBox, Key.Up);
+        var first = buttons[0];
+        Assert.Contains("selected", first.Classes);
+        var firstTop = first.TranslatePoint(new Point(0, 0), content)!.Value.Y;
+        Assert.True(firstTop >= scroll.Offset.Y - 0.5 && firstTop < scroll.Offset.Y + 0.5,
+            $"first item top {firstTop:F1} should sit at the viewport top {scroll.Offset.Y:F1}");
+    }
+
+    [AvaloniaFact]
+    public async Task WarmupQuietlyObservesCorruptDictionaryFailure()
+    {
+        // Q-001 item 1: the fire-and-forget warm-up used to leave a faulted
+        // task unobserved when the dictionary file is corrupt (预热无声失效).
+        // The raw warmup is proven to fault first so the wrapper assertion is
+        // not vacuous. Awaited, never blocked on: blocking the headless UI
+        // thread here deadlocks the session's frame.
+        var directory = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var dictionaryPath = Path.Combine(directory, "dictionary.db");
+        File.WriteAllText(dictionaryPath, "this file is not a sqlite database");
+        using var service = new DictionaryService(dictionaryPath, Path.Combine(directory, "history.db"));
+
+        await Assert.ThrowsAnyAsync<Exception>(() => service.WarmupAsync());
+        await MainWindow.WarmupQuietlyAsync(service);
+    }
+
+    [AvaloniaFact]
+    public void FailedSettingsDialogReleasesReopenGuard()
+    {
+        // Q-001 item 2: when ShowDialog fails before the dialog ever appears,
+        // Closed never fires — the guard must be released by the failure
+        // continuation, or ⌘, only ever activates a ghost until restart.
+        // owner: null makes ShowDialog throw (ArgumentNullException) before
+        // anything is shown, deterministically.
+        using var service = CreateService();
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        // A real open holds the guard; a normal close clears it via Closed.
+        RaiseClick(window.FindControl<Button>("SettingsButton")!);
+        Dispatcher.UIThread.RunJobs();
+        var dialog = Assert.IsType<SettingsWindow>(Assert.Single(window.OwnedWindows));
+        Assert.Same(dialog, window._settingsWindow);
+        dialog.Close();
+        Dispatcher.UIThread.RunJobs();
+        Assert.Null(window._settingsWindow);
+
+        // The failure path: guard held by a dialog that never appeared.
+        var ghost = new SettingsWindow(new AppSettings());
+        window._settingsWindow = ghost;
+        window.ShowSettingsDialogAsync(ghost, null!).GetAwaiter().GetResult();
+        Assert.Null(window._settingsWindow);
+
+        // The entry is alive again: the next ⌘, opens a fresh dialog.
+        RaiseClick(window.FindControl<Button>("SettingsButton")!);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Single(window.OwnedWindows);
+    }
+
+    [AvaloniaFact]
+    public void DictionaryPickerFailureSurfacesStatusInsteadOfCrashing()
+    {
+        // Q-001 item 3: OpenFilePickerAsync used to be awaited outside any
+        // try — a platform failure (Linux without a portal backend) escaped
+        // the async void handler and killed the process. The failure must
+        // land in the download panel's status line instead.
+        var locations = NewLocations(out var dictionaryPath, out _, out _);
+        using var service = new DictionaryService(dictionaryPath, locations.HistoryDatabasePath);
+        var window = new MainWindow(service, locations: locations, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        window.OpenFilePickerOverride = _ =>
+            Task.FromException<IReadOnlyList<IStorageFile>>(new InvalidOperationException("no portal"));
+        try
+        {
+            window.PickDictionaryAsync().GetAwaiter().GetResult();
+        }
+        finally
+        {
+            window.OpenFilePickerOverride = null;
+        }
+
+        Assert.Equal("无法打开文件选择器：no portal",
+            window.FindControl<TextBlock>("DictionaryDownloadStatus")!.Text);
+        Assert.False(File.Exists(locations.DictionaryDatabasePath), "nothing may be imported");
+    }
+
+    [AvaloniaFact]
+    public void AudioPackPickerFailureSurfacesStatusInsteadOfCrashing()
+    {
+        var locations = NewLocations(out var dictionaryPath, out _, out _);
+        using (var db = DictionaryDatabase.Create(dictionaryPath))
+            db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
+        using var service = new DictionaryService(dictionaryPath, locations.HistoryDatabasePath);
+        var window = new MainWindow(service, locations: locations, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        window.OpenFilePickerOverride = _ =>
+            Task.FromException<IReadOnlyList<IStorageFile>>(new InvalidOperationException("no portal"));
+        try
+        {
+            window.PickAudioPackAsync().GetAwaiter().GetResult();
+        }
+        finally
+        {
+            window.OpenFilePickerOverride = null;
+        }
+
+        Assert.Equal("无法打开文件选择器：no portal",
+            window.FindControl<TextBlock>("AudioPackStatus")!.Text);
+        Assert.False(Directory.Exists(Path.Combine(locations.AudioDirectory, "uk")),
+            "nothing may be imported");
     }
 
     [AvaloniaFact]

@@ -86,6 +86,7 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(UkTip)] = "英音",
         [nameof(UsTip)] = "美音",
         [nameof(PickerTitle)] = "选择 dictionary.zip 或 dictionary.db",
+        [nameof(PickerFailedFormat)] = "无法打开文件选择器：{0}",
         [nameof(FileTypeDictionary)] = "词典数据",
         [nameof(SettingsTitle)] = "设置",
         [nameof(SectionGeneral)] = "通用",
@@ -152,6 +153,7 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(ImportMissingPack)] = "The file does not contain the pronunciation pack (uk/ and us/ directories expected)",
         [nameof(PickerTitleAudioPack)] = "Choose audio-pack.zip",
         [nameof(FileTypeAudioPack)] = "Pronunciation pack",
+        [nameof(PickerFailedFormat)] = "Could not open the file picker: {0}",
         [nameof(OpenDownloadPage)] = "Open the download page in a browser",
         [nameof(AllSourcesFailed)] = "Every download source failed. Check the network, or download and import manually.",
         [nameof(ChecksumFailed)] = "Checksum verification failed; the corrupted file was deleted.",
@@ -345,6 +347,8 @@ public sealed class Translations : INotifyPropertyChanged
     public string UkTip => Get();
     public string UsTip => Get();
     public string PickerTitle => Get();
+    /// <summary>文件选择器自身打不开时的两个导入入口共用。</summary>
+    public string PickerFailedFormat => Get();
     public string FileTypeDictionary => Get();
 
     // ---- 设置窗口 ----

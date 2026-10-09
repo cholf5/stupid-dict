@@ -49,7 +49,10 @@ public partial class MainWindow : Window
     private readonly string _downloadDirectory;
     private readonly bool _autoDownload;
     private readonly AppSettings _settings;
-    private SettingsWindow? _settingsWindow;
+    // Reopen guard for the single-instance modal settings dialog; internal for
+    // tests, which replay the "ShowDialog failed before the window appeared"
+    // state that the Closed handler alone cannot clear.
+    internal SettingsWindow? _settingsWindow;
     // Last client size seen while the window was Normal; Width/Height are
     // clobbered by maximize (Window.HandleResized assigns them on every
     // platform resize), so a close in a maximized state saves these instead.
@@ -77,6 +80,15 @@ public partial class MainWindow : Window
     /// <see cref="DictionaryService.LookupAsync"/>.
     /// </summary>
     internal Func<string, Task<LookupResult>>? LookupOverride;
+
+    /// <summary>
+    /// Test seam (InternalsVisibleTo): stands in for the file-picker call so a
+    /// test can fail it deterministically — IStorageProvider is marked
+    /// NotClientImplementable, so no fake can implement it. Null in
+    /// production; both pick handlers fall back to
+    /// <see cref="TopLevel.StorageProvider"/>.OpenFilePickerAsync.
+    /// </summary>
+    internal Func<FilePickerOpenOptions, Task<IReadOnlyList<IStorageFile>>>? OpenFilePickerOverride;
 
     public MainWindow() : this(new DictionaryService(AppPaths.DictionaryDatabasePath, AppPaths.HistoryDatabasePath))
     {
@@ -127,7 +139,7 @@ public partial class MainWindow : Window
         UpdateNavButtons();
         if (_dictionaryAvailable)
         {
-            _ = _service.WarmupAsync();
+            _ = WarmupQuietlyAsync(_service);
             if (_autoDownload && !AudioPackInstalled())
                 StartAudioPackDownload();
         }
@@ -137,6 +149,27 @@ public partial class MainWindow : Window
             HintPanel.IsVisible = false;
             if (_autoDownload)
                 StartDictionaryDownload();
+        }
+    }
+
+    /// <summary>
+    /// Fire-and-forget wrapper that keeps the warm-up's exception observed: a
+    /// corrupt or locked dictionary makes <see cref="DictionaryService.WarmupAsync"/>
+    /// fault, and the discarded task would otherwise land in
+    /// UnobservedTaskException while silently doing nothing — the user first
+    /// learns of the problem from the failed lookup (RenderError). Warm-up
+    /// stays best-effort; there is nothing to do with the exception here.
+    /// Internal static so a test can drive it against a corrupt database.
+    /// </summary>
+    internal static async Task WarmupQuietlyAsync(DictionaryService service)
+    {
+        try
+        {
+            await service.WarmupAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // surfaced by the first lookup; nothing this early can act on it
         }
     }
 
@@ -238,7 +271,11 @@ public partial class MainWindow : Window
         {
             _suppressSuggest = false;
             HideSuggestions();
-            HintPanel.IsVisible = !ResultsPanel.IsVisible;
+            // No hint resurrection here: every suppress path (SelectSuggestion,
+            // recent/chip/link click, Navigate) either already owns the screen
+            // with a result page or starts a lookup immediately, so re-showing
+            // the empty state only flashed the watermark between selection and
+            // the first render. The Enter path never resurrects it either.
             return;
         }
         CancelScheduledSuggestions();
@@ -319,7 +356,32 @@ public partial class MainWindow : Window
     {
         var index = 0;
         foreach (var button in SuggestList.GetVisualDescendants().OfType<Button>())
-            button.Classes.Set("selected", index++ == _suggestSelection);
+        {
+            var selected = index++ == _suggestSelection;
+            button.Classes.Set("selected", selected);
+            if (selected)
+                ScrollSuggestionIntoView(button);
+        }
+    }
+
+    // Keyboard selection must stay visible: the panel caps at MaxHeight 280,
+    // which sits right at eight rows — with fonts that run a few px taller the
+    // last selections clip half a row (Enter still works, but the user arrows
+    // blind). Highlight and scroll land in the same tick: the offset math runs
+    // on live layout bounds rather than a deferred BringIntoView request.
+    private void ScrollSuggestionIntoView(Control item)
+    {
+        if (SuggestScroll.Content is not Visual content) return;
+        if (item.TranslatePoint(default, content) is not { } origin) return;
+        var viewport = SuggestScroll.Viewport.Height;
+        if (viewport <= 0) return; // not laid out yet; the next arrow press corrects
+        var top = origin.Y;
+        var bottom = top + item.Bounds.Height;
+        var offset = SuggestScroll.Offset;
+        if (top < offset.Y)
+            SuggestScroll.Offset = offset.WithY(top);
+        else if (bottom > offset.Y + viewport)
+            SuggestScroll.Offset = offset.WithY(bottom - viewport);
     }
 
     private void SelectSuggestion(string word)
@@ -437,7 +499,32 @@ public partial class MainWindow : Window
         }
         _settingsWindow = new SettingsWindow(_settings, locations: _locations);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
-        _ = _settingsWindow.ShowDialog(this);
+        _ = ShowSettingsDialogAsync(_settingsWindow, this);
+    }
+
+    /// <summary>
+    /// The awaited half of OpenSettings, so a failed <c>ShowDialog</c> cannot
+    /// strand the reopen guard: when the dialog never opens (owner already
+    /// closing, platform error), <c>Closed</c> never fires and a discarded
+    /// task would leave the guard naming a window that will never appear —
+    /// ⌘, then only ever <c>Activate()</c>es a ghost until restart. The
+    /// failure releases the guard so the next attempt opens a fresh dialog.
+    /// <paramref name="owner"/> is <c>this</c> in production; tests pass null,
+    /// which makes ShowDialog fail deterministically before anything shows.
+    /// </summary>
+    internal async Task ShowSettingsDialogAsync(SettingsWindow dialog, Window owner)
+    {
+        try
+        {
+            await dialog.ShowDialog(owner);
+        }
+        catch
+        {
+            // Only clear the guard while it still names this dialog: a normal
+            // close already cleared it (and may name a newer one).
+            if (ReferenceEquals(_settingsWindow, dialog))
+                _settingsWindow = null;
+        }
     }
 
     private void OnActualThemeVariantChanged(object? sender, EventArgs e)
@@ -736,15 +823,36 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnPickDictionaryClick(object? sender, RoutedEventArgs e)
+    private async void OnPickDictionaryClick(object? sender, RoutedEventArgs e) =>
+        await PickDictionaryAsync();
+
+    /// <summary>
+    /// The picker await lives in its own try: OpenFilePickerAsync fails on
+    /// platforms without a working portal backend (Linux) or on platform
+    /// errors, and this async void handler must never let one escape. The
+    /// import itself keeps its own stage-specific handling below.
+    /// </summary>
+    internal async Task PickDictionaryAsync()
     {
-        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        var options = new FilePickerOpenOptions
         {
             Title = Translations.Instance.PickerTitle,
             AllowMultiple = false,
             FileTypeFilter = [new FilePickerFileType(Translations.Instance.FileTypeDictionary)
                 { Patterns = ["*.zip", "*.db"] }],
-        });
+        };
+        IReadOnlyList<IStorageFile> files;
+        try
+        {
+            files = await (OpenFilePickerOverride?.Invoke(options)
+                ?? StorageProvider.OpenFilePickerAsync(options));
+        }
+        catch (Exception ex)
+        {
+            DictionaryDownloadStatus.Text =
+                string.Format(Translations.Instance.PickerFailedFormat, ex.Message);
+            return;
+        }
         if (files.Count == 0) return;
         var path = files[0].TryGetLocalPath();
         if (path is null) return;
@@ -777,7 +885,7 @@ public partial class MainWindow : Window
         DictionaryDownloadPanel.IsVisible = false;
         HintPanel.IsVisible = true;
         RefreshRecents();
-        _ = _service.WarmupAsync();
+        _ = WarmupQuietlyAsync(_service);
 
         if (_autoDownload && !AudioPackInstalled())
             StartAudioPackDownload();
@@ -897,15 +1005,31 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnPickAudioPackClick(object? sender, RoutedEventArgs e)
+    private async void OnPickAudioPackClick(object? sender, RoutedEventArgs e) =>
+        await PickAudioPackAsync();
+
+    /// <summary>Same picker guard as <see cref="PickDictionaryAsync"/>.</summary>
+    internal async Task PickAudioPackAsync()
     {
-        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        var options = new FilePickerOpenOptions
         {
             Title = Translations.Instance.PickerTitleAudioPack,
             AllowMultiple = false,
             FileTypeFilter = [new FilePickerFileType(Translations.Instance.FileTypeAudioPack)
                 { Patterns = ["*.zip"] }],
-        });
+        };
+        IReadOnlyList<IStorageFile> files;
+        try
+        {
+            files = await (OpenFilePickerOverride?.Invoke(options)
+                ?? StorageProvider.OpenFilePickerAsync(options));
+        }
+        catch (Exception ex)
+        {
+            AudioPackStatus.Text =
+                string.Format(Translations.Instance.PickerFailedFormat, ex.Message);
+            return;
+        }
         if (files.Count == 0) return;
         var path = files[0].TryGetLocalPath();
         if (path is null) return;
