@@ -9,6 +9,7 @@ using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using SkiaSharp;
 using StupidDict.App;
 using StupidDict.App.Assets;
 using StupidDict.App.Localization;
@@ -69,6 +70,52 @@ public class HeadlessWindowTests
         Assert.NotNull(settingsWindow.Icon);
         using var icon = AssetLoader.Open(new Uri("avares://StupidDict/Assets/app-icon.png"));
         Assert.True(icon.Length > 0);
+    }
+
+    [AvaloniaFact]
+    public void WindowsTaskbarIconArtworkIsFullBleed()
+    {
+        // Windows renders exe/taskbar icons at the tile's native size with
+        // no system mask: Apple-grid margins baked into the artwork shrink
+        // it a step below every full-bleed neighbour on the taskbar
+        // (2026-10-09 user report). The ico must fill its canvas edge to
+        // edge, only the baked corner arcs stay transparent. The png/icns
+        // keep the Apple margins on purpose (macOS Dock semantics), so this
+        // pins the ico's geometry, not the master's.
+        using var stream = AssetLoader.Open(new Uri("avares://StupidDict/Assets/app-icon.ico"));
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        var frame = ExtractIcoFrame(ms.ToArray(), 256);
+        Assert.NotNull(frame);
+        using var bmp = SKBitmap.Decode(frame);
+        Assert.NotNull(bmp);
+        Assert.Equal(256, bmp.Width);
+        Assert.Equal(256, bmp.Height);
+        Assert.Equal((byte)0, bmp.GetPixel(0, 0).Alpha);       // corner: arc baked in
+        Assert.Equal((byte)255, bmp.GetPixel(128, 128).Alpha); // center opaque
+        Assert.Equal((byte)255, bmp.GetPixel(3, 128).Alpha);   // left mid-edge: 0 in the old margined ico
+        Assert.Equal((byte)255, bmp.GetPixel(252, 128).Alpha); // right mid-edge
+    }
+
+    private static byte[]? ExtractIcoFrame(byte[] ico, int size)
+    {
+        // ICONDIR: reserved(2) type(2) count(2); ICONDIRENTRY: width(1)
+        // height(1) colors(1) reserved(1) planes(2) bpp(2) bytes(4)
+        // offset(4). A 0 width/height byte means 256.
+        if (ico.Length < 6) return null;
+        int count = BitConverter.ToUInt16(ico, 4);
+        for (int i = 0; i < count; i++)
+        {
+            int e = 6 + i * 16;
+            if (e + 16 > ico.Length) return null;
+            int w = ico[e] == 0 ? 256 : ico[e];
+            int h = ico[e + 1] == 0 ? 256 : ico[e + 1];
+            int bytes = BitConverter.ToInt32(ico, e + 8);
+            int offset = BitConverter.ToInt32(ico, e + 12);
+            if (w == size && h == size && offset >= 0 && offset + bytes <= ico.Length)
+                return ico[offset..(offset + bytes)];
+        }
+        return null;
     }
 
     [AvaloniaFact]

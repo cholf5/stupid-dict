@@ -5,17 +5,28 @@ Usage:
     python3 scripts/make-icon.py <source-image> [--content 830] [--radius 194]
 
 The source is center-cropped to a square, flattened onto white if it has
-alpha, scaled into the standard icon geometry (1024 canvas, content block
-with rounded corners and transparent margins — Apple icon grid, see
-docs/plans/2026-10-08-app-icon-design.md) and written as:
+alpha, then rendered in two geometries with the rounded corners baked into
+the artwork (runtime icons go through no system mask; see
+docs/plans/2026-10-08-app-icon-design.md):
 
-    src/StupidDict.App/Assets/app-icon.png    1024 master
-    src/StupidDict.App/Assets/app-icon.ico    16/24/32/48/64/128/256 frames
+    png/icns  Apple icon grid — 1024 canvas, 830 content block, transparent
+              margins; macOS Dock/bundle icon semantics want the margin
+    ico       full-bleed 1024 — Windows exe/taskbar icons render the tile
+              at its native size with no system mask, so baked-in margins
+              shrink the artwork a step below every full-bleed neighbour
+              (2026-10-09 taskbar feedback); same corner proportion,
+              scaled to the canvas
+
+written as:
+
+    src/StupidDict.App/Assets/app-icon.png    1024 master (Apple margins)
+    src/StupidDict.App/Assets/app-icon.ico    full-bleed, 16/24/32/48/64/128/256 frames
     src/StupidDict.App/Assets/app-icon.icns   full iconset (needs macOS iconutil)
 
-A preview sheet lands at /tmp/app-icon-preview.png: the candidate next to
-the currently committed asset, rendered at 16/24/32/48 on dark and light
-taskbar backgrounds — the small sizes where icon candidates usually fail.
+A preview sheet lands at /tmp/app-icon-preview.png: the candidate's
+taskbar-visible artwork (the full-bleed ico geometry) next to the currently
+committed master, rendered at 16/24/32/48 on dark and light taskbar
+backgrounds — the small sizes where icon candidates usually fail.
 
 Requires Pillow (python3 -m pip install pillow). iconutil only exists on
 macOS; without it the icns is skipped with a warning and png/ico are still
@@ -126,7 +137,12 @@ def main() -> None:
     png = ASSETS / "app-icon.png"
     previous = Image.open(png).convert("RGBA") if png.exists() else None
     styled.save(png)
-    styled.save(ASSETS / "app-icon.ico", format="ICO")
+    # Windows ico 满幅出图：任务栏/exe 图标按 tile 原生尺寸原样渲染、无系统
+    # 蒙版，Apple 网格边距烤进去整幅小一圈（2026-10-09 任务栏反馈）；圆角
+    # 同比例放大到画布，不另造几何。
+    bleed_radius = round(CANVAS * args.radius / args.content)
+    full_bleed = styled_icon(args.source, CANVAS, bleed_radius)
+    full_bleed.save(ASSETS / "app-icon.ico", format="ICO")
     icns_ok = write_icns(png, ASSETS / "app-icon.icns")
 
     alpha = styled.getchannel("A")
@@ -135,13 +151,18 @@ def main() -> None:
     margin = (CANVAS - args.content) // 2
     assert bbox == (margin, margin, margin + args.content, margin + args.content), f"内容区异常: {bbox}"
 
+    bleed_alpha = full_bleed.getchannel("A")
+    assert bleed_alpha.getpixel((0, 0)) == 0, "满幅 ico 角部应透明（圆角烤进素材）"
+    bleed_bbox = bleed_alpha.getbbox()
+    assert bleed_bbox == (0, 0, CANVAS, CANVAS), f"满幅 ico 未撑满画布: {bleed_bbox}"
+
     preview = Path(tempfile.gettempdir()) / "app-icon-preview.png"
-    write_preview(styled, preview, previous)
-    print(f"已写出 {png}")
-    print(f"已写出 {ASSETS / 'app-icon.ico'}")
+    write_preview(full_bleed, preview, previous)
+    print(f"已写出 {png}（Apple 网格边距）")
+    print(f"已写出 {ASSETS / 'app-icon.ico'}（满幅）")
     if icns_ok:
         print(f"已写出 {ASSETS / 'app-icon.icns'}")
-    print(f"预览（candidate vs current，深/浅底 16/24/32/48px）: {preview}")
+    print(f"预览（满幅 ico vs 旧母版，深/浅底 16/24/32/48px）: {preview}")
     print("提示: Assets/ 是入库文件，diff 满意后自行提交")
 
 

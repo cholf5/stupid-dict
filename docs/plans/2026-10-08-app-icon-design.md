@@ -140,3 +140,43 @@ design/icon-candidates/b-derp-book-v2-master.png`（v2 母版与 v3 母版并存
 `design/icon-candidates/`）。验证：v3 成品中心像素不变、四角透明，回归测试绿；
 本次喂给管线的就是 qlmanage 渲出的 RGBA 母版，上一节的 alpha 修复由此得到
 端到端确认。
+
+## 2026-10-09 Windows 任务栏：ico 满幅出图（png/icns 不动）
+
+用户反馈 Windows 任务栏/开始菜单里图标比欧路词典这类满幅邻居小一圈（同屏对比
+截图），macOS 无此问题。归因：三件套此前共用 Apple 网格几何（1024 画布 + 830
+内容块 + 四边 97px 透明边距），而 Windows 对 exe/任务栏图标**按 tile 原生尺寸
+原样渲染、无系统蒙版、不缩放**——边距烤进素材就整幅缩水。实测旧 ico 256 帧
+alpha bbox (22,22,234,234)：内容只占画布 82.8%，同 tile 下线性尺寸是满幅邻居
+的 81%（面积 66%）。macOS 图标语义本来就是留边（Dock/bundle 走 HIG 网格观感），
+与用户「Mac 没问题」一致，故只动 ico。
+
+**做法**：`make-icon.py` 一次跑两套几何——`styled_icon(source, content, radius)`
+照旧出 png/icns（Apple 网格），再以 `styled_icon(source, CANVAS, 239)` 出满幅
+ico（内容撑满 1024，圆角同比例 194/830 → 239/1024，不另造几何）；新增自检
+断言（满幅 alpha bbox 必须 (0,0,1024,1024)、角部透明），预览候选列换成满幅
+ico（任务栏真实所见）。
+
+**回归测试** `WindowsTaskbarIconArtworkIsFullBleed`：手解 ICO 目录取 256 帧
+PNG，经 Avalonia.Skia 传递引用的 SKBitmap 采样 alpha——(0,0)=0（圆角烤在
+素材）、(128,128)=255、(3,128)=255（左边缘中点，旧边距 ico 此处为 0，判别
+点）、(252,128)=255。自取帧不依赖 Skia 的 ICO codec 选帧行为，Pillow 换帧
+编码格式（PNG↔BMP）也不受影响。
+
+**评估过**：
+
+- 三端全满幅：否——macOS Dock/bundle 图标系统语义就是带边距，满幅在 Dock 里
+  反而比邻居大一圈；用户明说 Mac 没问题。
+- ico 折中留小边（如 content 940）：否——「比别家小」的观感来自边距本身，
+  小边只是小半圈，仍然别扭。
+- 圆角按 Windows 惯用比例（~15%）重烤：否——改比例即改形状；同一形状放大
+  撑满才是「把 Icon 撑满」的本意，23.4% 圆角在任务栏尺寸下与邻居观感一致。
+- 与上节否掉的「去掉白边」不冲突：那是去书封**内部**的纸色外板（深底可见性
+  来源），本次去的是**画布级透明边距**，纸色外板完整保留并扩到画布边缘。
+
+**验证**：重跑 `make-icon.py design/icon-candidates/b-derp-book-v3-master.png`
+后 png/icns 逐字节不变（sha256 同前），仅 ico 更新；7 帧（16…256）全部满幅；
+`WindowsCarryAppIconFromEmbeddedAssets` + 新测试绿，全量测试绿。
+
+完整症状、量测数据与排查教训见
+`docs/pitfalls/2026-10-09-windows-taskbar-ico-full-bleed.md`。
