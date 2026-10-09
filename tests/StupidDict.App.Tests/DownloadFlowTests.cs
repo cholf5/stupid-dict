@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using StupidDict.App;
 using StupidDict.App.Assets;
@@ -15,9 +16,12 @@ namespace StupidDict.App.Tests;
 
 /// <summary>
 /// Bootstrap download semantics: the checksum failure recovery (purge +
-/// automatic clean retry), the resume label on a second progress pass, and
-/// all-or-nothing extraction. Scoped to the dictionary flow; the auto-started
-/// audio pack download is out of scope and the stubs reject other assets.
+/// automatic clean retry), the resume label on a second progress pass,
+/// all-or-nothing extraction, and kept-zip reuse (an extraction failure
+/// retries from the downloaded zip instead of re-downloading it). Flow tests
+/// run the dictionary and audio pack downloads against scripted stubs with a
+/// scratch download directory; the pure extraction shapes are the static
+/// ExtractZip / ImportAudioPack cases below.
 /// </summary>
 public class DownloadFlowTests
 {
@@ -34,11 +38,12 @@ public class DownloadFlowTests
         var (zipPath, goodHash) = MakeDictionaryZipWithHash();
         // First attempt serves corrupt bytes; the checksum then forces the
         // purge-and-retry path, whose second attempt serves the real zip.
-        var downloader = new ScriptedDownloader(
+        var downloader = new ScriptedDownloader(ReleaseAssets.DictionaryAsset,
             callIndex => callIndex == 0 ? [0x1, 0x2, 0x3] : File.ReadAllBytes(zipPath),
             _ => goodHash);
         using var service = new DictionaryService(dictionaryPath, locations.HistoryDatabasePath);
-        var window = new MainWindow(service, downloader: downloader, locations: locations, autoDownload: true);
+        var window = new MainWindow(service, downloader: downloader, locations: locations, autoDownload: true,
+            downloadDirectory: NewScratchDirectory());
         window.Show();
 
         WaitUntil(() => !window.FindControl<StackPanel>("DictionaryDownloadPanel")!.IsVisible);
@@ -53,12 +58,14 @@ public class DownloadFlowTests
     public void ChecksumMismatchTwiceReportsChecksumFailureNotDownloadFailure()
     {
         var locations = NewLocations(out var dictionaryPath, out _);
-        var destination = Path.Combine(Path.GetTempPath(), "stupiddict-downloads", ReleaseAssets.DictionaryAsset);
-        var downloader = new ScriptedDownloader(
+        var downloadDirectory = NewScratchDirectory();
+        var destination = Path.Combine(downloadDirectory, ReleaseAssets.DictionaryAsset);
+        var downloader = new ScriptedDownloader(ReleaseAssets.DictionaryAsset,
             _ => new byte[] { 0x1, 0x2, 0x3 },
             _ => new string('0', 64));
         using var service = new DictionaryService(dictionaryPath, locations.HistoryDatabasePath);
-        var window = new MainWindow(service, downloader: downloader, locations: locations, autoDownload: true);
+        var window = new MainWindow(service, downloader: downloader, locations: locations, autoDownload: true,
+            downloadDirectory: downloadDirectory);
         window.Show();
 
         WaitUntil(() =>
@@ -79,7 +86,8 @@ public class DownloadFlowTests
         // can observe the status line while the second bar is "running".
         var downloader = new PausingResumeDownloader(zipPath);
         using var service = new DictionaryService(dictionaryPath, locations.HistoryDatabasePath);
-        var window = new MainWindow(service, downloader: downloader, locations: locations, autoDownload: true);
+        var window = new MainWindow(service, downloader: downloader, locations: locations, autoDownload: true,
+            downloadDirectory: NewScratchDirectory());
         window.Show();
 
         var observed = new List<string>();
@@ -93,6 +101,108 @@ public class DownloadFlowTests
         downloader.Release();
         WaitUntil(() => !window.FindControl<StackPanel>("DictionaryDownloadPanel")!.IsVisible);
         Assert.True(File.Exists(locations.DictionaryDatabasePath));
+    }
+
+    /// <summary>
+    /// The kept-zip reuse the Windows audio-pack loop motivated: attempt 1
+    /// downloads, verifies and fails at extraction; the retry must pick up
+    /// from the kept zip — no second download, no second checksum fetch — and
+    /// once the file is made well-formed, install without any network.
+    /// </summary>
+    [AvaloniaFact]
+    public void ExtractionFailureRetryReusesKeptZipWithoutRedownloading()
+    {
+        var locations = NewLocations(out var dictionaryPath, out _);
+        using (var db = DictionaryDatabase.Create(dictionaryPath))
+            db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
+        var downloadDirectory = NewScratchDirectory();
+        var destination = Path.Combine(downloadDirectory, ReleaseAssets.AudioPackAsset);
+        var corrupt = MakeCorruptZip(NewScratchDirectory());
+        var good = MakeAudioPackZip(NewScratchDirectory(), "pack.zip", "cat.mp3");
+        var corruptBytes = File.ReadAllBytes(corrupt);
+        var downloader = new ScriptedDownloader(ReleaseAssets.AudioPackAsset,
+            _ => corruptBytes, _ => HashFile(corrupt));
+        var window = new MainWindow(new DictionaryService(dictionaryPath, locations.HistoryDatabasePath),
+            downloader: downloader, locations: locations, autoDownload: true,
+            downloadDirectory: downloadDirectory);
+        window.Show();
+
+        // Attempt 1: download and checksum pass, extraction dies on the
+        // corrupt entry — the zip stays behind for the retry.
+        WaitUntil(() => window.FindControl<Button>("AudioPackActionButton")!.Content as string
+            == Translations.Instance.Retry);
+        Assert.Equal(1, downloader.RequestCount);
+        Assert.True(File.Exists(destination));
+
+        // The kept zip is ours to fix in place — the same file, now
+        // well-formed, like an app update fixing what broke extraction.
+        File.WriteAllBytes(destination, File.ReadAllBytes(good));
+        window.FindControl<Button>("AudioPackActionButton")!
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        WaitUntil(() => File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
+        Assert.Equal(1, downloader.RequestCount);
+        Assert.Equal(1, downloader.ChecksumCalls);
+        Assert.True(File.Exists(Path.Combine(locations.AudioDirectory, "us", "cat.mp3")));
+    }
+
+    /// <summary>
+    /// A zip kept by a previous session (app closed mid-extract) installs on
+    /// the next launch without a download when its checksum still matches.
+    /// </summary>
+    [AvaloniaFact]
+    public void CrossSessionKeptZipReusedWithoutDownloadWhenChecksumMatches()
+    {
+        var locations = NewLocations(out var dictionaryPath, out _);
+        using (var db = DictionaryDatabase.Create(dictionaryPath))
+            db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
+        var downloadDirectory = NewScratchDirectory();
+        Directory.CreateDirectory(downloadDirectory);
+        var good = MakeAudioPackZip(NewScratchDirectory(), "pack.zip", "cat.mp3");
+        var destination = Path.Combine(downloadDirectory, ReleaseAssets.AudioPackAsset);
+        File.Copy(good, destination);
+        var downloader = new ScriptedDownloader(ReleaseAssets.AudioPackAsset,
+            _ => File.ReadAllBytes(good), _ => HashFile(good));
+        var window = new MainWindow(new DictionaryService(dictionaryPath, locations.HistoryDatabasePath),
+            downloader: downloader, locations: locations, autoDownload: true,
+            downloadDirectory: downloadDirectory);
+        window.Show();
+
+        WaitUntil(() => File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
+
+        Assert.Equal(0, downloader.RequestCount);
+        Assert.Equal(1, downloader.ChecksumCalls);
+    }
+
+    /// <summary>
+    /// A kept zip whose checksum no longer matches (the remote asset was
+    /// replaced) is purged and the replacement downloaded — reuse must never
+    /// extract stale data past a published checksum.
+    /// </summary>
+    [AvaloniaFact]
+    public void CrossSessionStaleZipFailsChecksumAndIsPurgedAndReplaced()
+    {
+        var locations = NewLocations(out var dictionaryPath, out _);
+        using (var db = DictionaryDatabase.Create(dictionaryPath))
+            db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
+        var downloadDirectory = NewScratchDirectory();
+        Directory.CreateDirectory(downloadDirectory);
+        var stale = MakeAudioPackZip(NewScratchDirectory(), "stale.zip", "old.mp3");
+        var fresh = MakeAudioPackZip(NewScratchDirectory(), "fresh.zip", "cat.mp3");
+        var destination = Path.Combine(downloadDirectory, ReleaseAssets.AudioPackAsset);
+        File.Copy(stale, destination);
+        var downloader = new ScriptedDownloader(ReleaseAssets.AudioPackAsset,
+            _ => File.ReadAllBytes(fresh), _ => HashFile(fresh));
+        var window = new MainWindow(new DictionaryService(dictionaryPath, locations.HistoryDatabasePath),
+            downloader: downloader, locations: locations, autoDownload: true,
+            downloadDirectory: downloadDirectory);
+        window.Show();
+
+        WaitUntil(() => File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
+
+        Assert.Equal(1, downloader.RequestCount);
+        Assert.False(downloader.DestinationExisted[0]);
+        Assert.False(File.Exists(Path.Combine(locations.AudioDirectory, "uk", "old.mp3")));
     }
 
     [AvaloniaFact]
@@ -282,8 +392,26 @@ public class DownloadFlowTests
             db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
         var zipPath = Path.Combine(NewScratchDirectory(), "dictionary.zip");
         ZipFile.CreateFromDirectory(releaseDirectory, zipPath);
-        var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(zipPath))).ToLowerInvariant();
-        return (zipPath, hash);
+        return (zipPath, HashFile(zipPath));
+    }
+
+    private static string HashFile(string path) =>
+        Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant();
+
+    /// <summary>
+    /// An audio pack zip with the real shape (uk/ + us/ at the root), the
+    /// entry name choosing the content so tests can tell packs apart.
+    /// </summary>
+    private static string MakeAudioPackZip(string directory, string zipFileName, string entryName)
+    {
+        var source = Path.Combine(directory, "src-" + Path.GetFileNameWithoutExtension(zipFileName));
+        Directory.CreateDirectory(Path.Combine(source, "uk"));
+        Directory.CreateDirectory(Path.Combine(source, "us"));
+        File.WriteAllText(Path.Combine(source, "uk", entryName), "x");
+        File.WriteAllText(Path.Combine(source, "us", entryName), "x");
+        var zipPath = Path.Combine(directory, zipFileName);
+        ZipFile.CreateFromDirectory(source, zipPath);
+        return zipPath;
     }
 
     /// <summary>
@@ -322,28 +450,35 @@ public class DownloadFlowTests
     }
 
     /// <summary>
-    /// Serves scripted bytes per dictionary download call and records what the
-    /// destination looked like before each. Other assets are a test bug.
+    /// Serves scripted bytes per download call and records what the
+    /// destination looked like before each, plus how often the checksum
+    /// source was consulted (the kept-zip reuse must not consult it again
+    /// within a session). Other assets are a test bug.
     /// </summary>
     private sealed class ScriptedDownloader(
-        Func<int, byte[]> serveDictionaryBytes,
+        string expectedAsset,
+        Func<int, byte[]> serveBytes,
         Func<string, string?> checksum) : IAssetDownloader
     {
         public int RequestCount;
+        public int ChecksumCalls;
         public List<bool> DestinationExisted = [];
 
         public Task<DownloadResult> DownloadAsync(string assetName, string destinationFile,
             IProgress<DownloadProgress>? progress, CancellationToken cancellation)
         {
-            Assert.Equal(ReleaseAssets.DictionaryAsset, assetName);
+            Assert.Equal(expectedAsset, assetName);
             DestinationExisted.Add(File.Exists(destinationFile));
             Directory.CreateDirectory(Path.GetDirectoryName(destinationFile)!);
-            File.WriteAllBytes(destinationFile, serveDictionaryBytes(RequestCount++));
+            File.WriteAllBytes(destinationFile, serveBytes(RequestCount++));
             return Task.FromResult(new DownloadResult(destinationFile, "stub://scripted"));
         }
 
-        public Task<string?> FetchChecksumAsync(string assetName, CancellationToken cancellation) =>
-            Task.FromResult(checksum(assetName));
+        public Task<string?> FetchChecksumAsync(string assetName, CancellationToken cancellation)
+        {
+            ChecksumCalls++;
+            return Task.FromResult(checksum(assetName));
+        }
     }
 
     /// <summary>

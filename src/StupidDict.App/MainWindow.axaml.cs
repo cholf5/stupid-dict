@@ -37,6 +37,16 @@ public partial class MainWindow : Window
     private int _searchGeneration;
     private CancellationTokenSource? _dictionaryDownloadCts;
     private CancellationTokenSource? _audioPackCts;
+    // Destinations whose complete zip this session has accepted (checksum
+    // verified, or none published): a later attempt reuses the file instead
+    // of re-downloading it. Only this class writes these paths, so the file
+    // cannot change under a session-verified entry; the File.Exists check in
+    // the reuse path makes a stale entry (post-extraction delete) harmless.
+    private readonly HashSet<string> _verifiedZips = new(StringComparer.Ordinal);
+    // Where downloaded asset zips live until extraction succeeds. Defaults to
+    // the per-user temp directory; tests inject a scratch copy so runs stay
+    // hermetic (a kept zip would otherwise change what the next attempt does).
+    private readonly string _downloadDirectory;
     private readonly bool _autoDownload;
     private readonly AppSettings _settings;
     private SettingsWindow? _settingsWindow;
@@ -59,7 +69,7 @@ public partial class MainWindow : Window
 
     public MainWindow(DictionaryService service, ISpeechPlayer? speechPlayer = null,
         IAssetDownloader? downloader = null, AppLocations? locations = null, bool autoDownload = true,
-        AppSettings? settings = null)
+        AppSettings? settings = null, string? downloadDirectory = null)
     {
         InitializeComponent();
         _service = service;
@@ -69,6 +79,7 @@ public partial class MainWindow : Window
         _settings = settings ?? new AppSettings();
         _speech = speechPlayer ?? SpeechPlayback.Create(_locations.AudioDirectory);
         _downloader = downloader ?? new AssetDownloadService();
+        _downloadDirectory = downloadDirectory ?? Path.Combine(Path.GetTempPath(), "stupiddict-downloads");
         _dictionaryAvailable = File.Exists(service.DictionaryPath);
 
         // Restore the size recorded at last close (XAML defaults otherwise);
@@ -532,7 +543,7 @@ public partial class MainWindow : Window
         CancelDictionaryButton.IsVisible = true;
         DictionaryDownloadBar.IsVisible = true;
         var cancellation = _dictionaryDownloadCts.Token;
-        var destination = Path.Combine(Path.GetTempPath(), "stupiddict-downloads", ReleaseAssets.DictionaryAsset);
+        var destination = Path.Combine(_downloadDirectory, ReleaseAssets.DictionaryAsset);
         try
         {
             var zipPath = await DownloadAndVerifyAsync(ReleaseAssets.DictionaryAsset, destination,
@@ -573,12 +584,16 @@ public partial class MainWindow : Window
     /// a file that only the checksum can catch, and the old flow surfaced
     /// that as a baffling "download failed" long after the bar had filled.
     /// Deleting the artifacts and starting over turns the deterministic
-    /// failure into a self-healing retry.
+    /// failure into a self-healing retry. A complete zip left by an earlier
+    /// attempt (extraction failed, app closed mid-extract) is reused instead
+    /// of re-downloaded — see <see cref="TryReuseDownloadedZipAsync"/>.
     /// </summary>
     private async Task<string> DownloadAndVerifyAsync(string assetName, string destinationFile,
         IProgress<DownloadProgress> progress, Action<string> setStatus, string downloadFailedFormat,
         CancellationToken cancellation)
     {
+        if (await TryReuseDownloadedZipAsync(assetName, destinationFile, setStatus, cancellation))
+            return destinationFile;
         for (var attempt = 1; ; attempt++)
         {
             try
@@ -588,6 +603,7 @@ public partial class MainWindow : Window
                 var expected = await _downloader.FetchChecksumAsync(assetName, cancellation);
                 if (expected is not null)
                     await Task.Run(() => AssetDownloadService.VerifyChecksum(filePath, expected), cancellation);
+                _verifiedZips.Add(filePath);
                 return filePath;
             }
             catch (OperationCanceledException)
@@ -607,6 +623,55 @@ public partial class MainWindow : Window
             {
                 throw new AssetBootstrapException(string.Format(downloadFailedFormat, ex.Message), ex);
             }
+        }
+    }
+
+    /// <summary>
+    /// True when a complete zip already sits at the destination and is good to
+    /// extract. Extraction failures leave the downloaded zip in place (it is
+    /// deleted only after extraction succeeds), and re-downloading cannot fix
+    /// an extraction problem — the bytes already passed the checksum — so a
+    /// retry must pick up from the file. A zip verified earlier this session
+    /// is reused as-is (only this class writes the path, so it cannot change
+    /// underneath the entry); one left by a previous session is re-verified
+    /// against the published checksum, which also purges it when the remote
+    /// asset has been replaced. With no checksum published (or offline) the
+    /// reuse stands on the extraction loop's per-entry CRC instead.
+    /// </summary>
+    private async Task<bool> TryReuseDownloadedZipAsync(string assetName, string destinationFile,
+        Action<string> setStatus, CancellationToken cancellation)
+    {
+        if (!File.Exists(destinationFile)) return false;
+        if (_verifiedZips.Contains(destinationFile)) return true;
+
+        setStatus(Translations.Instance.Verifying);
+        var expected = await _downloader.FetchChecksumAsync(assetName, cancellation);
+        if (expected is null)
+        {
+            _verifiedZips.Add(destinationFile);
+            return true;
+        }
+        try
+        {
+            await Task.Run(() => AssetDownloadService.VerifyChecksum(destinationFile, expected), cancellation);
+            _verifiedZips.Add(destinationFile);
+            return true;
+        }
+        catch (ChecksumMismatchException)
+        {
+            // Stale or damaged: purge so the fresh download starts from zero,
+            // mirroring the loop's recovery.
+            PurgeDownloadArtifacts(destinationFile);
+            return false;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Unreadable (locked, half-written): purge what we can and let the
+            // download attempt run; if the purge itself fails, that attempt
+            // surfaces the real error.
+            try { PurgeDownloadArtifacts(destinationFile); }
+            catch { /* fall through to the download */ }
+            return false;
         }
     }
 
@@ -700,7 +765,7 @@ public partial class MainWindow : Window
         AudioPackBar.IsVisible = true;
         AudioPackStatus.Text = Translations.Instance.DownloadingAudioPack;
         var cancellation = _audioPackCts.Token;
-        var destination = Path.Combine(Path.GetTempPath(), "stupiddict-downloads", ReleaseAssets.AudioPackAsset);
+        var destination = Path.Combine(_downloadDirectory, ReleaseAssets.AudioPackAsset);
         try
         {
             var zipPath = await DownloadAndVerifyAsync(ReleaseAssets.AudioPackAsset, destination,
