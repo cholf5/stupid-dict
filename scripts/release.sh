@@ -39,7 +39,13 @@ done
 [ -n "$VERSION" ] || usage
 
 # Three numeric segments, matching the update checker's version comparison.
-echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "版本号须为 x.y.z 三段数字：$VERSION" >&2; exit 1; }
+# Leading zeros are rejected: 01.02.003 is never a version anyone meant to
+# type, and the tag drives the csproj, the asset names and the update check
+# alike. (Optional monotonicity check deliberately not done: a downgrade must
+# also lower the csproj <Version> to pass the tag/csproj equality check — a
+# deliberate, visible commit — and the update checker treats a lower remote
+# as up-to-date, so a stray downgrade is loud to make and harmless in effect.)
+echo "$VERSION" | grep -Eq '^([0-9]|[1-9][0-9]*)\.([0-9]|[1-9][0-9]*)\.([0-9]|[1-9][0-9]*)$' || { echo "版本号须为 x.y.z 三段数字：${VERSION}" >&2; exit 1; }
 
 PROJECT=src/StupidDict.App/StupidDict.App.csproj
 TAG=v$VERSION
@@ -68,11 +74,17 @@ fi
 
 if [ "$CUR" != "$VERSION" ]; then
   # Replace <Version>, writing through a temp file for BSD/GNU sed compat.
-  TMP=$(mktemp)
+  # mktemp next to the project (not /tmp) so the final mv is an atomic
+  # same-volume rename; chmod restores the csproj's 644 since mktemp creates
+  # 0600. The EXIT trap clears a leftover temp file when sed/verify fails —
+  # after a successful rename it is a no-op.
+  TMP=$(mktemp "$PROJECT.tmp.XXXXXX")
+  trap 'rm -f "$TMP"' EXIT
   sed "s#\(<Version>\)[^<]*\(</Version>\)#\1$VERSION\2#" "$PROJECT" > "$TMP"
+  chmod 644 "$TMP"
   mv "$TMP" "$PROJECT"
   NEW=$(sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p' "$PROJECT" | head -1 | tr -d '[:space:]')
-  [ "$NEW" = "$VERSION" ] || { echo "版本替换校验失败：期望 ${VERSION}，实得 $NEW" >&2; exit 1; }
+  [ "$NEW" = "$VERSION" ] || { echo "版本替换校验失败：期望 ${VERSION}，实得 ${NEW}" >&2; exit 1; }
 
   git add "$PROJECT"
   git commit -m "Bump version to $VERSION"
@@ -134,7 +146,24 @@ done
 # not part of app releases: the in-app first-run download pins to the data
 # prerelease below (keep in sync with ReleaseAssets.DataTag).
 DATA_TAG=data-1
-ASSETS=$(gh release view "$TAG" --json assets --jq '[.assets[].name] | join(",")' 2>/dev/null || true)
+# Distinguish "the view query itself failed" (network hiccup, gh not logged in)
+# from "assets really missing": a failed query used to surface as an empty
+# asset list and sent an actually-successful release off to a pointless Re-run.
+# Retry a few times first; if the query still fails, say so instead of claiming
+# assets are missing.
+ASSETS=
+i=0
+while [ "$i" -lt 3 ]; do
+  if ASSETS=$(gh release view "$TAG" --json assets --jq '[.assets[].name] | join(",")' 2>/dev/null); then
+    break
+  fi
+  i=$((i + 1)); [ "$i" -lt 3 ] && sleep 5
+done
+if [ "$i" -eq 3 ]; then
+  echo "无法核对 Release 产物：gh release view 连续 3 次失败（网络抖动或未 gh auth login）。" >&2
+  echo "请手动核对 ${REL_URL}：产物齐全则无需任何补救动作；确有缺失再 Re-run release job 或删 tag 重跑。" >&2
+  exit 1
+fi
 MISSING=
 for want in "StupidDict-$VERSION-osx-arm64.zip" "StupidDict-$VERSION-osx-x64.zip" \
   "StupidDict-$VERSION-win-x64.zip" "StupidDict-$VERSION-win-x64-setup.exe" "StupidDict-$VERSION-linux-x64.zip"; do

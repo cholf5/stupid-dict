@@ -135,7 +135,11 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path "StupidDict-${env:VERSION}-win-x64/StupidDict.exe" -DestinationPath "StupidDict-${env:VERSION}-win-x64.zip"
       - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
+        # Pinned to the newest 6.x (verified present in the choco feed): the
+        # ISCC path below is hardcoded to "Inno Setup 6", so a future Inno 7
+        # under the same choco id must not be picked up automatically. Bump
+        # this pin deliberately when a new 6.x is wanted.
+        run: choco install innosetup --version 6.7.1 -y --no-progress
       - name: Build setup installer
         run: |
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=$env:VERSION scripts\StupidDict.iss

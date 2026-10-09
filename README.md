@@ -111,7 +111,7 @@ dotnet run --project src/StupidDict.App -f net10.0   # 运行（需要先构建�
 
 1. GitHub 直连
 2. 加速镜像前缀（`ghfast.top`、`gh-proxy.com`、`ghproxy.net`，内置于代码，失效可改）
-3. 自动探测本机代理（环境变量 → macOS `scutil --proxy` 系统代理 → Clash/V2Ray/Surge 等常见本地端口探测）
+3. 自动探测本机代理（环境变量 → macOS `scutil --proxy` 系统代理 → Clash/V2Ray/Surge 等常见本地端口探测；Windows 上还会另查系统代理设置的注册表）
 4. 全部失败时提供「选择本地文件…」手动导入 `dictionary.zip` 或裸 `dictionary.db`
 
 已安装后的数据管理走设置「数据目录」页签：显示词典与发音包的安装状态、打开数据目录。想重装数据，删掉数据目录里的 `dictionary.db` 或 `audio/` 再重启应用即回到下载流程；更新数据则从发布页下载新版 zip 手动导入。

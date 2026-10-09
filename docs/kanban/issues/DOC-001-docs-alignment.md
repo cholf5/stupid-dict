@@ -4,7 +4,7 @@ title: 文档对齐：AGENTS.md 幽灵方法名 BuildLinkText + README 代理顺
 type: docs
 priority: P2
 size: S
-status: todo
+status: done
 created: 2026-10-09
 updated: 2026-10-09
 blocked: none
@@ -23,13 +23,13 @@ blocked: none
 
 ## Acceptance Criteria
 
-- [ ] AGENTS.md 不再引用不存在的 `BuildLinkText`
-- [ ] README 代理句与代码一致，或显式决定保持简化并留痕
+- [x] AGENTS.md 不再引用不存在的 `BuildLinkText`
+- [x] README 代理句与代码一致，或显式决定保持简化并留痕
 
 ## Subtasks
 
-- [ ] 改 AGENTS.md:44
-- [ ] README:114 评估并修改/留痕
+- [x] 改 AGENTS.md:44
+- [x] README:114 评估并修改/留痕
 
 ## Dependencies
 
@@ -41,6 +41,11 @@ blocked: none
 
 ## Development Log
 
+2026-10-09 修复会话。行号从卡面漂移（AGENTS.md:44 → 实际 :46），按内容定位。改前先核实代码现状，文档以代码为准。
+
+1. **AGENTS.md 幽灵方法名**——核实：`BuildLinkText` 全仓 grep 仅两处非卡面命中——AGENTS.md:46（本卡目标）与 `docs/pitfalls/2026-10-08-avalonia-inline-links.md:39`（描述「旧机器（LinkSegment/BuildLinkText/PosLineSegments/CreateLinkInline）已删净，别再往回写」的历史性引用，语义正确，保留）。实际方法核实：`CreateLinkSurface`（MainWindow.axaml.cs:1669）、`Text()`（:1688）、`BuildChips`（:1521）均真实存在；卡面建议「改为 CreateLinkSurface 或直接删掉」，采用前者——该括号枚举的是「构建结果页的三类原语」，`CreateLinkSurface`（词链接点击面）与 `Text()`（文本块）、`BuildChips`（词 chips）同级，替换后枚举仍完整且与紧随其后的 :47 行（详述 CreateLinkSurface）自洽，:44/:47 的自相矛盾消除。
+2. **README:114 代理探测顺序**——核实 `ProxyDetector.cs`：`DetectFromEnvironmentAndSystem` 顺序为环境变量 → Windows（WinINET 注册表，ProxyServer/ProxyOverride，PAC 刻意不解析——由平台默认代理相位覆盖）→ macOS scutil；`ProbeCommonLocalPorts` 端口表 Clash 7890 / Clash Verge Rev 7897 / V2RayN 1087,10809 / Surge 6152 / Privoxy 8118 / SOCKS 1080；`AssetDownloadService.BuildAttempts` 相位：①平台默认代理过全部源 → ②直连镜像 → ③显式检测代理过前两源 → ④端口探测过前两源。AGENTS.md:32 的描述完整准确。评估：README 面向用户、macOS 视角的简化「环境变量 → scutil → 端口探测」对 macOS 用户完全正确，但句子省略 Windows 注册表一步与代码不一致——选择**补半句**而非保持简化：一个括注「；Windows 上还会另查系统代理设置的注册表」零成本消除不一致，比「保持简化 + 留痕」对读者更有用（该句本来就列了平台名，加一个平台不破坏简化性）。README:112-115 其余条目（GitHub 直连/镜像/手动导入）是下载链相位的用户视角归纳，未在本卡范围，未动。
+
 ## Bugs
 
 | ID | Severity | Description | Status | Resolution |
@@ -50,4 +55,4 @@ blocked: none
 
 - Related files: `AGENTS.md`、`README.md`
 - How to run/verify: grep 复核
-- Results: 未运行（待修复会话）
+- Results: 已验证（2026-10-09）。①`grep -rn BuildLinkText` 对 AGENTS.md / README.md / src/ / docs/plans/ 零命中；剩余命中仅三处且均为应保留项：`docs/kanban/board.md`（卡标题，本会话不改板）、本卡文件（题述）、pitfalls 文档（已删旧机器的历史名，刻意保留）；AGENTS.md 现 :46 引用 `CreateLinkSurface()`、:47 详述同一方法，无自相矛盾。②README:114 与 ProxyDetector.cs 源码逐相位比对一致（环境变量 → Windows 注册表 + macOS scutil → 常见端口）。③纯文档改动，`dotnet test` 全套 Core 81/81 + App 195/195 不受影响（CI 的 docs/** paths-ignore 亦不会因此触发无谓测试）。

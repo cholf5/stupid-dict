@@ -130,6 +130,13 @@ def main() -> None:
     parser.add_argument("--content", type=int, default=830, help="内容块边长（默认 830，Apple 网格）")
     parser.add_argument("--radius", type=int, default=194, help="圆角半径（默认 194 ≈ 内容的 23.4%%）")
     args = parser.parse_args()
+    # Range checks BEFORE anything is written: content <= 0 crashes the resize
+    # (and the ico bleed math divides by it), content > canvas breaks the
+    # bbox assertions with a negative margin, negative radius crashes Pillow.
+    if not 0 < args.content <= CANVAS:
+        sys.exit(f"--content 须在 1..{CANVAS} 之间，收到 {args.content}")
+    if args.radius < 0:
+        sys.exit(f"--radius 不能为负，收到 {args.radius}")
     if not args.source.exists():
         sys.exit(f"源图不存在: {args.source}")
 
