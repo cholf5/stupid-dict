@@ -4,7 +4,8 @@
 #   - PR / push to main: tests only (pure doc changes like **.md, LICENSE, docs/**
 #     do not trigger; tag pushes ignore paths filters and always trigger).
 #   - tag v*: after tests pass, package — macOS .app (scripts/package.sh,
-#     arm64+x64, self-contained), Windows win-x64 self-contained zip,
+#     arm64+x64, self-contained), Windows win-x64 self-contained zip + Inno
+#     Setup per-user installer (scripts/StupidDict.iss),
 #     Linux linux-x64 zip — then create the GitHub Release and upload app
 #     packages only. dictionary.zip / audio-pack.zip are too big to build in
 #     CI and live in their own prerelease (data-1, see ReleaseAssets.DataTag),
@@ -129,14 +130,24 @@ jobs:
         run: >
           dotnet publish $env:APP_PROJECT -c Release -f net10.0-windows -r win-x64
           --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
-          -o publish
-      - name: Zip
+          -o "StupidDict-${env:VERSION}-win-x64"
+      - name: Zip portable exe
         shell: pwsh
-        run: Compress-Archive -Path publish/StupidDict.exe -DestinationPath "StupidDict-${env:VERSION}-win-x64.zip"
+        run: Compress-Archive -Path "StupidDict-${env:VERSION}-win-x64/StupidDict.exe" -DestinationPath "StupidDict-${env:VERSION}-win-x64.zip"
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+      - name: Build setup installer
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=$env:VERSION scripts\StupidDict.iss
+          # 挪到仓库根：artifact 必须扁平，否则 release job 的 gh release upload dist/*
+          # 会遇到目录（upload-artifact 按多路径最小公共祖先保留结构）
+          Move-Item artifacts/windows/StupidDict-*-win-x64-setup.exe .
       - uses: actions/upload-artifact@v4
         with:
           name: package-win-x64
-          path: StupidDict-*-win-x64.zip
+          path: |
+            StupidDict-*-win-x64.zip
+            StupidDict-*-win-x64-setup.exe
           if-no-files-found: error
 
   linux:

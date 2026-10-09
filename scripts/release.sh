@@ -137,7 +137,7 @@ DATA_TAG=data-1
 ASSETS=$(gh release view "$TAG" --json assets --jq '[.assets[].name] | join(",")' 2>/dev/null || true)
 MISSING=
 for want in "StupidDict-$VERSION-osx-arm64.zip" "StupidDict-$VERSION-osx-x64.zip" \
-  "StupidDict-$VERSION-win-x64.zip" "StupidDict-$VERSION-linux-x64.zip"; do
+  "StupidDict-$VERSION-win-x64.zip" "StupidDict-$VERSION-win-x64-setup.exe" "StupidDict-$VERSION-linux-x64.zip"; do
   case ",$ASSETS," in
     *",$want,"*) ;;
     *) MISSING="$MISSING $want" ;;

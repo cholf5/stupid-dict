@@ -7,6 +7,8 @@
 #
 # Usage: scripts/package.sh [--rids "osx-arm64 win-x64 ..."] [--dictionary <db>] [--audio-pack <zip>]
 # Upload with: gh release create v1.x dist/* — see the summary the script prints.
+# Windows Setup 安装包（StupidDict-{ver}-win-x64-setup.exe，scripts/StupidDict.iss）
+# 只在 CI 出：Inno Setup 的 ISCC 仅 Windows，本脚本（macOS）仍只出绿色 zip。
 
 set -euo pipefail
 
