@@ -36,6 +36,8 @@ cholf5/stupid-dict：.NET 10 + Avalonia 桌面离线英汉词典（Windows / mac
 ## 发音（Speech/）
 
 - 播放链 `SpeechPlayback.Create`：`AudioPackPlayer`（audio/uk、audio/us 按词命名的 MP3；文件播放器按平台 afplay / MCI / Linux 播放器）→ 失败回退 `SystemTtsPlayer`（系统 TTS）。播放器统一走 `ISpeechPlayer` 缝，测试注入 `RecordingSpeechPlayer`。
+- `ISpeechPlayer` 带 `Stop()`（退出停播出口，B-012）：`MainWindow.Closed` 在 UI 线程调 `_speech.Stop()`（MCI close 须 STA，挂 `Closed` 不挂 `Closing`——后者可被否决；默认 lifetime 末窗关闭即退出，故此即应用退出点；headless 测试经 `window.Close()` 直达同一处理器）。复合链逐层转发到文件播放器/进程 Kill（Unix 孤儿 afplay/say）/SpeechSynthesizer 取消并 Dispose，每一跳 try/catch 吞异常 best-effort，决不把异常抛进关窗路径；Stop 后播放器仍可用于后续 Play。
+- macOS 语音枚举（`say -v ?`）在首次 TTS 回退时**后台线程懒跑一次**（B-011，读超时即整树 Kill，探针经 internal 缝注入）：未就绪时用默认 voice 发音（等价于枚举失败的既有行为），绝不因枚举阻塞 UI 线程；共享的 `SubprocessOutput.ReadWithTimeout`（读 stdout 带超时、超时 Kill entireProcessTree）同时服务 ProxyDetector 的 scutil 探测——新增「起子进程读输出」的探测走它，勿再写裸 `ReadToEnd`。
 - 发音包未安装且未在下载时，点 UK/US 会在底部条给出下载入口（`PlayWord`）；按钮闪烁 ✕ 1.5s 表示无法发音，不弹窗。
 - **Windows 的 MCI 后端只走 winmm 的 `mciSendStringW`**：`GetProcAddress` 大小写敏感，声明必须用 `EntryPoint`/`ExactSpelling` 钉住——写成 C# 风格的 `MciSendString` 会抛 `EntryPointNotFoundException`，从 `async void` 的点击回调逃出直接杀进程（2026-10-09 用户点发音闪退的根因与证据见 `docs/pitfalls/2026-10-09-winmm-mcisendstring-entrypoint-case.md`）。`type mpegvideo` 底层是 DirectShow，**只在 STA 套间可用**（MTA 上 open 返回 266），所以发音必须在 UI 线程发起；播放后端一律「失败返回 false」，不允许外抛。`play` 返回非 0 即拒播：立即 `Stop()` 释放刚开的 alias 并 `return false` 回退 TTS，返回码不可丢弃；`Stop` 仅在 `close` 返回 0 时清 `_open`，失败保留该位、由下次 `Play` 起手的 `Stop()` 重试——勿简化回「先清位再 close」（close 一失败即 alias 泄漏到重启）。
 

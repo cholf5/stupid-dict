@@ -54,6 +54,15 @@ internal static class MacDockIcon
             var app = MsgSend(ObjCGetClass("NSApplication"), Selector("sharedApplication"));
             if (app != IntPtr.Zero)
                 MsgSendObject(app, Selector("setApplicationIconImage:"), image);
+
+            // B-015: the image came from alloc (create-side retainCount 1) and
+            // setApplicationIconImage: retained what it needs, so the owned
+            // reference must be balanced with a release or one NSImage and its
+            // bitmap data leak per run. Unconditional — even a failed set has
+            // to drop the reference. `data` is a dataWithBytes:... factory
+            // product (autoreleased, drained by the run-loop pool): sending it
+            // a release here would over-release, so it is left alone.
+            MsgSend(image, Selector("release"));
         }
     }
 

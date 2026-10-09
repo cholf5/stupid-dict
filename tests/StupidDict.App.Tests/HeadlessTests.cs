@@ -1027,6 +1027,39 @@ public class HeadlessWindowTests
         Assert.Equal(SpeechAccent.American, player.Played.Last().Accent);
     }
 
+    /// <summary>
+    /// B-012 TC-001: closing the window stops the injected player exactly once
+    /// — the exit hook that keeps afplay/say from finishing their word as
+    /// orphans after the app quits. Closed (not Closing) carries it, so the
+    /// stop lands after playback started and cannot be vetoed away.
+    /// </summary>
+    [AvaloniaFact]
+    public void ClosingTheWindowStopsTheInjectedPlayer()
+    {
+        using var service = CreateService();
+        var player = new RecordingSpeechPlayer();
+        var window = new MainWindow(service, player, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "cat");
+
+        var ukButton = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
+            .OfType<Button>().First(b => b.Name == "UkSpeakerButton");
+        RaiseClick(ukButton);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Single(player.Played);
+        Assert.Equal(0, player.Stops); // playing: no stop yet
+
+        window.Close();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(1, player.Stops);
+    }
+
     [AvaloniaFact]
     public void MissingDictionaryShowsDownloadPanelAndBlocksLookup()
     {
@@ -1612,12 +1645,15 @@ public class HeadlessWindowTests
     private sealed class RecordingSpeechPlayer : ISpeechPlayer
     {
         public List<(string Word, SpeechAccent Accent)> Played = [];
+        public int Stops;
 
         public bool Play(string word, SpeechAccent accent)
         {
             Played.Add((word, accent));
             return true;
         }
+
+        public void Stop() => Stops++;
     }
 
     private static string? Headword(Window window) =>

@@ -162,5 +162,7 @@ public sealed class MciStateMachineTests
             Played.Add((word, accent));
             return true;
         }
+
+        public void Stop() { }
     }
 }

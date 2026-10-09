@@ -4,6 +4,9 @@ namespace StupidDict.App.Speech;
 public interface IAudioFilePlayer
 {
     bool Play(string file);
+
+    /// <summary>Stops playback in progress; best-effort, never throws.</summary>
+    void Stop();
 }
 
 /// <summary>Plays a file with a CLI player such as afplay or mpg123.</summary>
@@ -16,6 +19,8 @@ internal sealed class ProcessAudioFilePlayer(string program, params string[] pre
         var arguments = new List<string>(prefixArguments) { file };
         return _process.Play(program, [.. arguments]);
     }
+
+    public void Stop() => _process.Stop();
 }
 
 /// <summary>
@@ -45,6 +50,8 @@ internal sealed class LinuxAudioFilePlayer : IAudioFilePlayer
         }
         return false;
     }
+
+    public void Stop() => _resolved?.Stop();
 }
 
 /// <summary>Windows plays MP3 through the Media Control Interface (winmm).</summary>

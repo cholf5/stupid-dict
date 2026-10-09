@@ -169,8 +169,9 @@ internal static class ProxyDetector
             };
             using var process = Process.Start(info);
             if (process is null) return null;
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(3000);
+            // Bounded read that kills a hung scutil (B-011): an orphan would
+            // sit on the download thread's call forever otherwise.
+            var output = SubprocessOutput.ReadWithTimeout(process, 3000);
             return process.HasExited && process.ExitCode == 0 ? output : null;
         }
         catch

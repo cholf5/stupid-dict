@@ -43,7 +43,15 @@ internal sealed class ProcessPlayer
         {
             // the process may already be gone; nothing to do about it
         }
-        _current?.Dispose();
+        try
+        {
+            _current?.Dispose();
+        }
+        catch
+        {
+            // exit-time cleanup (B-012) is best-effort: Dispose must not break
+            // the window-close path either
+        }
         _current = null;
     }
 }

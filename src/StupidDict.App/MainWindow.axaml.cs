@@ -134,6 +134,16 @@ public partial class MainWindow : Window
         Translations.Instance.PropertyChanged += OnTranslationsChanged;
         Closed += (_, _) => Translations.Instance.PropertyChanged -= OnTranslationsChanged;
         Closed += (_, _) => SaveWindowBounds();
+        // Exit stops playback in flight (B-012): the Unix process players would
+        // otherwise keep speaking their word to the end as orphans after the
+        // app quits, and the Windows MCI alias gets an explicit close instead
+        // of relying on process teardown. Closed (not Closing — a close can be
+        // vetoed there) runs on the UI thread, which the MCI backend requires
+        // (DirectShow is STA-only); the default lifetime shuts down when the
+        // last suitable window closes, so this is the app-exit point, and
+        // headless tests reach the same handler by closing the window. Stop is
+        // best-effort and never throws.
+        Closed += (_, _) => _speech.Stop();
 
         ShowEmptyState();
         UpdateNavButtons();

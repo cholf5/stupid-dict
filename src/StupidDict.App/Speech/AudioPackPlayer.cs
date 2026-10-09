@@ -15,6 +15,19 @@ public sealed class AudioPackPlayer(string directory, IAudioFilePlayer player) :
         if (!File.Exists(file)) return false;
         return player.Play(file);
     }
+
+    public void Stop()
+    {
+        try
+        {
+            player.Stop();
+        }
+        catch
+        {
+            // exit-time cleanup is best-effort: a faulting file player must not
+            // break the composite's Stop or the window-close path
+        }
+    }
 }
 
 /// <summary>Tries each player in order; the first that starts playback wins.</summary>
@@ -25,5 +38,21 @@ public sealed class CompositeSpeechPlayer(params ISpeechPlayer[] players) : ISpe
         foreach (var player in players)
             if (player.Play(word, accent)) return true;
         return false;
+    }
+
+    public void Stop()
+    {
+        foreach (var player in players)
+        {
+            try
+            {
+                player.Stop();
+            }
+            catch
+            {
+                // one broken player must neither stop the others' cleanup nor
+                // let its fault escape into the window-close path
+            }
+        }
     }
 }
