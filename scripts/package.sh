@@ -33,7 +33,7 @@ sha256_file() {
 
 cd "$REPO_ROOT"
 mkdir -p "$DIST"
-[[ -f "$DICTIONARY" ]] || echo "提示: 未找到 dictionary.db（$DICTIONARY），跳过带词典包和 dictionary.zip"
+[[ -f "$DICTIONARY" ]] || echo "提示: 未找到 dictionary.db（${DICTIONARY}），跳过带词典包和 dictionary.zip"
 
 for rid in $RID_LIST; do
   echo "==> publish $rid"
