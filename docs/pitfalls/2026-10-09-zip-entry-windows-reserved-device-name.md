@@ -15,7 +15,9 @@
 ## 修复（`MainWindow.axaml.cs`）
 
 1. **校验改纯语法判定**（`EntryEscapesDestination`）：条目名 rooted（盘符/UNC/前导分隔符，`Path.IsPathRooted`）或含 `..` 段才拒绝，其余一律放行。正确性论证：拒绝 rooted 与 `..` 之后，剩下的段全是字面名，逐段拼到目标目录下只可能落在目标目录内——规范化器的全部改写（分隔符折叠、尾点尾空格剔除、设备名重写）都不会跨出目录。
-2. **Windows 解压走 `\\?\` 扩展路径手工逐条解压**（`ExtractEntries` + `ToExtendedPath` + `JoinEntryPath`）：`\\?\` 前缀让 Win32 完全跳过路径规范化，设备名按字面文件名落盘（NTFS 本就允许）；Windows 11 已解除保留名限制，前缀行为一致，单一代码路径覆盖两代系统。Unix 分支保持 `ZipFile.ExtractToDirectory`（Unix 无设备名概念，天然无此坑）。
+2. **Windows 解压走 `\\?\` 扩展路径手工逐条解压**（`ToExtendedPath` + `JoinEntryPath`）：`\\?\` 前缀让 Win32 完全跳过路径规范化，设备名按字面文件名落盘（NTFS 本就允许）；Windows 11 已解除保留名限制，前缀行为一致，单一代码路径覆盖两代系统。Unix 无设备名概念，天然无此坑。
+
+   **后续补记（同日）**：发音包导入要逐文件进度条（十几万条目），逐条解压成了三平台统一路径——Unix 并入同一条循环（现名 `ExtractEntry`），`ToExtendedPath` 仅在 Windows 加前缀，`ExtractToDirectory` 不再使用；逐条解压同时是条目数进度回调的载体。
 3. 配套细节：staging 目录从 `Path.GetFullPath` 后的绝对路径拼出（`\\?\` 只吃绝对反斜杠路径）；`JoinEntryPath` 用字符串拼接**不走 GetFullPath**——规范化正是要躲开的东西，`.` 段手动剔除（`\\?\` 不再帮你规范化掉），`\` 按分隔符处理（字面反斜杠在 Windows 文件名里本就非法）。
 
 ## 测试边界与残留

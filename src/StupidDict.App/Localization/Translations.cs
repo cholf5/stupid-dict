@@ -41,7 +41,9 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(Recent)] = "最近",
         [nameof(Verifying)] = "校验中…",
         [nameof(Extracting)] = "解压中…",
+        [nameof(ExtractingFilesFormat)] = "正在解压 {0:N0} / {1:N0} 个文件…",
         [nameof(Importing)] = "导入中…",
+        [nameof(ImportingFilesFormat)] = "正在导入 {0:N0} / {1:N0} 个文件…",
         [nameof(DownloadCancelled)] = "已取消下载。可以直接下载，或选择本地已有文件。",
         [nameof(DownloadFailedFormat)] = "下载失败：{0}",
         [nameof(ImportFailedFormat)] = "导入失败：{0}",
@@ -140,7 +142,9 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(Recent)] = "Recent",
         [nameof(Verifying)] = "Verifying…",
         [nameof(Extracting)] = "Extracting…",
+        [nameof(ExtractingFilesFormat)] = "Extracting {0:N0} of {1:N0} files…",
         [nameof(Importing)] = "Importing…",
+        [nameof(ImportingFilesFormat)] = "Importing {0:N0} of {1:N0} files…",
         [nameof(DownloadCancelled)] = "Download cancelled. You can download again or choose a local file.",
         [nameof(DownloadFailedFormat)] = "Download failed: {0}",
         [nameof(ImportFailedFormat)] = "Import failed: {0}",
@@ -287,7 +291,11 @@ public sealed class Translations : INotifyPropertyChanged
 
     public string Verifying => Get();
     public string Extracting => Get();
+    /// <summary>{0} 已完成条目数，{1} 总条目数。</summary>
+    public string ExtractingFilesFormat => Get();
     public string Importing => Get();
+    /// <summary>{0} 已完成条目数，{1} 总条目数。</summary>
+    public string ImportingFilesFormat => Get();
     public string DownloadCancelled => Get();
     public string DownloadFailedFormat => Get();
     public string ImportFailedFormat => Get();

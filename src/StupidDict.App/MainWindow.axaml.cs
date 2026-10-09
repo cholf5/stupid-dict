@@ -709,7 +709,11 @@ public partial class MainWindow : Window
                 Translations.Instance.AudioPackFailedFormat, cancellation);
             AudioPackStatus.Text = Translations.Instance.Extracting;
             AudioPackBar.IsIndeterminate = true;
-            await Task.Run(() => ExtractZip(zipPath, _locations.AudioDirectory), cancellation);
+            IProgress<(int Done, int Total)> extractProgress =
+                new Progress<(int Done, int Total)>(p =>
+                    UpdateAudioPackFileProgress(p, Translations.Instance.ExtractingFilesFormat));
+            await Task.Run(() => ExtractZip(zipPath, _locations.AudioDirectory,
+                (done, total) => extractProgress.Report((done, total))), cancellation);
             File.Delete(zipPath);
             AudioPackPanel.IsVisible = false;
         }
@@ -743,6 +747,17 @@ public partial class MainWindow : Window
             _audioPackCts.Dispose();
             _audioPackCts = null;
         }
+    }
+
+    // Per-entry extraction progress, shared by the audio pack download and
+    // the local import: the pack is ~10⁵ small files, so the bar counts
+    // entries. The worker throttles reports (every 256 entries); this only
+    // renders them.
+    private void UpdateAudioPackFileProgress((int Done, int Total) progress, string format)
+    {
+        AudioPackBar.IsIndeterminate = false;
+        AudioPackBar.Value = progress.Total == 0 ? 0 : 100.0 * progress.Done / progress.Total;
+        AudioPackStatus.Text = string.Format(format, progress.Done, progress.Total);
     }
 
     private void UpdateAudioPackProgress(DownloadProgress progress)
@@ -796,14 +811,21 @@ public partial class MainWindow : Window
 
         AudioPackStatus.Text = Translations.Instance.Importing;
         AudioPackActionButton.IsEnabled = false;
+        AudioPackBar.IsVisible = true;
+        AudioPackBar.IsIndeterminate = false;
+        IProgress<(int Done, int Total)> progress =
+            new Progress<(int Done, int Total)>(p =>
+                UpdateAudioPackFileProgress(p, Translations.Instance.ImportingFilesFormat));
         try
         {
-            await Task.Run(() => ImportAudioPack(path, _locations.AudioDirectory));
+            await Task.Run(() => ImportAudioPack(path, _locations.AudioDirectory,
+                (done, total) => progress.Report((done, total))));
             AudioPackPanel.IsVisible = false;
         }
         catch (Exception ex)
         {
             AudioPackStatus.Text = string.Format(Translations.Instance.ImportFailedFormat, ex.Message);
+            AudioPackBar.IsVisible = false;
             AudioPackActionButton.Content = Translations.Instance.Retry;
             AudioPackActionButton.IsEnabled = true;
             PickAudioPackButton.IsVisible = true;
@@ -817,9 +839,12 @@ public partial class MainWindow : Window
     /// <summary>
     /// Validates that the zip really is a pronunciation pack (uk/ or us/ at
     /// the root) before extracting — importing a wrong zip must not scatter
-    /// junk inside the audio directory.
+    /// junk inside the audio directory. <paramref name="progress"/> forwards
+    /// extraction progress (entries done, entries total); the pack carries
+    /// ~10⁵ files, so the status line counts them.
     /// </summary>
-    internal static void ImportAudioPack(string zipPath, string audioDirectory)
+    internal static void ImportAudioPack(string zipPath, string audioDirectory,
+        Action<int, int>? progress = null)
     {
         using var archive = System.IO.Compression.ZipFile.OpenRead(zipPath);
         var hasPack = archive.Entries.Any(entry =>
@@ -827,7 +852,7 @@ public partial class MainWindow : Window
             entry.FullName.StartsWith("us/", StringComparison.Ordinal));
         if (!hasPack)
             throw new InvalidOperationException(Translations.Instance.ImportMissingPack);
-        ExtractZip(zipPath, audioDirectory);
+        ExtractZip(zipPath, audioDirectory, progress);
     }
 
     /// <summary>
@@ -835,21 +860,25 @@ public partial class MainWindow : Window
     /// all-or-nothing: the archive unpacks into a staging directory inside
     /// the destination and only then moves into place — a half-extracted
     /// pack must never look installed (AudioPackInstalled checks for uk/).
+    /// Every platform extracts entry by entry, which is what per-entry
+    /// progress reporting rides on: <paramref name="progress"/> receives
+    /// (entries done, entries total), reported every ProgressStride entries.
     /// </summary>
-    internal static void ExtractZip(string zipPath, string destinationDirectory)
+    internal static void ExtractZip(string zipPath, string destinationDirectory,
+        Action<int, int>? progress = null)
     {
         Directory.CreateDirectory(destinationDirectory);
         var root = Path.GetFullPath(destinationDirectory);
-        using (var archive = System.IO.Compression.ZipFile.OpenRead(zipPath))
+        using var archive = System.IO.Compression.ZipFile.OpenRead(zipPath);
+
+        foreach (var entry in archive.Entries)
         {
-            foreach (var entry in archive.Entries)
-            {
-                if (entry.FullName.Length == 0) continue;
-                if (EntryEscapesDestination(entry.FullName))
-                    throw new InvalidOperationException(
-                        string.Format(Translations.Instance.ZipSlipFormat, entry.FullName));
-            }
+            if (entry.FullName.Length == 0) continue;
+            if (EntryEscapesDestination(entry.FullName))
+                throw new InvalidOperationException(
+                    string.Format(Translations.Instance.ZipSlipFormat, entry.FullName));
         }
+        var total = archive.Entries.Count(entry => entry.FullName.Length > 0);
 
         // Sweep staging directories a crashed run may have left behind.
         const string stagingPrefix = ".stupiddict-extracting-";
@@ -859,16 +888,16 @@ public partial class MainWindow : Window
         var staging = Path.Combine(root, stagingPrefix + Guid.NewGuid().ToString("N"));
         try
         {
-            if (OperatingSystem.IsWindows())
+            const int progressStride = 256;
+            var done = 0;
+            progress?.Invoke(0, total);
+            foreach (var entry in archive.Entries)
             {
-                // Reserved device names in the final segment (us/con.mp3) are
-                // unwritable through normal paths — see ExtractEntries.
-                using var extraction = System.IO.Compression.ZipFile.OpenRead(zipPath);
-                ExtractEntries(extraction, staging);
-            }
-            else
-            {
-                System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, staging);
+                if (entry.FullName.Length == 0) continue;
+                ExtractEntry(entry, staging);
+                done++;
+                if (done == total || done % progressStride == 0)
+                    progress?.Invoke(done, total);
             }
 
             // Materialize before moving: moving entries out of staging while
@@ -900,28 +929,26 @@ public partial class MainWindow : Window
         return entryName.Split('/', '\\').Any(segment => segment == "..");
     }
 
-    // Windows-only extraction. ZipFile.ExtractToDirectory writes entries
-    // through normal paths, and pre-Windows 11 CreateFile redirects a final
-    // reserved device name (us/con.mp3 → the CON device) — the MP3 silently
-    // never lands. Writing through the \\?\ prefix skips Win32 path
-    // normalization so the name is taken literally; on Windows 11, where the
-    // restriction is lifted, the prefix behaves identically.
-    private static void ExtractEntries(System.IO.Compression.ZipArchive archive, string stagingDirectory)
+    // Entry-by-entry extraction on every platform. On Windows this is load-
+    // bearing: ZipFile.ExtractToDirectory writes entries through normal
+    // paths, and pre-Windows 11 CreateFile redirects a final reserved device
+    // name (us/con.mp3 → the CON device) — the MP3 silently never lands.
+    // Writing through the \\?\ prefix skips Win32 path normalization so the
+    // name is taken literally; on Windows 11, where the restriction is
+    // lifted, the prefix behaves identically. Unix needs no prefix (no
+    // device names) but shares the loop so per-entry progress works there.
+    private static void ExtractEntry(System.IO.Compression.ZipArchiveEntry entry, string stagingDirectory)
     {
-        foreach (var entry in archive.Entries)
+        var target = JoinEntryPath(stagingDirectory, entry.FullName);
+        if (entry.FullName.EndsWith("/"))
         {
-            if (entry.FullName.Length == 0) continue;
-            var target = JoinEntryPath(stagingDirectory, entry.FullName);
-            if (entry.FullName.EndsWith("/"))
-            {
-                Directory.CreateDirectory(ToExtendedPath(target));
-                continue;
-            }
-            Directory.CreateDirectory(ToExtendedPath(Path.GetDirectoryName(target)!));
-            using var source = entry.Open();
-            using var destination = File.Create(ToExtendedPath(target));
-            source.CopyTo(destination);
+            Directory.CreateDirectory(ToExtendedPath(target));
+            return;
         }
+        Directory.CreateDirectory(ToExtendedPath(Path.GetDirectoryName(target)!));
+        using var source = entry.Open();
+        using var destination = File.Create(ToExtendedPath(target));
+        source.CopyTo(destination);
     }
 
     // The slip gate has rejected rooted names and ".." segments, so joining
@@ -939,10 +966,12 @@ public partial class MainWindow : Window
             + string.Join(Path.DirectorySeparatorChar, segments);
     }
 
-    // Extended-length prefix. Requires an absolute backslash path — the
-    // staging directory is built from Path.GetFullPath output.
+    // Extended-length prefix, Windows only (Unix paths must stay untouched).
+    // Requires an absolute backslash path — the staging directory is built
+    // from Path.GetFullPath output.
     private static string ToExtendedPath(string path)
     {
+        if (!OperatingSystem.IsWindows()) return path;
         if (path.StartsWith(@"\\?\")) return path;
         if (path.StartsWith(@"\\")) // UNC keeps working under the prefix via \\?\UNC\
             return @"\\?\UNC\" + path[2..];
