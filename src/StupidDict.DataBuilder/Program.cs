@@ -33,7 +33,10 @@ internal static class DictionaryBuilder
         var output = options.Output;
 
         var commonTags = new HashSet<string> { "zk", "gk", "cet4", "cet6", "ky", "toefl", "ielts", "gre" };
-        var zhTermRegex = new Regex(@"[\u3400-\u9FFF]+", RegexOptions.Compiled);
+        // 含 〇（U+3007）：「二〇二五」类译文名词才能进 zh_index 可查
+        // （Q-002 遗留建议，P-003 重建执行）。刻意不含扩展平面——ECDICT 译文里
+        // 近乎为零且会放大 zh_index，查询侧 IsChineseQuery 是本类的超集。
+        var zhTermRegex = new Regex(@"[\u3007\u3400-\u9FFF]+", RegexOptions.Compiled);
         var started = Stopwatch.StartNew();
         long entries = 0, skipped = 0, common = 0, zhTerms = 0, forms = 0, usPhoneticCount = 0;
 

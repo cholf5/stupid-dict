@@ -92,12 +92,18 @@ Result: ✅ `ProperNounLemmasMatchLowercaseHeadwords`——修复前 WordId("Rom
 
 ## Development Log
 
-### 2026-10-09
+### 2026-10-09 修复会话
 
 - 四处修复全部落在 `WordNetThesaurus.cs`：①index 预检改为「6 个固定字段」结构下限（挡截断残片，不再按总长丢短行，偏移齐全仍由精确校验把关）；②synset 缓存键改 (POS, offset) 复合键，**键用文件 POS 命名空间 `file[0]` 而非行内 ss_type**——data.adj 里卫星词 ss_type 是 's'，但 index 与指针记录里形容词一律记 'a'（实测 3.0 全量：377,592 个指针目标按命名空间键 0 丢失；按 ss_type 键会有 10,693 个 `&` 目标 miss）；③`InsertionOrder` 加 's'；④`Normalize` 补 `ToLowerInvariant()`。
 - 测试：新增 `tests/StupidDict.Core.Tests/WordNetThesaurusTests.cs`（4 TC，迷你夹具不带真实文件的尾随空格）；DataBuilder csproj 加 `InternalsVisibleTo StupidDict.Core.Tests`、Core.Tests 加 DataBuilder 项目引用。4 个新测试对修复前代码全部失败（咬合确认），修复后 Core 45/45 + App 126/126 全绿（套件数据查询走独立只读连接，`Pooling=false` 遵守 Windows 铁律）。
 - 真实数据重建（ECDICT 1.0.28 sqlite release 的 stardict.db，3,402,564 行与生产 meta 的 entries 完全一致 + Princeton WordNet 3.0）：基线 145,674/141,847 与生产 meta 完全一致（同源同码，基线可信）；修复后 145,674/**157,072**（+15,225 行）。两处卡片前提实测修正（见 Verification）。
 - 下一步：P-003（重建 dictionary.db 发 data-2）依赖本卡，仍待开。
+
+### 2026-10-09 P-003 重建抽样修正（修复②的命名空间实现不完整）
+
+P-003 用本卡修复后的构建器全量重建时，跨词性抽样发现串扰仍在：`bad` 的 adv. 行是 `thriftily`（data-1 同病）、`frontal` 混入 `sociolinguistically`、a.k.a.（index.adv 7-token 短行）零行。根因：修复②把「文件 POS 命名空间」实现为 `file[0]`——**`"adv"[0]` 是 'a'，与 `"adj"[0]` 撞车**（代码注释声称 adv→'r'，与实现不符；当年「377,592 指针 0 丢失」的实测同样在带缺陷的键下做出，未覆盖 `'r'` 目标与 adj/adv 碰撞两类丢失）。真实 3.0 数据 data.adj∩data.adv 同 offset **21 处**：data.adv 后解析覆盖 data.adj 的同 offset synset，且 `('r', …)` 指针与 index.adv 目标全部 miss——4,478 个命中词表的 adv 词条几乎零行（修复前 syn|adv. 仅 45 行且全是串扰产物）。
+
+修正（随 P-003 落地）：`PosFiles` 改 `(string File, char Pos)[]` 显式 POS 字母（noun→n / verb→v / adj→a / adv→'r'），ReadIndex/ReadSynsets 解构取值；新增回归测试 `SameOffsetInAdjAndAdvFilesDoesNotClobber`（原 TC-002 夹具只测 noun/adj——'n'≠'a' 天然不撞，恰好漏掉 adj/adv 对；新夹具含 index.adv 7-token 短行 + data.adv 同 offset）。红检：仅把 `("adv",'r')` 改回 `("adv",'a')` 恰 1 红、恢复绿。重建行数 157,072 → **160,654**（本卡 Verification 的对比表数字由 P-003 卡的最终表接替：syn|adv. 45→2,689、ant|adv. 0→905、有行去重词头 140,197→142,756、命中零行 5,477→2,918）。本卡四条 TC 全部保持有效；TC-002 的 noun/adj 夹具继续钉住「裸 offset 覆盖」，adj/adv 变体由新测试钉住。
 
 ## Bugs
 

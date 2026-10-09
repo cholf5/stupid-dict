@@ -70,6 +70,22 @@ public class BuilderCliTests
     }
 
     [Fact]
+    public void ChineseTranslationContainingCircleZeroEntersZhIndex()
+    {
+        // Q-002 遗留建议（P-003 重建时执行）：zhTermRegex 扩为
+        // [\u3007\u3400-\u9FFF]+，「二〇二五」类含 〇 的译文名词才能进
+        // zh_index 可查。旧 regex（缺 \u3007）下该译文零匹配——本测试即红检。
+        var dir = NewTempDir();
+        var source = WriteEcdictSource(dir, [("year", "二〇二五", 1)]);
+        var output = Path.Combine(dir, "out", "dictionary.db");
+
+        var exit = DictionaryBuilder.Run([source, output]);
+
+        Assert.Equal(0, exit);
+        Assert.Equal(["二〇二五"], ReadZhTerms(output));
+    }
+
+    [Fact]
     public void BuildFailureLeavesPreviousDictionaryIntactAndCleansTempFiles()
     {
         // TC-002：主事务提交后 WordNet 步骤中途异常（index.noun 第 3 列非数字，
@@ -145,7 +161,11 @@ public class BuilderCliTests
     }
 
     /// <summary>Writes a minimal ECDICT stardict.db the builder reads as source.</summary>
-    private static string WriteEcdictSource(string dir, params (string Word, string Translation)[] rows)
+    private static string WriteEcdictSource(string dir, params (string Word, string Translation)[] rows) =>
+        WriteEcdictSource(dir, [.. rows.Select(r => (r.Word, r.Translation, 0))]);
+
+    /// <summary>Same fixture with per-row frq（zh_index 只索引常用词）。</summary>
+    private static string WriteEcdictSource(string dir, (string Word, string Translation, int Frq)[] rows)
     {
         var path = Path.Combine(dir, "stardict.db");
         using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
@@ -165,12 +185,13 @@ public class BuilderCliTests
             command.ExecuteNonQuery();
         }
 
-        foreach (var (word, translation) in rows)
+        foreach (var (word, translation, frq) in rows)
         {
             using var insert = connection.CreateCommand();
-            insert.CommandText = "INSERT INTO stardict VALUES ($word, '', 'n.', $translation, '', 0, 0, '', 0, 0, '')";
+            insert.CommandText = "INSERT INTO stardict VALUES ($word, '', 'n.', $translation, '', 0, 0, '', 0, $frq, '')";
             insert.Parameters.AddWithValue("$word", word);
             insert.Parameters.AddWithValue("$translation", translation);
+            insert.Parameters.AddWithValue("$frq", frq);
             insert.ExecuteNonQuery();
         }
 
@@ -190,5 +211,22 @@ public class BuilderCliTests
         command.CommandText = "SELECT value FROM meta WHERE key = $key";
         command.Parameters.AddWithValue("$key", key);
         return command.ExecuteScalar() as string;
+    }
+
+    private static string[] ReadZhTerms(string dictionaryPath)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = dictionaryPath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false,
+        }.ToString());
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT term FROM zh_index ORDER BY rowid";
+        using var reader = command.ExecuteReader();
+        var terms = new List<string>();
+        while (reader.Read()) terms.Add(reader.GetString(0));
+        return [.. terms];
     }
 }

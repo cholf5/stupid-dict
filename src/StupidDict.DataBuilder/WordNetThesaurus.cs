@@ -21,7 +21,12 @@ internal static partial class WordNetThesaurus
 {
     private const int MaxWordsPerLine = 12;
 
-    private static readonly string[] PosFiles = ["noun", "verb", "adj", "adv"];
+    // 文件的 POS 命名空间用 WordNet POS 字母（noun→n / verb→v / adj→a / adv→r），
+    // 不能用 file[0]——"adv"[0] 与 "adj"[0] 同为 'a'，两文件会在同 offset 上互相
+    // 覆盖，且 ('r', …) 指针与 index.adv 目标全部 miss（真实 3.0 数据 adj∩adv 碰撞
+    // 21 处；P-003 抽样 bad→thriftily、4478 个 adv 词条几乎零行即此因）。
+    private static readonly (string File, char Pos)[] PosFiles =
+        [("noun", 'n'), ("verb", 'v'), ("adj", 'a'), ("adv", 'r')];
     // 's'（卫星形容词）的 synset 出现在 data.adj 里，池按 ss_type 落 's'，也要输出成 adj. 行。
     private static readonly char[] InsertionOrder = ['n', 'v', 'a', 's', 'r'];
 
@@ -166,7 +171,7 @@ internal static partial class WordNetThesaurus
     private static Dictionary<string, List<(char Pos, int[] Offsets)>> ReadIndex(string dir)
     {
         Dictionary<string, List<(char, int[])>> index = new(StringComparer.Ordinal);
-        foreach (var file in PosFiles)
+        foreach (var (file, _) in PosFiles)
         {
             var path = Path.Combine(dir, $"index.{file}");
             if (!File.Exists(path)) continue;
@@ -204,13 +209,12 @@ internal static partial class WordNetThesaurus
     {
         // WordNet 的 offset 是单个 data.* 文件内的字节偏移，四个文件都从 00001740
         // 起编——裸 offset 当键会让后解析的文件整段覆盖前面的。键用文件的 POS
-        // 命名空间（file[0]：noun→n / verb→v / adj→a / adv→r），而不是行内 ss_type：
-        // adj 文件里卫星形容词的 ss_type 是 's'，但 index 与指针记录里形容词
-        // 一律记 'a'（实测 3.0 全量数据按文件命名空间键 0 丢失）。
+        // 命名空间（见 PosFiles：noun→n / verb→v / adj→a / adv→r），而不是行内
+        // ss_type：adj 文件里卫星形容词的 ss_type 是 's'，但 index 与指针记录里
+        // 形容词一律记 'a'（实测 3.0 全量数据按文件命名空间键 0 丢失）。
         Dictionary<(char, int), Synset> data = new();
-        foreach (var file in PosFiles)
+        foreach (var (file, ns) in PosFiles)
         {
-            var ns = file[0];
             var path = Path.Combine(dir, $"data.{file}");
             if (!File.Exists(path)) continue;
             foreach (var line in File.ReadLines(path))

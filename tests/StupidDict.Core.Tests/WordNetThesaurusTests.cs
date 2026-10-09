@@ -84,6 +84,25 @@ public class WordNetThesaurusTests
     }
 
     [Fact]
+    public void SameOffsetInAdjAndAdvFilesDoesNotClobber()
+    {
+        // file[0] 当命名空间会让 "adv" 与 "adj" 同落 'a'（真实 3.0 数据 adj∩adv
+        // 碰撞 21 处）：data.adv 覆盖 data.adj 同 offset 的 synset，且 index.adv
+        // 词条的 ('r', offset) 查找全部 miss（bad 的 adv. 行只剩串扰词 thriftily、
+        // a.k.a. 零行）。命名空间必须是文件的 POS 字母（adv→'r'）。
+        var path = Build(
+            ["bad", "badly", "warm", "hot"],
+            ("index.adj", ["warm a 1 0 1 0 1740"]),
+            ("index.adv", ["bad r 1 0 1 0 1740"]),
+            ("data.adj", ["00001740 00 a 02 warm 0 hot 0 0 | having heat"]),
+            ("data.adv", ["00001740 02 r 02 badly 0 bad 0 0 | very much"]));
+
+        Assert.Equal(new SynRow("syn", "adj.", "hot"), SoleSynRow(path, "warm"));
+        // bad 的 adv. 行：co-lemma badly（自身 bad 被排除），不是串扰词。
+        Assert.Equal(new SynRow("syn", "adv.", "badly"), SoleSynRow(path, "bad"));
+    }
+
+    [Fact]
     public void SatelliteAdjectiveSynonymsAreWritten()
     {
         // 卫星形容词 ss_type='s'（index 侧 pos 仍记 'a'，与真实数据一致），
