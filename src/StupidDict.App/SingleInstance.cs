@@ -60,6 +60,17 @@ public sealed class SingleInstanceGuard : IDisposable
     private readonly Thread? _listener;
     private NamedPipeServerStream? _connected;
 
+    /// <summary>
+    /// How long a connected client may stay silent before the listener drops
+    /// it. The only legitimate client is our own second launch, which writes
+    /// one line immediately after connecting (sub-millisecond normally, and
+    /// its own connect budget is 100-150ms), so 5s is orders of magnitude
+    /// beyond any real delivery while bounding how long a silent or wedged
+    /// local process can squat the single-instance channel. Tests shrink it
+    /// via the internal setter.
+    /// </summary>
+    internal TimeSpan ReadLineTimeout { get; set; } = TimeSpan.FromSeconds(5);
+
     private SingleInstanceGuard(FileStream? lockFile, string? pipeName)
     {
         _lockFile = lockFile;
@@ -172,15 +183,30 @@ public sealed class SingleInstanceGuard : IDisposable
             {
                 _connected = server;
                 server.WaitForConnectionAsync(_cancellation.Token).GetAwaiter().GetResult();
+                // Bound the read: a client that connects and then never writes
+                // must not park the listener for the rest of the session — the
+                // server instance is single-slot, so a parked read silently
+                // swallows every later activate signal. The window is armed
+                // after WaitForConnection, so it starts when a client actually
+                // has the floor, not while the pipe sits idle.
+                using var readCancellation = CancellationTokenSource.CreateLinkedTokenSource(_cancellation.Token);
+                readCancellation.CancelAfter(ReadLineTimeout);
                 string? command;
                 using (var reader = new StreamReader(server))
-                    command = reader.ReadLine();
+                    command = reader.ReadLineAsync(readCancellation.Token).GetAwaiter().GetResult();
                 if (command == ActivateCommand)
                     ActivationRequested?.Invoke();
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
             {
                 return;
+            }
+            catch (OperationCanceledException)
+            {
+                // The silent-client timeout, not shutdown: the linked token
+                // fired while the shutdown token is still live. Drop this
+                // connection (the finally below disposes the server) and serve
+                // the next one.
             }
             catch (Exception)
             {

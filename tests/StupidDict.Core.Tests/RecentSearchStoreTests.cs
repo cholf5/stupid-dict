@@ -57,4 +57,29 @@ public class RecentSearchStoreTests : IDisposable
         Assert.Equal("word34", recent[0].Query);
         Assert.DoesNotContain(recent, r => r.Query == "word4");
     }
+
+    [Fact]
+    public void ConcurrentAddAndGetRecentStayConsistent()
+    {
+        // Reads (UI RefreshRecents) and writes (thread-pool lookups) share one
+        // SqliteConnection, which tolerates only serialized access — both sides
+        // must take the same gate. A concurrent violation surfaces here as a
+        // SqliteException escaping Parallel.For; the assertions then pin the
+        // dedupe/trim/ordering semantics the serialization must preserve.
+        using var store = new RecentSearchStore(_path);
+        const int iterations = 400;
+
+        Parallel.For(0, iterations, i =>
+        {
+            store.Add($"word{i % 40}");
+            store.GetRecent();
+        });
+
+        var recent = store.GetRecent();
+        Assert.True(recent.Count <= RecentSearchStore.MaxEntries);
+        var normalized = recent.Select(r => r.Query.ToLowerInvariant()).ToList();
+        Assert.Equal(normalized.Count, normalized.Distinct().Count());
+        for (var i = 1; i < recent.Count; i++)
+            Assert.True(recent[i - 1].QueriedAt >= recent[i].QueriedAt);
+    }
 }

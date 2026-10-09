@@ -64,6 +64,52 @@ public class SettingsServiceTests
     }
 
     [Fact]
+    public void UnknownThemeNameOnlyResetsTheme()
+    {
+        // One unrecognized enum value (a newer build's new enum read by an
+        // older binary, or a hand-edit typo) must not discard every other
+        // preference: the field falls back, the rest of the file loads.
+        var path = NewPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, """{ "Theme": "Sepia", "Language": "SimplifiedChinese", "WindowWidth": 800 }""");
+
+        var loaded = SettingsService.Load(path);
+
+        Assert.Equal(AppTheme.System, loaded.Theme);
+        Assert.Equal(AppLanguage.SimplifiedChinese, loaded.Language);
+        Assert.Equal(800, loaded.WindowWidth);
+    }
+
+    [Fact]
+    public void UnknownLanguageNameOnlyResetsLanguage()
+    {
+        var path = NewPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, """{ "Theme": "Dark", "Language": "Klingon", "WindowHeight": 480.5 }""");
+
+        var loaded = SettingsService.Load(path);
+
+        Assert.Equal(AppTheme.Dark, loaded.Theme);
+        Assert.Equal(AppLanguage.System, loaded.Language);
+        Assert.Equal(480.5, loaded.WindowHeight);
+    }
+
+    [Fact]
+    public void OutOfRangeNumericStringFallsBackPerField()
+    {
+        // A numeric string that parses but is not a defined name takes the
+        // same per-field default path as an unknown name.
+        var path = NewPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, """{ "Theme": "9", "Language": "English" }""");
+
+        var loaded = SettingsService.Load(path);
+
+        Assert.Equal(AppTheme.System, loaded.Theme);
+        Assert.Equal(AppLanguage.English, loaded.Language);
+    }
+
+    [Fact]
     public void SavedFileUsesEnumNamesAndIsHandEditable()
     {
         var path = NewPath();

@@ -1,20 +1,21 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace StupidDict.App.Settings;
 
 /// <summary>
 /// Loads and saves <see cref="AppSettings"/> as JSON in the user data
-/// directory. A missing or corrupt file falls back to defaults, and saving is
-/// atomic (tmp file + move) so a crash mid-write cannot corrupt settings;
-/// save failures themselves are swallowed — persistence is best-effort.
+/// directory. A missing or corrupt file falls back to defaults, an
+/// unrecognized enum value falls back to just that field's default (the rest
+/// of the file still loads), and saving is atomic (tmp file + move) so a
+/// crash mid-write cannot corrupt settings; save failures themselves are
+/// swallowed — persistence is best-effort.
 /// </summary>
 internal static class SettingsService
 {
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() },
+        Converters = { new ForgivingEnumConverterFactory() },
     };
 
     public static string DefaultPath => Path.Combine(AppPaths.DataDirectory, "settings.json");

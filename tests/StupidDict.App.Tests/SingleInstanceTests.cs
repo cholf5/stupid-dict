@@ -1,3 +1,4 @@
+using System.IO.Pipes;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
@@ -54,6 +55,36 @@ public class SingleInstanceTests
 
         SingleInstanceGuard.NotifyRunningInstance(pipeName);
 
+        WaitUntil(() => activated);
+    }
+
+    [Fact]
+    public void SilentClientConnectionDoesNotPoisonTheActivationChannel()
+    {
+        // A local process that connects and then hangs without writing must be
+        // dropped by the listener on its own; without the read timeout the
+        // listener parks on that connection forever and every later second
+        // launch in the session silently loses its activate signal.
+        var lockPath = UniqueLockPath();
+        var pipeName = UniqueName();
+        using var guard = SingleInstanceGuard.TryAcquire(lockPath, pipeName);
+        Assert.NotNull(guard);
+        guard!.ReadLineTimeout = TimeSpan.FromMilliseconds(300);
+        var activated = false;
+        guard.ActivationRequested += () => activated = true;
+
+        using (var silent = new NamedPipeClientStream(".", pipeName, PipeDirection.Out))
+        {
+            silent.Connect(2000);
+            // Hold the floor silent well past the 300ms timeout: the listener
+            // parks in the timed read within microseconds of Connect. The
+            // fixed dwell is the point — the connection must stay mute across
+            // the deadline, not wait on a condition.
+            Thread.Sleep(500);
+        }
+
+        // The channel still serves the next client after the timed-out one.
+        SingleInstanceGuard.NotifyRunningInstance(pipeName);
         WaitUntil(() => activated);
     }
 
