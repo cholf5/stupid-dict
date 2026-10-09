@@ -9,7 +9,6 @@
 
 | ID | Title | Priority | Size | Blocked | Dependencies |
 |---|---|---|---|---|---|
-| Q-002 | Core 查询质量三小项（排序一致性 / Words 首访竞态 / CJK 判定区间） | P2 | M | | |
 | Q-003 | 构建器 CLI 与构建健壮性三小项（参数越界 / journal 半成品库 / --top 解析） | P2 | M | | |
 | P-001 | package.sh 发布步骤注释纠正为数据解耦流程 | P2 | S | | |
 | P-003 | 修复 WordNetThesaurus 后重建 dictionary.db 并发 data-2 | P2 | M | | B-001 |
@@ -29,6 +28,7 @@
 | B-005 | MCI play 返回码被忽略 + Stop 的 close 失败泄漏 alias | P1 | 2026-10-09 |
 | B-015 | MacDockIcon 的 NSImage alloc 后未 release（一次性泄漏） | P2 | 2026-10-09 |
 | B-014 | 单实例监听端 ReadLine 无超时，异常本地客户端可废 activate 通道 | P2 | 2026-10-09 |
+| Q-002 | Core 查询质量三小项（排序一致性 / Words 首访竞态 / CJK 判定区间） | P2 | 2026-10-09 |
 | B-013 | 设置枚举未知字符串值导致整个 settings.json 回退默认 | P2 | 2026-10-09 |
 | B-010 | RecentSearchStore 读写共享连接加锁不对称（GetRecent 无锁） | P2 | 2026-10-09 |
 | B-012 | 应用退出无停播出口，孤儿音频进程继续播 | P2 | 2026-10-09 |

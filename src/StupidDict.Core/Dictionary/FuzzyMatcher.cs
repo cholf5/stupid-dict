@@ -10,20 +10,22 @@ public static class FuzzyMatcher
     public static List<string> Find(string query, IReadOnlyList<CommonWord> candidates, int limit)
     {
         var cutoff = MaxDistance(query.Length);
-        var results = new List<(string Word, int Dist, int Freq)>();
+        var results = new List<(string Word, int Dist, int Commonality)>();
         foreach (var candidate in candidates)
         {
             if (candidate.WordLower == query) continue;
             if (Math.Abs(candidate.WordLower.Length - query.Length) > cutoff) continue;
             var distance = BoundedDistance(query, candidate.WordLower, cutoff);
             if (distance >= 0)
-                results.Add((candidate.WordLower, distance, candidate.Freq));
+                results.Add((candidate.WordLower, distance, candidate.Commonality));
         }
         results.Sort((a, b) =>
         {
             var cmp = a.Dist.CompareTo(b.Dist);
             if (cmp != 0) return cmp;
-            cmp = EffectiveRank(a.Freq).CompareTo(EffectiveRank(b.Freq));
+            // CommonWord.Commonality = the SQL CASE rule (freq first, bnc fallback):
+            // ties must order like the SQLite paths do.
+            cmp = a.Commonality.CompareTo(b.Commonality);
             return cmp != 0 ? cmp : string.CompareOrdinal(a.Word, b.Word);
         });
         return results.Take(limit).Select(r => r.Word).ToList();
@@ -35,8 +37,6 @@ public static class FuzzyMatcher
         <= 8 => 2,
         _ => 3,
     };
-
-    private static int EffectiveRank(int rank) => rank > 0 ? rank : int.MaxValue;
 
     /// <summary>Edit distance with transpositions, abandoning early when the cutoff cannot be met. Returns -1 if over cutoff.</summary>
     private static int BoundedDistance(string a, string b, int cutoff)

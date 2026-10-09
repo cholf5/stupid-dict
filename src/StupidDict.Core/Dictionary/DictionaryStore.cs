@@ -128,11 +128,11 @@ public sealed class DictionaryStore
     /// <summary>All headwords with a corpus frequency rank — the fuzzy matcher's candidate set.</summary>
     public List<CommonWord> GetCommonWords()
     {
-        using var cmd = Command("SELECT word_lower, freq FROM word WHERE freq > 0 OR bnc > 0");
+        using var cmd = Command("SELECT word_lower, freq, bnc FROM word WHERE freq > 0 OR bnc > 0");
         using var reader = cmd.ExecuteReader();
         List<CommonWord> words = [];
         while (reader.Read())
-            words.Add(new CommonWord(reader.GetString(0), reader.GetInt32(1)));
+            words.Add(new CommonWord(reader.GetString(0), reader.GetInt32(1), reader.GetInt32(2)));
         return words;
     }
 

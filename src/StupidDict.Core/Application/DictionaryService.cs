@@ -1,3 +1,4 @@
+using System.Text;
 using StupidDict.Core.Dictionary;
 using StupidDict.Core.History;
 
@@ -172,8 +173,40 @@ public sealed class DictionaryService : IDisposable
         return words;
     }
 
-    public static bool IsChineseQuery(string text) =>
-        text.Any(ch => ch is (>= '\u3400' and <= '\u9FFF') or (>= '\uF900' and <= '\uFAFF'));
+    /// <summary>
+    /// True when the text contains any CJK ideograph — the routing switch between
+    /// the English and Chinese paths (and the UI's no-completion / no-double-click
+    /// gates). Only the ideographs themselves count; their surrounding punctuation
+    /// and symbol blocks (、。ＣＡＴ fullwidth forms, radicals, Seal script) do not —
+    /// a query carrying punctuation is still classified by its characters. Accepted
+    /// ranges (Unicode 18.0 Blocks.txt): U+3007 (〇, as in 二〇二五), U+3400–U+9FFF
+    /// (Ext A + URO; as before, the span also sweeps in the Yijing hexagram symbols
+    /// 4DC0–4DFF sitting inside it), U+F900–U+FAFF (compatibility ideographs —
+    /// already a superset of the builder's zh_index term class), and every CJK
+    /// Unified Ideographs Extension block from Ext B on (U+20000+, blocks listed
+    /// below). Supplementary characters are compared as code points via
+    /// <see cref="Rune"/>: per-UTF-16-unit checks can never see them, so 𠀀-class
+    /// queries used to route English. Such queries stay not-found either way
+    /// (zh_index holds no such terms until a data rebuild), the fix classifies
+    /// them correctly.
+    /// </summary>
+    public static bool IsChineseQuery(string text)
+    {
+        foreach (var rune in text.EnumerateRunes())
+            if (rune.Value is 0x3007                           // ideographic number zero
+                or (>= 0x3400 and <= 0x9FFF)                   // Ext A + URO
+                or (>= 0xF900 and <= 0xFAFF)                   // compatibility ideographs
+                or (>= 0x20000 and <= 0x2A6DF)                 // Ext B
+                or (>= 0x2A700 and <= 0x2B73F)                 // Ext C
+                or (>= 0x2B740 and <= 0x2B81F)                 // Ext D
+                or (>= 0x2B820 and <= 0x2CEAF)                 // Ext E
+                or (>= 0x2CEB0 and <= 0x2EE5F)                 // Ext F (2CEB0–2EBEF) + Ext I (2EBF0–2EE5F, 15.1+)
+                or (>= 0x2F800 and <= 0x2FA1F)                 // compatibility ideographs supplement
+                or (>= 0x30000 and <= 0x323AF)                 // Ext G + Ext H
+                or (>= 0x323B0 and <= 0x3347F))                // Ext J (18.0)
+                return true;
+        return false;
+    }
 
     public void Dispose()
     {

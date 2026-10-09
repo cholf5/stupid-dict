@@ -13,6 +13,7 @@ internal static class TestDatabase
         string Translation = "",
         string Definition = "",
         int Freq = 0,
+        int Bnc = 0,
         string Exchange = "",
         string[]? Syn = null,
         string[]? Ant = null);
@@ -27,7 +28,7 @@ internal static class TestDatabase
             db.BeginTransaction();
             foreach (var row in rows)
             {
-                var wordId = db.InsertWord(row.Word, row.Phonetic, row.PhoneticUs, row.Pos, row.Translation, row.Definition, row.Freq, 0, "");
+                var wordId = db.InsertWord(row.Word, row.Phonetic, row.PhoneticUs, row.Pos, row.Translation, row.Definition, row.Freq, row.Bnc, "");
                 if (wordId < 0) continue;
                 foreach (Match match in Regex.Matches(row.Translation, @"[\u3400-\u9FFF]+"))
                     if (match.Value.Length <= 12)
