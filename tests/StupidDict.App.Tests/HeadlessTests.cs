@@ -488,6 +488,76 @@ public class HeadlessWindowTests
     }
 
     [AvaloniaFact]
+    public void InFlightLookupDoesNotClobberNavigatedPage()
+    {
+        // TC-001 (B-003): Navigate must advance _searchGeneration the way
+        // ShowEmptyState does. A lookup still in flight when the user steps
+        // back/forward is stale once it completes: it must neither render
+        // over the navigated page, nor Push (truncating the forward history
+        // the step just restored), nor leave the search box showing the
+        // navigated word over a different page. The LookupOverride seam
+        // parks the query mid-flight so the completion moment is
+        // deterministic — the resumption rides the dispatcher exactly like
+        // every async result in this harness and lands during RunJobs.
+        using var service = CreateService();
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "cat");
+        searchBox.Text = "catch";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "catch");
+
+        var renders = 0;
+        window.ResultRendered += () => renders++;
+
+        // Delivery control: a gated lookup completing with no navigation in
+        // between lands normally, so the drop asserted further down is not
+        // a vacuous pass.
+        var deliveryGate = new TaskCompletionSource<LookupResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        window.LookupOverride = _ => deliveryGate.Task;
+        searchBox.Text = "hello";
+        PressEnter(searchBox);
+        deliveryGate.SetResult(service.Lookup("tiger"));
+        WaitUntil(() => Headword(window) == "tiger");
+        Assert.Equal(1, renders);
+
+        // The race: hold "hello" in flight, step back while it runs.
+        var raceGate = new TaskCompletionSource<LookupResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        window.LookupOverride = _ => raceGate.Task;
+        searchBox.Text = "hello";
+        PressEnter(searchBox);
+        window.KeyPress(Key.OemOpenBrackets, RawInputModifiers.Meta, PhysicalKey.BracketLeft, "[");
+        Assert.Equal("catch", Headword(window));
+        Assert.Equal("catch", searchBox.Text);
+        Assert.True(window.FindControl<Button>("NavForwardButton")!.IsEnabled);
+        Assert.Equal(2, renders); // the navigate itself rendered once
+
+        // The stale completion arrives: dropped whole — no render, no push
+        // (the forward branch survives), no button churn.
+        raceGate.SetResult(service.Lookup("cat"));
+        Dispatcher.UIThread.RunJobs();
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("catch", Headword(window));
+        Assert.Equal("catch", searchBox.Text);
+        Assert.True(window.FindControl<Button>("NavForwardButton")!.IsEnabled);
+        Assert.Equal(2, renders);
+
+        // Fresh lookups still deliver after the drop.
+        window.LookupOverride = null;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "cat");
+        Assert.Equal(3, renders);
+    }
+
+    [AvaloniaFact]
     public void SynonymSectionsRenderAndClickLooksUp()
     {
         using var service = CreateService();

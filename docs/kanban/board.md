@@ -9,7 +9,6 @@
 
 | ID | Title | Priority | Size | Blocked | Dependencies |
 |---|---|---|---|---|---|
-| B-003 | Navigate 不推进 _searchGeneration，在途查询反噬导航页 | P1 | S | | |
 | B-004 | 下载 body 无空闲超时，服务器停发即永久挂起 | P1 | S | | |
 | B-005 | MCI play 返回码被忽略 + Stop 的 close 失败泄漏 alias | P1 | S | | |
 | B-008 | 留盘 zip 复用链上 CRC 失败无 purge 路径，用户卡死解压失败循环 | P1 | S | | |
@@ -36,3 +35,4 @@
 |---|---|---|---|
 | B-001 | 修 WordNetThesaurus 四处数据质量缺陷（近/反义词行缺失与词性错乱） | P1 | 2026-10-09 |
 | B-002 | 切语言一次触发约 98 次结果页全量重建（UI 冻结） | P1 | 2026-10-09 |
+| B-003 | Navigate 不推进 _searchGeneration，在途查询反噬导航页 | P1 | 2026-10-09 |

@@ -70,6 +70,14 @@ public partial class MainWindow : Window
     /// </summary>
     internal Action? ResultRendered;
 
+    /// <summary>
+    /// Test seam (InternalsVisibleTo): stands in for the dictionary lookup so
+    /// a test can hold a query in flight across a Navigate and complete it at
+    /// a chosen moment (B-003). Null in production; RunSearch falls back to
+    /// <see cref="DictionaryService.LookupAsync"/>.
+    /// </summary>
+    internal Func<string, Task<LookupResult>>? LookupOverride;
+
     public MainWindow() : this(new DictionaryService(AppPaths.DictionaryDatabasePath, AppPaths.HistoryDatabasePath))
     {
     }
@@ -396,7 +404,7 @@ public partial class MainWindow : Window
         LookupResult result;
         try
         {
-            result = await _service.LookupAsync(query);
+            result = await (LookupOverride?.Invoke(query) ?? _service.LookupAsync(query));
         }
         catch (Exception ex)
         {
@@ -495,6 +503,13 @@ public partial class MainWindow : Window
     private void Navigate(LookupResult? result)
     {
         if (result is null) return;
+        // Navigation is a page switch, not a query: invalidate any lookup
+        // still in flight so its completion is dropped by the staleness
+        // check in RunSearch instead of clobbering the navigated page,
+        // truncating the forward history the step just restored, or leaving
+        // the search box showing the navigated word over a different page.
+        // Same contract ShowEmptyState already follows.
+        _searchGeneration++;
         RenderResult(result);
         ShowQueryInSearchBox(result.Query);
         UpdateNavButtons();
