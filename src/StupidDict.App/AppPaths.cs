@@ -2,8 +2,10 @@ namespace StupidDict.App;
 
 /// <summary>
 /// Where the app finds its data. The dictionary ships next to the executable
-/// when packaged; otherwise it lives in the user data directory (built by
-/// StupidDict.DataBuilder). History always lives in the user data directory.
+/// when packaged — or in a macOS .app bundle's Contents/Resources, where the
+/// code seal requires data files to live; otherwise it falls to the user data
+/// directory (built by StupidDict.DataBuilder). History always lives in the
+/// user data directory.
 /// </summary>
 internal static class AppPaths
 {
@@ -14,17 +16,42 @@ internal static class AppPaths
     public static string HistoryDatabasePath { get; } = Path.Combine(DataDirectory, "history.db");
 
     public static string DictionaryDatabasePath { get; } =
-        File.Exists(Path.Combine(AppContext.BaseDirectory, "dictionary.db"))
-            ? Path.Combine(AppContext.BaseDirectory, "dictionary.db")
-            : Path.Combine(DataDirectory, "dictionary.db");
+        ResolveBundledFile("dictionary.db", AppContext.BaseDirectory)
+            ?? Path.Combine(DataDirectory, "dictionary.db");
 
     /// <summary>
     /// The pronunciation pack (uk/us MP3 directories), following the same
-    /// exe-adjacent-first rule as the dictionary so a bundled install works
+    /// bundled-first rule as the dictionary so a bundled install works
     /// without writing into the user profile.
     /// </summary>
     public static string AudioDirectory { get; } =
-        Directory.Exists(Path.Combine(AppContext.BaseDirectory, "audio"))
-            ? Path.Combine(AppContext.BaseDirectory, "audio")
-            : Path.Combine(DataDirectory, "audio");
+        ResolveBundledDirectory("audio", AppContext.BaseDirectory)
+            ?? Path.Combine(DataDirectory, "audio");
+
+    /// <summary>
+    /// Bundled data first: adjacent to the executable (win/linux zip layout),
+    /// then Contents/Resources — inside a macOS .app the code seal treats
+    /// everything in MacOS/ beyond the main executable as nested code and
+    /// refuses to sign a plain data file there, so the with-dictionary
+    /// package carries dictionary.db in Resources. Null when neither exists,
+    /// letting the caller fall through to the user data directory; the
+    /// Resources step simply misses on other layouts (no ../Resources there).
+    /// Split from the static properties for tests: AppContext.BaseDirectory
+    /// cannot be faked in place.
+    /// </summary>
+    internal static string? ResolveBundledFile(string name, string baseDirectory)
+    {
+        var exeAdjacent = Path.Combine(baseDirectory, name);
+        if (File.Exists(exeAdjacent)) return exeAdjacent;
+        var inResources = Path.Combine(baseDirectory, "..", "Resources", name);
+        return File.Exists(inResources) ? inResources : null;
+    }
+
+    internal static string? ResolveBundledDirectory(string name, string baseDirectory)
+    {
+        var exeAdjacent = Path.Combine(baseDirectory, name);
+        if (Directory.Exists(exeAdjacent)) return exeAdjacent;
+        var inResources = Path.Combine(baseDirectory, "..", "Resources", name);
+        return Directory.Exists(inResources) ? inResources : null;
+    }
 }

@@ -55,6 +55,26 @@ sha256_file() {
   else shasum -a 256 "$1"; fi
 }
 
+# Ad-hoc sign the assembled .app: the single-file apphost's embedded signature
+# covers only the executable itself, so a bundle that was never re-sealed
+# fails `codesign --verify`, and a *downloaded* copy (quarantine attribute set)
+# is rejected by Gatekeeper as "damaged" with no Allow-Anyway path — that
+# escape hatch exists only for a valid signature from an unidentified
+# developer. Ad-hoc keeps the seal intact, so the downloaded copy gets the
+# standard unidentified-developer prompt instead. Notarization would remove
+# the prompt entirely but needs a paid Apple Developer account. The
+# with-dictionary variant drops dictionary.db into the bundle after the first
+# zip, so it must re-sign: a stale CodeResources seal is as broken as none.
+sign_app() {
+  local app="$1"
+  if command -v codesign >/dev/null 2>&1; then
+    codesign --force -s - "$app" || { echo "ad-hoc 签名失败: ${app}" >&2; exit 1; }
+    codesign --verify --strict "$app" || { echo "签名校验失败（封签不完整）: ${app}" >&2; exit 1; }
+  else
+    echo "警告: 本机无 codesign（Linux 交叉构建 osx 产物），${app} 未封签——本机可直接运行，但从网络下载分发会被 Gatekeeper 判 damaged" >&2
+  fi
+}
+
 cd "$REPO_ROOT"
 mkdir -p "$DIST"
 [[ -f "$DICTIONARY" ]] || echo "提示: 未找到 dictionary.db（${DICTIONARY}），跳过带词典包和 dictionary.zip"
@@ -104,6 +124,7 @@ for rid in $RID_LIST; do
   </dict>
 </plist>
 PLIST
+    sign_app "$APP"
   else
     cp "$PUBLISHED" "$STAGE/"
   fi
@@ -118,7 +139,10 @@ PLIST
   # 2) drop the dictionary in, then zip the full variant.
   if [[ -f "$DICTIONARY" ]]; then
     if [[ "$rid" == osx-* ]]; then
-      cp "$DICTIONARY" "$STAGE/Stupid Dict.app/Contents/MacOS/dictionary.db"
+      # Resources 而非 MacOS：封签把 MacOS/ 里主执行文件之外的一切当嵌套代码，
+      # 拒签普通数据文件（AppPaths 侧按 ../Resources 探测）。
+      cp "$DICTIONARY" "$STAGE/Stupid Dict.app/Contents/Resources/dictionary.db"
+      sign_app "$STAGE/Stupid Dict.app"
     else
       cp "$DICTIONARY" "$STAGE/dictionary.db"
     fi
@@ -168,5 +192,7 @@ cat <<'NEXT'
        dist/audio-pack.zip dist/audio-pack.zip.sha256 --prerelease
    应用内下载钉在 data-N（ReleaseAssets.DataTag）；资产名必须保持:
      dictionary.zip / audio-pack.zip / dictionary.zip.sha256 / audio-pack.zip.sha256
-3. macOS 用户首次打开 .app 如被 Gatekeeper 拦截: xattr -cr "Stupid Dict.app"
+3. macOS 用户首次打开 .app: Gatekeeper 会提示无法验证开发者（ad-hoc 签名、
+   未公证）——右键「打开」一次，或系统设置 → 隐私与安全性 → 仍要打开；
+   彻底绕过: xattr -cr "Stupid Dict.app"
 NEXT

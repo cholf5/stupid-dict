@@ -191,7 +191,7 @@ scripts/package.sh                                        # 本机平台
 scripts/package.sh --rids "osx-arm64 osx-x64 linux-x64 win-x64"
 ```
 
-macOS 首次打开未签名 `.app` 被拦截时：`xattr -cr "Stupid Dict.app"`。
+macOS 首次打开 `.app`：Gatekeeper 会提示无法验证开发者（应用为 ad-hoc 签名、未公证）——右键「打开」一次，或到系统设置 → 隐私与安全性点「仍要打开」；也可用 `xattr -cr "Stupid Dict.app"` 彻底绕过。
 
 ## License
 
