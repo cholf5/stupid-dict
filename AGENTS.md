@@ -37,7 +37,7 @@ cholf5/stupid-dict：.NET 10 + Avalonia 桌面离线英汉词典（Windows / mac
 
 - 播放链 `SpeechPlayback.Create`：`AudioPackPlayer`（audio/uk、audio/us 按词命名的 MP3；文件播放器按平台 afplay / MCI / Linux 播放器）→ 失败回退 `SystemTtsPlayer`（系统 TTS）。播放器统一走 `ISpeechPlayer` 缝，测试注入 `RecordingSpeechPlayer`。
 - 发音包未安装且未在下载时，点 UK/US 会在底部条给出下载入口（`PlayWord`）；按钮闪烁 ✕ 1.5s 表示无法发音，不弹窗。
-- **Windows 的 MCI 后端只走 winmm 的 `mciSendStringW`**：`GetProcAddress` 大小写敏感，声明必须用 `EntryPoint`/`ExactSpelling` 钉住——写成 C# 风格的 `MciSendString` 会抛 `EntryPointNotFoundException`，从 `async void` 的点击回调逃出直接杀进程（2026-10-09 用户点发音闪退的根因与证据见 `docs/pitfalls/2026-10-09-winmm-mcisendstring-entrypoint-case.md`）。`type mpegvideo` 底层是 DirectShow，**只在 STA 套间可用**（MTA 上 open 返回 266），所以发音必须在 UI 线程发起；播放后端一律「失败返回 false」，不允许外抛。
+- **Windows 的 MCI 后端只走 winmm 的 `mciSendStringW`**：`GetProcAddress` 大小写敏感，声明必须用 `EntryPoint`/`ExactSpelling` 钉住——写成 C# 风格的 `MciSendString` 会抛 `EntryPointNotFoundException`，从 `async void` 的点击回调逃出直接杀进程（2026-10-09 用户点发音闪退的根因与证据见 `docs/pitfalls/2026-10-09-winmm-mcisendstring-entrypoint-case.md`）。`type mpegvideo` 底层是 DirectShow，**只在 STA 套间可用**（MTA 上 open 返回 266），所以发音必须在 UI 线程发起；播放后端一律「失败返回 false」，不允许外抛。`play` 返回非 0 即拒播：立即 `Stop()` 释放刚开的 alias 并 `return false` 回退 TTS，返回码不可丢弃；`Stop` 仅在 `close` 返回 0 时清 `_open`，失败保留该位、由下次 `Play` 起手的 `Stop()` 重试——勿简化回「先清位再 close」（close 一失败即 alias 泄漏到重启）。
 
 ## UI 约定（App）
 
