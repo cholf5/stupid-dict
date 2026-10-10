@@ -122,13 +122,14 @@ public partial class SettingsWindow : Window
 
     // ---- 关于页数据区块：词典/发音包安装状态 + 打开数据目录 ----
 
-    /// <summary>对磁盘求值；与 MainWindow.AudioPackInstalled 的 uk/ 判定同语义。</summary>
+    /// <summary>对磁盘求值；与 MainWindow.AudioPackInstalled 同语义（db 或遗留散文件任一即算已安装）。</summary>
     private void RefreshDataStatus()
     {
         var t = Translations.Instance;
         DictionaryDataStatus.Text = File.Exists(_locations.DictionaryDatabasePath)
             ? t.AssetInstalled : t.AssetNotInstalled;
-        AudioPackDataStatus.Text = Directory.Exists(Path.Combine(_locations.AudioDirectory, "uk"))
+        AudioPackDataStatus.Text = File.Exists(_locations.AudioPackDatabasePath) ||
+            Directory.Exists(Path.Combine(_locations.AudioDirectory, "uk"))
             ? t.AssetInstalled : t.AssetNotInstalled;
     }
 

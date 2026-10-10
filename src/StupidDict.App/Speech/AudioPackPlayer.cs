@@ -1,28 +1,18 @@
-using StupidDict.App.Assets;
-
 namespace StupidDict.App.Speech;
 
 /// <summary>
-/// Plays pre-generated word audio from the pronunciation pack (uk/us
-/// directories of per-word MP3 files). A miss here is normal — the pack only
-/// covers common words — so it returns false and the composite falls through
-/// to system TTS. Reserved DOS device names never sit on disk: extraction
-/// maps them to '_'-prefixed file names (Assets/ReservedDeviceNames), and
-/// lookup applies the same mapping so "con" stays playable everywhere; the
-/// raw name is kept as a fallback for packs extracted by older builds, where
-/// it is still reachable (Unix, Windows 11).
+/// Plays pre-generated word audio from the pronunciation pack. File
+/// resolution (single SQLite database, legacy loose directories) lives in
+/// the store; this class is the seam to the platform file players. A miss
+/// here is normal — the pack only covers common words — so it returns false
+/// and the composite falls through to system TTS.
 /// </summary>
-public sealed class AudioPackPlayer(string directory, IAudioFilePlayer player) : ISpeechPlayer
+public sealed class AudioPackPlayer(IAudioPackStore store, IAudioFilePlayer player) : ISpeechPlayer
 {
     public bool Play(string word, SpeechAccent accent)
     {
-        var subdirectory = accent == SpeechAccent.British ? "uk" : "us";
-        var stem = word.ToLowerInvariant() + ".mp3";
-        var mapped = Path.Combine(directory, subdirectory, ReservedDeviceNames.MapSegment(stem));
-        if (File.Exists(mapped)) return player.Play(mapped);
-        var raw = Path.Combine(directory, subdirectory, stem);
-        if (raw != mapped && File.Exists(raw)) return player.Play(raw);
-        return false;
+        if (!store.TryGetAudioFile(word, accent, out var file)) return false;
+        return player.Play(file);
     }
 
     public void Stop()
@@ -36,6 +26,10 @@ public sealed class AudioPackPlayer(string directory, IAudioFilePlayer player) :
             // exit-time cleanup is best-effort: a faulting file player must not
             // break the composite's Stop or the window-close path
         }
+        // After the player stops, the temp file it was given is no longer
+        // needed; the store deletes it best-effort (a lingering handle just
+        // leaves it for the OS temp sweeper).
+        store.Cleanup();
     }
 }
 

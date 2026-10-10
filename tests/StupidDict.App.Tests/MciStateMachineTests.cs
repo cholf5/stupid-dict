@@ -78,7 +78,9 @@ public sealed class MciStateMachineTests
             var mci = new FakeMci { PlayResult = 266 };
             var tts = new RecordingPlayer();
             var composite = new CompositeSpeechPlayer(
-                new AudioPackPlayer(root, new MciAudioFilePlayer(mci.Send)),
+                new AudioPackPlayer(
+                    new AudioPackStore(root, Path.Combine(root, "missing.db")),
+                    new MciAudioFilePlayer(mci.Send)),
                 tts);
 
             Assert.True(composite.Play("cat", SpeechAccent.British));

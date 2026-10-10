@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
@@ -148,10 +149,9 @@ public class DownloadFlowTests
         window.FindControl<Button>("AudioPackActionButton")!
             .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
-        WaitUntil(() => File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
+        WaitUntil(() => File.Exists(locations.AudioPackDatabasePath));
         Assert.Equal(1, downloader.RequestCount);
         Assert.Equal(1, downloader.ChecksumCalls);
-        Assert.True(File.Exists(Path.Combine(locations.AudioDirectory, "us", "cat.mp3")));
     }
 
     /// <summary>
@@ -176,7 +176,7 @@ public class DownloadFlowTests
             downloadDirectory: downloadDirectory);
         window.Show();
 
-        WaitUntil(() => File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
+        WaitUntil(() => File.Exists(locations.AudioPackDatabasePath));
 
         Assert.Equal(0, downloader.RequestCount);
         Assert.Equal(1, downloader.ChecksumCalls);
@@ -206,11 +206,11 @@ public class DownloadFlowTests
             downloadDirectory: downloadDirectory);
         window.Show();
 
-        WaitUntil(() => File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
+        WaitUntil(() => File.Exists(locations.AudioPackDatabasePath));
 
         Assert.Equal(1, downloader.RequestCount);
         Assert.False(downloader.DestinationExisted[0]);
-        Assert.False(File.Exists(Path.Combine(locations.AudioDirectory, "uk", "old.mp3")));
+        Assert.False(PackRowExists(locations.AudioPackDatabasePath, "old"));
     }
 
     /// <summary>
@@ -312,11 +312,11 @@ public class DownloadFlowTests
         window.FindControl<Button>("AudioPackActionButton")!
             .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
-        WaitUntil(() => File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
+        WaitUntil(() => File.Exists(locations.AudioPackDatabasePath));
         Assert.Equal(2, downloader.RequestCount);
         // Purge proof: the destination did not exist when the retry started.
         Assert.False(downloader.DestinationExisted[1]);
-        Assert.True(File.Exists(Path.Combine(locations.AudioDirectory, "us", "cat.mp3")));
+        Assert.True(PackRowExists(locations.AudioPackDatabasePath, "cat"));
     }
 
     /// <summary>
@@ -357,7 +357,7 @@ public class DownloadFlowTests
         WaitUntil(() => window.FindControl<Button>("AudioPackActionButton")!.Content as string
             == Translations.Instance.Retry);
         var crcError = string.Format(Translations.Instance.ZipCrcMismatchFormat, "uk/cat.mp3");
-        Assert.Equal(string.Format(Translations.Instance.AudioPackExtractFailedFormat, crcError),
+        Assert.Equal(string.Format(Translations.Instance.AudioPackImportFailedFormat, crcError),
             window.FindControl<TextBlock>("AudioPackStatus")!.Text);
         Assert.NotEqual(Translations.Instance.ExtractCorruptPurged,
             window.FindControl<TextBlock>("AudioPackStatus")!.Text);
@@ -367,7 +367,7 @@ public class DownloadFlowTests
         window.FindControl<Button>("AudioPackActionButton")!
             .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
-        WaitUntil(() => File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
+        WaitUntil(() => File.Exists(locations.AudioPackDatabasePath));
         Assert.Equal(2, downloader.RequestCount);
         Assert.False(downloader.DestinationExisted[1]);
     }
@@ -440,13 +440,12 @@ public class DownloadFlowTests
         // went away and the pack is installed.
         WaitUntil(() => !window.FindControl<Border>("AudioPackPanel")!.IsVisible);
 
-        Assert.True(File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
-        Assert.True(File.Exists(Path.Combine(locations.AudioDirectory, "us", "cat.mp3")));
-        // The last status write is the per-entry extraction progress (the
+        Assert.True(File.Exists(locations.AudioPackDatabasePath));
+        // The last status write is the per-entry conversion progress (the
         // two-entry pack reports its final (2, 2)) — never the
-        // extraction-failure text, never the Retry button: the misleading
+        // import-failure text, never the Retry button: the misleading
         // terminal state the unguarded delete used to produce.
-        Assert.Equal(string.Format(Translations.Instance.ExtractingFilesFormat, 2, 2),
+        Assert.Equal(string.Format(Translations.Instance.ConvertingFilesFormat, 2, 2),
             window.FindControl<TextBlock>("AudioPackStatus")!.Text);
         Assert.NotEqual(Translations.Instance.Retry,
             window.FindControl<Button>("AudioPackActionButton")!.Content as string);
@@ -508,37 +507,38 @@ public class DownloadFlowTests
         File.WriteAllText(Path.Combine(source, "dictionary.db"), "not a pack");
         var zipPath = Path.Combine(scratch, "wrong.zip");
         ZipFile.CreateFromDirectory(source, zipPath);
-        var audio = Path.Combine(scratch, "audio");
+        var db = Path.Combine(scratch, "audio-pack.db");
 
         var ex = Assert.Throws<InvalidOperationException>(
-            () => MainWindow.ImportAudioPack(zipPath, audio));
+            () => MainWindow.ImportAudioPack(zipPath, db));
 
         Assert.Equal(Translations.Instance.ImportMissingPack, ex.Message);
-        // A wrong zip must not scatter its contents into the audio directory.
-        Assert.False(Directory.Exists(audio));
+        // A wrong zip must not leave a pack behind.
+        Assert.False(File.Exists(db));
     }
 
     [AvaloniaFact]
-    public void AudioPackImportExtractsPack()
+    public void AudioPackImportConvertsPackIntoDatabase()
     {
         var scratch = NewScratchDirectory();
         var source = Path.Combine(scratch, "src");
         Directory.CreateDirectory(Path.Combine(source, "uk"));
         Directory.CreateDirectory(Path.Combine(source, "us"));
-        File.WriteAllText(Path.Combine(source, "uk", "cat.mp3"), "x");
-        File.WriteAllText(Path.Combine(source, "us", "cat.mp3"), "x");
+        File.WriteAllText(Path.Combine(source, "uk", "cat.mp3"), "uk-cat");
+        File.WriteAllText(Path.Combine(source, "us", "cat.mp3"), "us-cat");
         var zipPath = Path.Combine(scratch, "pack.zip");
         ZipFile.CreateFromDirectory(source, zipPath);
 
-        var audio = Path.Combine(scratch, "audio");
-        MainWindow.ImportAudioPack(zipPath, audio);
+        var db = Path.Combine(scratch, "audio-pack.db");
+        MainWindow.ImportAudioPack(zipPath, db);
 
-        Assert.True(File.Exists(Path.Combine(audio, "uk", "cat.mp3")));
-        Assert.True(File.Exists(Path.Combine(audio, "us", "cat.mp3")));
+        var row = ReadPackRow(db, "cat");
+        Assert.Equal("uk-cat", Encoding.UTF8.GetString(row.Uk!));
+        Assert.Equal("us-cat", Encoding.UTF8.GetString(row.Us!));
     }
 
     [AvaloniaFact]
-    public void AudioPackImportMapsReservedDeviceNameEntries()
+    public void AudioPackImportTakesReservedDeviceNameEntries()
     {
         var scratch = NewScratchDirectory();
         var zipPath = Path.Combine(scratch, "pack.zip");
@@ -549,20 +549,71 @@ public class DownloadFlowTests
             AddEntry(archive, "us/cat.mp3", "us-cat");
         }
 
-        var audio = Path.Combine(scratch, "audio");
-        MainWindow.ImportAudioPack(zipPath, audio);
+        var db = Path.Combine(scratch, "audio-pack.db");
+        MainWindow.ImportAudioPack(zipPath, db);
 
         // "con" is a real headword (and so are aux/nul/com1 lookalikes in
-        // principle): a legitimate pack carries device-name entries, and the
-        // zip-slip gate must not mistake them for path attacks — but they
-        // must not materialize as reserved names either, which ordinary Win32
-        // paths cannot address. Extraction maps them to '_'-prefixed names,
-        // so every extracted file is reachable through a plain path.
-        Assert.Equal("us-con", File.ReadAllText(Path.Combine(audio, "us", "_con.mp3")));
-        Assert.Equal("uk-con", File.ReadAllText(Path.Combine(audio, "uk", "_con.mp3")));
-        Assert.Equal("us-cat", File.ReadAllText(Path.Combine(audio, "us", "cat.mp3")));
-        Assert.False(File.Exists(Path.Combine(audio, "us", "con.mp3")));
-        Assert.False(File.Exists(Path.Combine(audio, "uk", "con.mp3")));
+        // principle): a legitimate pack carries device-name entries. In the
+        // database they are plain text keys — no reserved name ever
+        // materializes on the filesystem, which closes the Windows
+        // device-name class for new installs entirely.
+        var con = ReadPackRow(db, "con");
+        Assert.Equal("uk-con", Encoding.UTF8.GetString(con.Uk!));
+        Assert.Equal("us-con", Encoding.UTF8.GetString(con.Us!));
+        Assert.Equal("us-cat", Encoding.UTF8.GetString(ReadPackRow(db, "cat").Us!));
+        // The loose layout is not created by imports anymore.
+        Assert.False(Directory.Exists(Path.Combine(scratch, "audio")));
+    }
+
+    [AvaloniaFact]
+    public void AudioPackImportAcceptsPackDatabase()
+    {
+        var scratch = NewScratchDirectory();
+        var zipPath = Path.Combine(scratch, "pack.zip");
+        using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            AddEntry(archive, "uk/cat.mp3", "uk-cat");
+            AddEntry(archive, "us/cat.mp3", "us-cat");
+        }
+        var source = Path.Combine(scratch, "picked.db");
+        AudioPackConverter.ConvertZipToDatabase(zipPath, source);
+        var target = Path.Combine(scratch, "audio-pack.db");
+
+        MainWindow.ImportAudioPack(source, target);
+
+        Assert.True(File.Exists(target));
+        Assert.True(File.Exists(source)); // the user's file is copied, not moved
+        Assert.Equal("uk-cat", Encoding.UTF8.GetString(ReadPackRow(target, "cat").Uk!));
+    }
+
+    [AvaloniaFact]
+    public void AudioPackImportRejectsInvalidDatabase()
+    {
+        var scratch = NewScratchDirectory();
+        var source = Path.Combine(scratch, "fake.db");
+        File.WriteAllText(source, "this is not sqlite");
+        var target = Path.Combine(scratch, "audio-pack.db");
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => MainWindow.ImportAudioPack(source, target));
+
+        Assert.Equal(Translations.Instance.ImportInvalidDatabase, ex.Message);
+        Assert.False(File.Exists(target));
+    }
+
+    [AvaloniaFact]
+    public void AudioPackImportRejectsOtherFormats()
+    {
+        var scratch = NewScratchDirectory();
+        var source = Path.Combine(scratch, "pack.rar");
+        File.WriteAllText(source, "x");
+        var target = Path.Combine(scratch, "audio-pack.db");
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => MainWindow.ImportAudioPack(source, target));
+
+        Assert.Equal(Translations.Instance.ImportUnsupportedFormat, ex.Message);
+        Assert.False(File.Exists(target));
     }
 
     [AvaloniaFact]
@@ -686,7 +737,8 @@ public class DownloadFlowTests
         var directory = NewScratchDirectory();
         dictionaryPath = Path.Combine(directory, "dictionary.db");
         historyPath = Path.Combine(directory, "history.db");
-        return new AppLocations(directory, dictionaryPath, historyPath, Path.Combine(directory, "audio"));
+        return new AppLocations(directory, dictionaryPath, historyPath, Path.Combine(directory, "audio"),
+            Path.Combine(directory, "audio-pack.db"));
     }
 
     private static void AddEntry(ZipArchive archive, string name, string content)
@@ -729,6 +781,30 @@ public class DownloadFlowTests
         var directory = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         return directory;
+    }
+
+    /// <summary>Reads one word's blobs back from a pack database.</summary>
+    private static (byte[]? Uk, byte[]? Us) ReadPackRow(string db, string word)
+    {
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={db}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT uk, us FROM audio WHERE word = $w";
+        command.Parameters.AddWithValue("$w", word);
+        using var reader = command.ExecuteReader();
+        Assert.True(reader.Read(), $"word '{word}' missing from {db}");
+        return (reader.IsDBNull(0) ? null : (byte[])reader.GetValue(0),
+                reader.IsDBNull(1) ? null : (byte[])reader.GetValue(1));
+    }
+
+    private static bool PackRowExists(string db, string word)
+    {
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={db}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM audio WHERE word = $w";
+        command.Parameters.AddWithValue("$w", word);
+        return (long)command.ExecuteScalar()! > 0;
     }
 
     private static (string ZipPath, string Hash) MakeDictionaryZipWithHash()

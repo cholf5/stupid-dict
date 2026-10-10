@@ -71,7 +71,8 @@ public sealed class SpeechStopTests
     public void AudioPackStopReachesTheFilePlayer()
     {
         var filePlayer = new FakeAudioFilePlayer();
-        var pack = new AudioPackPlayer("/nonexistent-directory", filePlayer);
+        var pack = new AudioPackPlayer(
+            new AudioPackStore("/nonexistent-directory", "/nonexistent-directory/audio-pack.db"), filePlayer);
 
         pack.Stop();
 
@@ -81,7 +82,8 @@ public sealed class SpeechStopTests
     [Fact]
     public void AudioPackStopSwallowsAFaultingFilePlayer()
     {
-        var pack = new AudioPackPlayer("/nonexistent-directory",
+        var pack = new AudioPackPlayer(
+            new AudioPackStore("/nonexistent-directory", "/nonexistent-directory/audio-pack.db"),
             new FakeAudioFilePlayer { ThrowOnStop = true });
 
         pack.Stop(); // must not throw

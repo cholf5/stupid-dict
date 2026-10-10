@@ -43,20 +43,23 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(Extracting)] = "解压中…",
         [nameof(ExtractingFilesFormat)] = "正在解压 {0:N0} / {1:N0} 个文件…",
         [nameof(Importing)] = "导入中…",
-        [nameof(ImportingFilesFormat)] = "正在导入 {0:N0} / {1:N0} 个文件…",
+        [nameof(Converting)] = "正在转换发音包",
+        [nameof(ConvertingFilesFormat)] = "正在转换 {0:N0} / {1:N0} 个条目…",
         [nameof(DownloadCancelled)] = "已取消下载。可以直接下载，或选择本地已有文件。",
         [nameof(DownloadFailedFormat)] = "下载失败：{0}",
         [nameof(ImportFailedFormat)] = "导入失败：{0}",
         [nameof(ImportMissingDb)] = "文件里没有 dictionary.db",
         [nameof(ImportMissingPack)] = "文件里没有发音包（应包含 uk/、us/ 目录）",
-        [nameof(PickerTitleAudioPack)] = "选择 audio-pack.zip",
+        [nameof(ImportInvalidDatabase)] = "不是有效的发音包数据库",
+        [nameof(ImportUnsupportedFormat)] = "只支持发音包数据库 audio-pack.db 或发音包压缩包 audio-pack.zip",
+        [nameof(PickerTitleAudioPack)] = "选择发音包（audio-pack.db / audio-pack.zip）",
         [nameof(FileTypeAudioPack)] = "发音包",
         [nameof(OpenDownloadPage)] = "用浏览器打开下载页",
         [nameof(AllSourcesFailed)] = "所有下载源都失败了。请检查网络，或手动下载后导入。",
         [nameof(ChecksumFailed)] = "下载文件校验失败，已删除损坏文件。",
         [nameof(ChecksumRedownloading)] = "校验失败，已删除损坏文件，正在重新下载…",
         [nameof(ExtractFailedFormat)] = "解压失败：{0}",
-        [nameof(AudioPackExtractFailedFormat)] = "发音包解压失败：{0}",
+        [nameof(AudioPackImportFailedFormat)] = "发音包导入失败：{0}",
         [nameof(ExtractCorruptPurged)] = "压缩包数据损坏，已删除；重试将重新下载。",
         [nameof(ZipCrcMismatchFormat)] = "压缩包数据损坏：条目 {0} 的 CRC 校验不符",
         [nameof(ZipSlipFormat)] = "压缩包内出现非法路径：{0}",
@@ -147,13 +150,16 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(Extracting)] = "Extracting…",
         [nameof(ExtractingFilesFormat)] = "Extracting {0:N0} of {1:N0} files…",
         [nameof(Importing)] = "Importing…",
-        [nameof(ImportingFilesFormat)] = "Importing {0:N0} of {1:N0} files…",
+        [nameof(Converting)] = "Converting the audio pack",
+        [nameof(ConvertingFilesFormat)] = "Converting {0:N0} of {1:N0} entries…",
         [nameof(DownloadCancelled)] = "Download cancelled. You can download again or choose a local file.",
         [nameof(DownloadFailedFormat)] = "Download failed: {0}",
         [nameof(ImportFailedFormat)] = "Import failed: {0}",
         [nameof(ImportMissingDb)] = "The file does not contain dictionary.db",
         [nameof(ImportMissingPack)] = "The file does not contain the pronunciation pack (uk/ and us/ directories expected)",
-        [nameof(PickerTitleAudioPack)] = "Choose audio-pack.zip",
+        [nameof(ImportInvalidDatabase)] = "Not a valid pronunciation pack database",
+        [nameof(ImportUnsupportedFormat)] = "Only an audio pack database (audio-pack.db) or archive (audio-pack.zip) can be imported",
+        [nameof(PickerTitleAudioPack)] = "Choose an audio pack (audio-pack.db / audio-pack.zip)",
         [nameof(FileTypeAudioPack)] = "Pronunciation pack",
         [nameof(PickerFailedFormat)] = "Could not open the file picker: {0}",
         [nameof(OpenDownloadPage)] = "Open the download page in a browser",
@@ -161,7 +167,7 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(ChecksumFailed)] = "Checksum verification failed; the corrupted file was deleted.",
         [nameof(ChecksumRedownloading)] = "Checksum failed; the corrupted file was deleted. Downloading again…",
         [nameof(ExtractFailedFormat)] = "Extraction failed: {0}",
-        [nameof(AudioPackExtractFailedFormat)] = "Pronunciation pack extraction failed: {0}",
+        [nameof(AudioPackImportFailedFormat)] = "Failed to import the audio pack: {0}",
         [nameof(ExtractCorruptPurged)] = "The archive data is corrupted; it was deleted and retrying downloads again.",
         [nameof(ZipCrcMismatchFormat)] = "The archive data is corrupted: entry {0} failed its CRC check",
         [nameof(ZipSlipFormat)] = "Illegal path inside the archive: {0}",
@@ -300,8 +306,9 @@ public sealed class Translations : INotifyPropertyChanged
     /// <summary>{0} 已完成条目数，{1} 总条目数。</summary>
     public string ExtractingFilesFormat => Get();
     public string Importing => Get();
+    public string Converting => Get();
     /// <summary>{0} 已完成条目数，{1} 总条目数。</summary>
-    public string ImportingFilesFormat => Get();
+    public string ConvertingFilesFormat => Get();
     public string DownloadCancelled => Get();
     public string DownloadFailedFormat => Get();
     public string ImportFailedFormat => Get();
@@ -311,13 +318,17 @@ public sealed class Translations : INotifyPropertyChanged
     public string ChecksumFailed => Get();
     public string ChecksumRedownloading => Get();
     public string ExtractFailedFormat => Get();
-    public string AudioPackExtractFailedFormat => Get();
+    public string AudioPackImportFailedFormat => Get();
     /// <summary>解压发现压缩包字节损坏并已清除（重试会重新下载）。</summary>
     public string ExtractCorruptPurged => Get();
     /// <summary>{0} CRC 校验不符的条目名。</summary>
     public string ZipCrcMismatchFormat => Get();
     public string ZipSlipFormat => Get();
     public string ImportMissingPack => Get();
+    /// <summary>手动导入的数据库文件未通过完整性校验。</summary>
+    public string ImportInvalidDatabase => Get();
+    /// <summary>手动导入了既非 .db 也非 .zip 的文件。</summary>
+    public string ImportUnsupportedFormat => Get();
     public string PickerTitleAudioPack => Get();
     public string FileTypeAudioPack => Get();
     public string OpenDownloadPage => Get();

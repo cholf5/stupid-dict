@@ -20,9 +20,16 @@ internal static class AppPaths
             ?? Path.Combine(DataDirectory, "dictionary.db");
 
     /// <summary>
-    /// The pronunciation pack (uk/us MP3 directories), following the same
-    /// bundled-first rule as the dictionary so a bundled install works
-    /// without writing into the user profile.
+    /// The pronunciation pack as a single SQLite database (word → MP3 blobs,
+    /// built by Assets/AudioPackConverter from the downloaded zip). Always in
+    /// the user data directory — it is produced, not shipped.
+    /// </summary>
+    public static string AudioPackDatabasePath { get; } = Path.Combine(DataDirectory, "audio-pack.db");
+
+    /// <summary>
+    /// Legacy loose layout (uk/us per-word MP3 directories) extracted by app
+    /// versions before the database store; kept as a lookup fallback so
+    /// existing installs keep working. New installs never create it.
     /// </summary>
     public static string AudioDirectory { get; } =
         ResolveBundledDirectory("audio", AppContext.BaseDirectory)

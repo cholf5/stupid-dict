@@ -104,7 +104,7 @@ public partial class MainWindow : Window
         _autoDownload = autoDownload;
         // Tests pass no settings: never read the user's real settings file.
         _settings = settings ?? new AppSettings();
-        _speech = speechPlayer ?? SpeechPlayback.Create(_locations.AudioDirectory);
+        _speech = speechPlayer ?? SpeechPlayback.Create(_locations.AudioDirectory, _locations.AudioPackDatabasePath);
         _downloader = downloader ?? new AssetDownloadService();
         _downloadDirectory = downloadDirectory ?? Path.Combine(Path.GetTempPath(), "stupiddict-downloads");
         _dictionaryAvailable = File.Exists(service.DictionaryPath);
@@ -653,7 +653,10 @@ public partial class MainWindow : Window
 
     // ---- asset bootstrap: the dictionary and the pronunciation pack ----
 
+    // Installed means any layout the store can play: the current single-file
+    // database or the legacy loose uk/us directories from older versions.
     private bool AudioPackInstalled() =>
+        File.Exists(_locations.AudioPackDatabasePath) ||
         Directory.Exists(Path.Combine(_locations.AudioDirectory, "uk"));
 
     private void OnDownloadDictionaryClick(object? sender, RoutedEventArgs e) => StartDictionaryDownload();
@@ -957,14 +960,14 @@ public partial class MainWindow : Window
                 new Progress<DownloadProgress>(UpdateAudioPackProgress),
                 text => AudioPackStatus.Text = text,
                 Translations.Instance.AudioPackFailedFormat, cancellation);
-            AudioPackStatus.Text = Translations.Instance.Extracting;
+            AudioPackStatus.Text = Translations.Instance.Converting;
             AudioPackBar.IsIndeterminate = true;
-            IProgress<(int Done, int Total)> extractProgress =
+            IProgress<(int Done, int Total)> convertProgress =
                 new Progress<(int Done, int Total)>(p =>
-                    UpdateAudioPackFileProgress(p, Translations.Instance.ExtractingFilesFormat));
+                    UpdateAudioPackFileProgress(p, Translations.Instance.ConvertingFilesFormat));
             await Task.Run(
-                () => ExtractZip(zipPath, _locations.AudioDirectory,
-                    (done, total) => extractProgress.Report((done, total)), cancellation),
+                () => AudioPackConverter.ConvertZipToDatabase(zipPath, _locations.AudioPackDatabasePath,
+                    (done, total) => convertProgress.Report((done, total)), cancellation),
                 cancellation);
             // Same shape as the dictionary flow (B-009): the completion
             // action lands first, the zip delete comes last as pure cleanup —
@@ -1014,11 +1017,11 @@ public partial class MainWindow : Window
                 }
                 catch
                 {
-                    AudioPackStatus.Text = string.Format(Translations.Instance.AudioPackExtractFailedFormat, ex.Message);
+                    AudioPackStatus.Text = string.Format(Translations.Instance.AudioPackImportFailedFormat, ex.Message);
                 }
             }
             else
-                AudioPackStatus.Text = string.Format(Translations.Instance.AudioPackExtractFailedFormat, ex.Message);
+                AudioPackStatus.Text = string.Format(Translations.Instance.AudioPackImportFailedFormat, ex.Message);
             AudioPackActionButton.Content = Translations.Instance.Retry;
             PickAudioPackButton.IsVisible = true;
             AudioPackDownloadPageButton.IsVisible = true;
@@ -1090,7 +1093,7 @@ public partial class MainWindow : Window
             Title = Translations.Instance.PickerTitleAudioPack,
             AllowMultiple = false,
             FileTypeFilter = [new FilePickerFileType(Translations.Instance.FileTypeAudioPack)
-                { Patterns = ["*.zip"] }],
+                { Patterns = ["*.db", "*.zip"] }],
         };
         IReadOnlyList<IStorageFile> files;
         try
@@ -1114,10 +1117,10 @@ public partial class MainWindow : Window
         AudioPackBar.IsIndeterminate = false;
         IProgress<(int Done, int Total)> progress =
             new Progress<(int Done, int Total)>(p =>
-                UpdateAudioPackFileProgress(p, Translations.Instance.ImportingFilesFormat));
+                UpdateAudioPackFileProgress(p, Translations.Instance.ConvertingFilesFormat));
         try
         {
-            await Task.Run(() => ImportAudioPack(path, _locations.AudioDirectory,
+            await Task.Run(() => ImportAudioPack(path, _locations.AudioPackDatabasePath,
                 (done, total) => progress.Report((done, total))));
             AudioPackPanel.IsVisible = false;
         }
@@ -1136,23 +1139,37 @@ public partial class MainWindow : Window
         _ = TopLevel.GetTopLevel(this)?.Launcher.LaunchUriAsync(new Uri(ReleaseAssets.DataReleasePageUrl));
 
     /// <summary>
-    /// Validates that the zip really is a pronunciation pack (uk/ or us/ at
-    /// the root) before extracting — importing a wrong zip must not scatter
-    /// junk inside the audio directory. <paramref name="progress"/> forwards
-    /// extraction progress (entries done, entries total); the pack carries
-    /// ~10⁵ files, so the status line counts them. <paramref
-    /// name="cancellation"/> aborts between entries.
+    /// Installs a manually chosen pronunciation pack. A .db file is verified
+    /// (integrity_check + a non-empty audio table) and copied into the data
+    /// directory — the user's original stays where it is. A .zip goes through
+    /// the same conversion the download flow uses (pack-shape gate, per-entry
+    /// CRC, atomic landing). Anything else is rejected with a plain message.
     /// </summary>
-    internal static void ImportAudioPack(string zipPath, string audioDirectory,
+    internal static void ImportAudioPack(string packPath, string databasePath,
         Action<int, int>? progress = null, CancellationToken cancellation = default)
     {
-        using var archive = System.IO.Compression.ZipFile.OpenRead(zipPath);
-        var hasPack = archive.Entries.Any(entry =>
-            entry.FullName.StartsWith("uk/", StringComparison.Ordinal) ||
-            entry.FullName.StartsWith("us/", StringComparison.Ordinal));
-        if (!hasPack)
-            throw new InvalidOperationException(Translations.Instance.ImportMissingPack);
-        ExtractZip(zipPath, audioDirectory, progress, cancellation);
+        if (packPath.EndsWith(".db", StringComparison.OrdinalIgnoreCase))
+        {
+            AudioPackStore.ValidateDatabase(packPath);
+            var staging = databasePath + ".importing";
+            try
+            {
+                File.Copy(packPath, staging, overwrite: true);
+                if (File.Exists(databasePath)) File.Delete(databasePath);
+                File.Move(staging, databasePath);
+            }
+            finally
+            {
+                if (File.Exists(staging)) File.Delete(staging);
+            }
+            return;
+        }
+        if (packPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            AudioPackConverter.ConvertZipToDatabase(packPath, databasePath, progress, cancellation);
+            return;
+        }
+        throw new InvalidOperationException(Translations.Instance.ImportUnsupportedFormat);
     }
 
     /// <summary>
@@ -1220,22 +1237,9 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>
-    /// Zip-slip gate, purely syntactic: an entry escapes only by being rooted
-    /// (drive/UNC/leading separator) or carrying a ".." segment; anything else
-    /// stays inside the destination. Deliberately NOT a GetFullPath + prefix
-    /// comparison — on Windows, GetFullPath rewrites a path whose final segment
-    /// is a reserved DOS device name (CON/PRN/AUX/NUL/COM1-9/LPT1-9, extension
-    /// ignored; "con" is a real headword) into "\\.\CON" form, which always
-    /// fails the prefix check and makes a legitimate us/con.mp3 look like an
-    /// attack. Both separators are matched: the zip spec says '/', but Win32
-    /// treats '\' identically.
-    /// </summary>
-    internal static bool EntryEscapesDestination(string entryName)
-    {
-        if (Path.IsPathRooted(entryName)) return true;
-        return entryName.Split('/', '\\').Any(segment => segment == "..");
-    }
+    /// <summary>See Assets/ZipSafety for the gate and its rationale.</summary>
+    internal static bool EntryEscapesDestination(string entryName) =>
+        Assets.ZipSafety.EntryEscapesDestination(entryName);
 
     // Entry-by-entry extraction on every platform. Windows writes through
     // the \\?\ prefix, which skips Win32 path normalization so a staged name

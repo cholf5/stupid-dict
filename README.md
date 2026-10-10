@@ -107,14 +107,14 @@ dotnet run --project src/StupidDict.App -f net10.0   # 运行（需要先构建�
 1. 可执行文件同目录（打包分发时随包携带）
 2. 用户数据目录（`~/Library/Application Support/StupidDict/`、`%APPDATA%/StupidDict/`）
 
-**自动下载**：首次启动检测不到 `dictionary.db` 时，界面内出现下载面板，自动从 GitHub Releases 拉取预构建的 `dictionary.zip`（约 170 MB），带进度、可取消、支持断点续传；词典就绪后自动排队下载发音包 `audio-pack.zip`（约 570 MB）。下载链按序回退，直到成功：
+**自动下载**：首次启动检测不到 `dictionary.db` 时，界面内出现下载面板，自动从 GitHub Releases 拉取预构建的 `dictionary.zip`（约 170 MB），带进度、可取消、支持断点续传；词典就绪后自动排队下载发音包 `audio-pack.zip`（约 570 MB），下载完成后在本地转换成**单个** `audio-pack.db` 数据库安装（十几万个小 MP3 不落盘，备份、查杀、删除都是对一个文件的操作）。下载链按序回退，直到成功：
 
 1. GitHub 直连
 2. 加速镜像前缀（`ghfast.top`、`gh-proxy.com`、`ghproxy.net`，内置于代码，失效可改）
 3. 自动探测本机代理（环境变量 → macOS `scutil --proxy` 系统代理 → Clash/V2Ray/Surge 等常见本地端口探测；Windows 上还会另查系统代理设置的注册表）
-4. 全部失败时提供「选择本地文件…」手动导入 `dictionary.zip` 或裸 `dictionary.db`
+4. 全部失败时提供「选择本地文件…」手动导入（词典：`dictionary.zip` 或裸 `dictionary.db`；发音包：`audio-pack.db` 或旧格式 `audio-pack.zip` 自动转换）
 
-已安装后的数据管理走设置「数据目录」页签：显示词典与发音包的安装状态、打开数据目录。想重装数据，删掉数据目录里的 `dictionary.db` 或 `audio/` 再重启应用即回到下载流程；更新数据则从发布页下载新版 zip 手动导入。
+已安装后的数据管理走设置「数据目录」页签：显示词典与发音包的安装状态、打开数据目录。想重装数据，删掉数据目录里的 `dictionary.db` 或 `audio-pack.db`（老版本为 `audio/` 目录）再重启应用即回到下载流程；更新数据则从发布页下载新版手动导入。
 
 查询功能始终离线，联网只发生在两件事上：首次下载词典与发音包，以及在设置里手动「检查更新」。
 

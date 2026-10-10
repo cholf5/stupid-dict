@@ -1112,7 +1112,7 @@ public class HeadlessWindowTests
     }
 
     [AvaloniaFact]
-    public void AudioPackDownloadInstallsIntoAudioDirectory()
+    public void AudioPackDownloadConvertsIntoDatabase()
     {
         var locations = NewLocations(out var dictionaryPath, out _, out _);
         using (var db = DictionaryDatabase.Create(dictionaryPath))
@@ -1132,8 +1132,8 @@ public class HeadlessWindowTests
 
         Assert.Contains(ReleaseAssets.AudioPackAsset, downloader.Requests);
         WaitUntil(() => !window.FindControl<Border>("AudioPackPanel")!.IsVisible);
-        Assert.True(Directory.Exists(Path.Combine(locations.AudioDirectory, "uk")));
-        Assert.True(File.Exists(Path.Combine(locations.AudioDirectory, "uk", "cat.mp3")));
+        Assert.True(File.Exists(locations.AudioPackDatabasePath));
+        Assert.False(Directory.Exists(Path.Combine(locations.AudioDirectory, "uk"))); // no loose layout anymore
     }
 
     [AvaloniaFact]
@@ -1621,7 +1621,8 @@ public class HeadlessWindowTests
         dictionaryPath = Path.Combine(directory, "dictionary.db");
         historyPath = Path.Combine(directory, "history.db");
         audioPath = Path.Combine(directory, "audio");
-        return new AppLocations(directory, dictionaryPath, historyPath, audioPath);
+        return new AppLocations(directory, dictionaryPath, historyPath, audioPath,
+            Path.Combine(directory, "audio-pack.db"));
     }
 
     private sealed class StubDownloader(Func<string, string?> assets) : IAssetDownloader

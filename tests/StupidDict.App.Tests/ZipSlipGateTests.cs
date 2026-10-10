@@ -55,12 +55,11 @@ public class ZipSlipGateTests
             }
 
         var reports = new List<(int Done, int Total)>();
-        var audio = Path.Combine(scratch, "audio");
-        MainWindow.ImportAudioPack(zipPath, audio, (done, total) => reports.Add((done, total)));
+        var db = Path.Combine(scratch, "audio-pack.db");
+        MainWindow.ImportAudioPack(zipPath, db, (done, total) => reports.Add((done, total)));
 
-        Assert.True(File.Exists(Path.Combine(audio, "us", "w0000.mp3")));
-        Assert.True(File.Exists(Path.Combine(audio, "us", $"w{fileCount - 1:D4}.mp3")));
-        Assert.Empty(Directory.EnumerateDirectories(audio, ".stupiddict-extracting-*"));
+        Assert.True(File.Exists(db));
+        Assert.False(File.Exists(db + ".building")); // landed atomically, no staging left
 
         Assert.NotEmpty(reports);
         Assert.All(reports, report => Assert.Equal(fileCount, report.Total));
