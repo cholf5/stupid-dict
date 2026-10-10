@@ -1183,9 +1183,10 @@ public partial class MainWindow : Window
         var total = archive.Entries.Count(entry => entry.FullName.Length > 0);
 
         // Sweep staging directories a crashed run may have left behind.
-        // Deletion rides the \\?\ prefix like extraction: a stale staging dir
-        // already holds entries such as us/con.mp3, and on Windows 10 a plain
-        // Win32 delete of a reserved device name fails.
+        // Deletion rides the \\?\ prefix like extraction: staging from older
+        // builds can hold reserved-device-name entries (us/con.mp3) that a
+        // plain Win32 delete misses on Windows 10 — current extraction maps
+        // such names (us/_con.mp3), but the sweep must survive their legacy.
         const string stagingPrefix = ".stupiddict-extracting-";
         foreach (var stale in Directory.EnumerateDirectories(root, stagingPrefix + "*"))
             Directory.Delete(ToExtendedPath(stale), recursive: true);
@@ -1236,14 +1237,15 @@ public partial class MainWindow : Window
         return entryName.Split('/', '\\').Any(segment => segment == "..");
     }
 
-    // Entry-by-entry extraction on every platform. On Windows this is load-
-    // bearing: ZipFile.ExtractToDirectory writes entries through normal
-    // paths, and pre-Windows 11 CreateFile redirects a final reserved device
-    // name (us/con.mp3 → the CON device) — the MP3 silently never lands.
-    // Writing through the \\?\ prefix skips Win32 path normalization so the
-    // name is taken literally; on Windows 11, where the restriction is
-    // lifted, the prefix behaves identically. Unix needs no prefix (no
-    // device names) but shares the loop so per-entry progress works there.
+    // Entry-by-entry extraction on every platform. Windows writes through
+    // the \\?\ prefix, which skips Win32 path normalization so a staged name
+    // stays byte-identical to what JoinEntryPath joined (reserved DOS device
+    // names are mapped away before materializing; other literal oddities a
+    // hand-made zip may carry — trailing dots/spaces, which normal paths
+    // silently rewrite — remain exactly as written and reachable, because
+    // every delete in this file rides the same prefix). On Windows 11 the
+    // prefix behaves identically. Unix needs no prefix (nothing normalizes
+    // behind our back there) but shares the loop so per-entry progress works.
     private static void ExtractEntry(System.IO.Compression.ZipArchiveEntry entry, string stagingDirectory)
     {
         var target = JoinEntryPath(stagingDirectory, entry.FullName);
@@ -1285,20 +1287,26 @@ public partial class MainWindow : Window
     // touches the name. '.' segments are dropped (\\?\ does not normalize
     // them away); '\' counts as a separator (a literal backslash cannot be
     // part of a Windows filename anyway).
+    // Reserved DOS device names are mapped before materializing (con.mp3 →
+    // _con.mp3): "con" is a real headword, and a reserved name on disk is
+    // unreachable through ordinary Win32 paths on pre-Win11 Windows. The
+    // pack player maps on lookup, so the pair stays consistent.
     private static string JoinEntryPath(string stagingDirectory, string entryName)
     {
         var segments = entryName.Split('/', '\\')
-            .Where(segment => segment.Length > 0 && segment != ".");
+            .Where(segment => segment.Length > 0 && segment != ".")
+            .Select(Assets.ReservedDeviceNames.MapSegment);
         return stagingDirectory + Path.DirectorySeparatorChar
             + string.Join(Path.DirectorySeparatorChar, segments);
     }
 
     // Extended-length prefix, Windows only (Unix paths must stay untouched).
     // Requires an absolute backslash path — the staging directory is built
-    // from Path.GetFullPath output. Internal so tests can read an extracted
-    // reserved-name file (us/con.mp3) back through the same prefix: an
-    // ordinary Win32 path redirects it to the CON device, and reading CON
-    // blocks on the console forever.
+    // from Path.GetFullPath output. Internal so tests can exercise the
+    // reserved-name edge cases the same way production would have to: a raw
+    // reserved-name file (us/con.mp3, as older builds left on disk) exists
+    // only through this prefix — an ordinary Win32 path redirects it to the
+    // CON device, and reading CON blocks on the console forever.
     internal static string ToExtendedPath(string path)
 
     {

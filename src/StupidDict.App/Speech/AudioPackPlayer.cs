@@ -1,19 +1,28 @@
+using StupidDict.App.Assets;
+
 namespace StupidDict.App.Speech;
 
 /// <summary>
 /// Plays pre-generated word audio from the pronunciation pack (uk/us
 /// directories of per-word MP3 files). A miss here is normal — the pack only
 /// covers common words — so it returns false and the composite falls through
-/// to system TTS.
+/// to system TTS. Reserved DOS device names never sit on disk: extraction
+/// maps them to '_'-prefixed file names (Assets/ReservedDeviceNames), and
+/// lookup applies the same mapping so "con" stays playable everywhere; the
+/// raw name is kept as a fallback for packs extracted by older builds, where
+/// it is still reachable (Unix, Windows 11).
 /// </summary>
 public sealed class AudioPackPlayer(string directory, IAudioFilePlayer player) : ISpeechPlayer
 {
     public bool Play(string word, SpeechAccent accent)
     {
         var subdirectory = accent == SpeechAccent.British ? "uk" : "us";
-        var file = Path.Combine(directory, subdirectory, word.ToLowerInvariant() + ".mp3");
-        if (!File.Exists(file)) return false;
-        return player.Play(file);
+        var stem = word.ToLowerInvariant() + ".mp3";
+        var mapped = Path.Combine(directory, subdirectory, ReservedDeviceNames.MapSegment(stem));
+        if (File.Exists(mapped)) return player.Play(mapped);
+        var raw = Path.Combine(directory, subdirectory, stem);
+        if (raw != mapped && File.Exists(raw)) return player.Play(raw);
+        return false;
     }
 
     public void Stop()
