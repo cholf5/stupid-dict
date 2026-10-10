@@ -202,6 +202,27 @@ public sealed class AudioPackConverterTests
     }
 
     [Fact]
+    public void DatabaseKeepsTheDefaultPageSize()
+    {
+        var scratch = NewScratchDirectory();
+        var zip = WritePackZip(scratch, ("uk/cat.mp3", [1]));
+        var db = Path.Combine(scratch, "audio-pack.db");
+
+        AudioPackConverter.ConvertZipToDatabase(zip, db);
+
+        // Deliberately the 4KB default: with this pack's uneven blob sizes,
+        // every alternative measured WORSE on real data (4KB 715MB, 8KB
+        // 800MB, 16KB 1.11GB, 32KB 2.07GB, 64KB 834MB) — the overflow
+        // remainder arithmetic punishes mid-size pages and uneven row sizes
+        // fragment large pages. Don't "optimize" without re-measuring.
+        using var connection = new SqliteConnection($"Data Source={db}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA page_size";
+        Assert.Equal(4096L, (long)command.ExecuteScalar()!);
+    }
+
+    [Fact]
     public void ConversionReplacesAnExistingDatabase()
     {
         var scratch = NewScratchDirectory();

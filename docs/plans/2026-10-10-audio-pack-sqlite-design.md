@@ -13,6 +13,8 @@
 ## 决策
 
 1. **单 db，不按字母拆**：`CREATE TABLE audio(word TEXT PRIMARY KEY, uk BLOB, us BLOB) WITHOUT ROWID`，词头小写（与查找端 `ToLowerInvariant` 一致）。每播放一次开新只读连接实测 ~1ms，拆 26 个 db 省不出可测量收益，反引入 26 倍的下载/导入/更新流程复杂度。
+   - **页大小保持 4KB 默认（实测钉死，勿"优化"）**：db 715MB 比旧 zip 570MB 大 ~25%，疑似页浪费可压——真实数据全曲线实测否决：4KB 715MB、8KB 800MB、16KB 1112MB、32KB 2068MB、64KB 834MB。SQLite 的 local/overflow 余数算术惩罚中等页大小，参差的 blob 尺寸（每词 3-15KB 不等）让大页装箱碎片化；均匀 blob 的合成模型会给出完全错误的结论（64KB 合成 631MB、真实 834MB），必须用真数据测。裸 db vs zip 的差值（+21%）是单文件随机访问的形态成本；对 db 文件再套 zip/zstd 无意义——MP3 是已压缩数据，旧 zip 也只从 612.8MB 压到 593.6MB（3%）。真正的压缩杠杆是音频本身重编码（Opus 可省 30-50%），但 afplay/MCI 不支持 Opus，那是进程内播放项目的门。
+   - **转换是确定性的**：同输入 zip 同代码产出逐字节一致（重建 sha 与已发布资产比对相同），重建资产无需担心漂移。
 2. **资产格式**：最初按「应用内转换、不发新数据资产」实施（data-2 的 zip 原样可用）；发布前用户决策改为**直接发预构建 db**——产品尚无 1.0 正式版、全是 PreRelease，没有兼容包袱。data-3 = `dictionary.zip`（与 data-2 同字节搬运）+ `audio-pack.db`（715MB）+ 各自 `.sha256`，`ReleaseAssets.DataTag` 提至 `data-3`、`AudioPackAsset` 改为 `audio-pack.db`，下载流程按扩展名分派：`.db` 走 `ImportAudioPack` 的验证+落位分支（integrity_check + audio 表非空），`.zip` 走转换分支（保留给手动导入旧格式）。老 App（≤0.1.2）钉 data-2 的 zip，互不干扰。
    - **db 资产的生成**：反射 harness（临时工程 ProjectReference App + 反射调用 internal `AudioPackConverter.ConvertZipToDatabase`）跑 data-2 的 zip，产出经三重验证：`integrity_check` ok、57,784 行、全量 115,568 个 MP3 条目逐字节对账零差异（zip 里另有 `manifest.txt` 185 字节，非发音包条目，转换器正确跳过）。下次重新生成数据：复用同法，或届时给 AudioPackBuilder 加 `--from-zip` 模式。
 3. **查找优先级：db 优先，散文件兜底**。旧用户（v0.1.x 已解压散文件）无 db、照常工作；手动导入 db 的用户（含散文件老用户）导入即生效。散文件路径保留 2026-10-10 的保留名映射 + 裸名回退，作为遗留布局兼容，随散文件形态退役。

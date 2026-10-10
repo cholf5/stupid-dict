@@ -72,6 +72,13 @@ internal static class AudioPackConverter
                     // WITHOUT ROWID: the word is the primary key and the only
                     // access path, so the table IS the index — no duplicate
                     // storage, lookups are a single B-tree descent.
+                    // Page size deliberately left at the 4KB default: with
+                    // this pack's uneven blob sizes, every alternative
+                    // measured WORSE on real data (4KB 715MB, 8KB 800MB,
+                    // 16KB 1.11GB, 32KB 2.07GB, 64KB 834MB) — the overflow
+                    // remainder arithmetic punishes mid-size pages and
+                    // uneven row sizes fragment large pages. Don't "fix"
+                    // this without re-measuring.
                     create.CommandText =
                         "CREATE TABLE audio(word TEXT PRIMARY KEY, uk BLOB, us BLOB) WITHOUT ROWID";
                     create.ExecuteNonQuery();
