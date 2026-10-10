@@ -11,7 +11,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- Single source for the About card, the update check and the release
          script: release.sh bumps this and tags vX.Y.Z, CI enforces equality. -->
-    <Version>0.1.2</Version>
+    <Version>0.1.3</Version>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <!-- App icon embedded into the Windows exe (Explorer / taskbar); the same
          ico doubles as the window icon via avares:// below. -->
