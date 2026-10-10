@@ -100,6 +100,56 @@ public sealed class SystemTtsPlayerTests
         Assert.Equal("Daniel (Enhanced)", SystemTtsPlayer.SelectMacVoice(voices, SpeechAccent.British));
     }
 
+    // --- SelectWindowsVoice: pure selection, every platform ---
+
+    [Fact]
+    public void SelectWindowsVoiceReturnsTheVoiceNameForTheExactAccentCulture()
+    {
+        var installed = new (string Name, string Culture)[]
+        {
+            ("Microsoft Huihui Desktop", "zh-CN"),
+            ("Microsoft Zira Desktop", "en-US"),
+            ("Microsoft Hazel Desktop", "en-GB"),
+        };
+
+        Assert.Equal("Microsoft Zira Desktop",
+            SystemTtsPlayer.SelectWindowsVoice(installed, SpeechAccent.American));
+        Assert.Equal("Microsoft Hazel Desktop",
+            SystemTtsPlayer.SelectWindowsVoice(installed, SpeechAccent.British));
+    }
+
+    /// <summary>
+    /// The return must be the voice NAME SpeechSynthesizer.SelectVoice(string)
+    /// matches on — handing it the culture ("en-US") throws ArgumentException,
+    /// and the caller's best-effort catch swallowed it, so Windows TTS never
+    /// made a sound (2026-10-10, reproduced on a zh-CN box with Zira en-US).
+    /// </summary>
+    [Fact]
+    public void SelectWindowsVoiceFallsBackToAnyEnglishVoiceNameWhenTheAccentCultureIsMissing()
+    {
+        var installed = new (string Name, string Culture)[]
+        {
+            ("Microsoft Huihui Desktop", "zh-CN"),
+            ("Microsoft Zira Desktop", "en-US"),
+        };
+
+        // No en-GB voice: a British word still gets the en-US voice, by name.
+        Assert.Equal("Microsoft Zira Desktop",
+            SystemTtsPlayer.SelectWindowsVoice(installed, SpeechAccent.British));
+    }
+
+    [Fact]
+    public void SelectWindowsVoiceReturnsNullWhenNoEnglishVoiceIsInstalled()
+    {
+        var installed = new (string Name, string Culture)[]
+        {
+            ("Microsoft Huihui Desktop", "zh-CN"),
+        };
+
+        Assert.Null(SystemTtsPlayer.SelectWindowsVoice(installed, SpeechAccent.American));
+        Assert.Null(SystemTtsPlayer.SelectWindowsVoice(installed, SpeechAccent.British));
+    }
+
     // --- MacVoicesNow: probe seam, unix test hosts (CI ubuntu + macOS) ---
 
     /// <summary>

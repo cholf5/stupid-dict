@@ -82,7 +82,11 @@ public sealed class SystemTtsPlayer : ISpeechPlayer
         try
         {
             _synthesizer ??= new System.Speech.Synthesis.SpeechSynthesizer();
-            if (SelectVoice(_synthesizer, accent) is not { } voice) return false;
+            var installed = _synthesizer.GetInstalledVoices()
+                .Where(v => v.Enabled)
+                .Select(v => (v.VoiceInfo.Name, Culture: v.VoiceInfo.Culture.Name))
+                .ToList();
+            if (SelectWindowsVoice(installed, accent) is not { } voice) return false;
             _synthesizer.SpeakAsyncCancelAll();
             _synthesizer.SelectVoice(voice);
             _synthesizer.SpeakAsync(word);
@@ -93,18 +97,25 @@ public sealed class SystemTtsPlayer : ISpeechPlayer
             return false;
         }
     }
+#endif
 
-    private static string? SelectVoice(System.Speech.Synthesis.SpeechSynthesizer synthesizer, SpeechAccent accent)
+    /// <summary>
+    /// Windows voice selection, pure so tests can run off the SAPI stack (CI
+    /// is ubuntu). Returns the voice NAME — SpeechSynthesizer.SelectVoice
+    /// matches names only; handing it a culture string ("en-US") throws
+    /// ArgumentException, which PlayWindows's best-effort catch swallowed,
+    /// so Windows TTS never made a sound (2026-10-10).
+    /// </summary>
+    internal static string? SelectWindowsVoice(
+        IReadOnlyList<(string Name, string Culture)> installed, SpeechAccent accent)
     {
         var wanted = accent == SpeechAccent.British ? "en-GB" : "en-US";
-        var installed = synthesizer.GetInstalledVoices()
-            .Where(v => v.Enabled)
-            .Select(v => v.VoiceInfo.Culture.Name)
-            .ToList();
-        return installed.FirstOrDefault(c => c.Equals(wanted, StringComparison.OrdinalIgnoreCase))
-            ?? installed.FirstOrDefault(c => c.StartsWith("en", StringComparison.OrdinalIgnoreCase));
+        foreach (var (name, culture) in installed)
+            if (culture.Equals(wanted, StringComparison.OrdinalIgnoreCase)) return name;
+        foreach (var (name, culture) in installed)
+            if (culture.StartsWith("en", StringComparison.OrdinalIgnoreCase)) return name;
+        return null;
     }
-#endif
 
     /// <summary>
     /// Exit-time cleanup (B-012): kills an in-flight CLI voice, and on Windows
