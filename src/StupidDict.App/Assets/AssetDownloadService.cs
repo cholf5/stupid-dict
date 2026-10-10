@@ -199,33 +199,39 @@ public sealed partial class AssetDownloadService : IAssetDownloader
             var total = append ? response.Content.Headers.ContentLength + resumeFrom : response.Content.Headers.ContentLength;
 
             await using var source = await response.Content.ReadAsStreamAsync(cancellation).ConfigureAwait(false);
-            await using var target = new FileStream(partFile, append ? FileMode.Append : FileMode.Create);
             var received = resumeFrom;
             var resumed = append ? resumeFrom : 0;
-            var buffer = new byte[1 << 16];
-            while (true)
+            // The write handle must be released before the move: Windows
+            // refuses to rename a file whose FileStream (FileShare.None) is
+            // still open, while Unix happily renames open files — keeping the
+            // using scoped to the loop is what makes the platforms agree.
+            await using (var target = new FileStream(partFile, append ? FileMode.Append : FileMode.Create))
             {
-                int read;
-                // One idle window per read: no byte inside it declares this
-                // attempt stalled. The failure is an ordinary attempt failure —
-                // the chain moves to the next source and the kept ".part"
-                // resumes there — while the user's own cancel must keep
-                // surfacing as OperationCanceledException.
-                using var idle = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-                idle.CancelAfter(_bodyIdleTimeout);
-                try
+                var buffer = new byte[1 << 16];
+                while (true)
                 {
-                    read = await source.ReadAsync(buffer, idle.Token).ConfigureAwait(false);
+                    int read;
+                    // One idle window per read: no byte inside it declares this
+                    // attempt stalled. The failure is an ordinary attempt failure —
+                    // the chain moves to the next source and the kept ".part"
+                    // resumes there — while the user's own cancel must keep
+                    // surfacing as OperationCanceledException.
+                    using var idle = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+                    idle.CancelAfter(_bodyIdleTimeout);
+                    try
+                    {
+                        read = await source.ReadAsync(buffer, idle.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+                    {
+                        throw new HttpRequestException(
+                            $"The response body stalled: no bytes within {_bodyIdleTimeout.TotalSeconds:0}s.", default);
+                    }
+                    if (read == 0) break;
+                    await target.WriteAsync(buffer.AsMemory(0, read), cancellation).ConfigureAwait(false);
+                    received += read;
+                    progress?.Report(new DownloadProgress(received, total, url, resumed));
                 }
-                catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
-                {
-                    throw new HttpRequestException(
-                        $"The response body stalled: no bytes within {_bodyIdleTimeout.TotalSeconds:0}s.", default);
-                }
-                if (read == 0) break;
-                await target.WriteAsync(buffer.AsMemory(0, read), cancellation).ConfigureAwait(false);
-                received += read;
-                progress?.Report(new DownloadProgress(received, total, url, resumed));
             }
             progress?.Report(new DownloadProgress(received, total, url, resumed));
 
