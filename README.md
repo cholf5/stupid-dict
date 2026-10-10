@@ -107,7 +107,7 @@ dotnet run --project src/StupidDict.App -f net10.0   # 运行（需要先构建�
 1. 可执行文件同目录（打包分发时随包携带）
 2. 用户数据目录（`~/Library/Application Support/StupidDict/`、`%APPDATA%/StupidDict/`）
 
-**自动下载**：首次启动检测不到 `dictionary.db` 时，界面内出现下载面板，自动从 GitHub Releases 拉取预构建的 `dictionary.zip`（约 170 MB），带进度、可取消、支持断点续传；词典就绪后自动排队下载发音包 `audio-pack.zip`（约 570 MB），下载完成后在本地转换成**单个** `audio-pack.db` 数据库安装（十几万个小 MP3 不落盘，备份、查杀、删除都是对一个文件的操作）。下载链按序回退，直到成功：
+**自动下载**：首次启动检测不到 `dictionary.db` 时，界面内出现下载面板，自动从 GitHub Releases 拉取预构建的 `dictionary.zip`（约 175 MB），带进度、可取消、支持断点续传；词典就绪后自动排队下载发音包 `audio-pack.db`（约 715 MB）——**单个文件**直接落位安装（十几万个小 MP3 不落盘，备份、查杀、删除都是对一个文件的操作）。下载链按序回退，直到成功：
 
 1. GitHub 直连
 2. 加速镜像前缀（`ghfast.top`、`gh-proxy.com`、`ghproxy.net`，内置于代码，失效可改）
@@ -172,16 +172,18 @@ scripts/release.sh 1.0.1 --watch    # bump 版本 → 打 tag → CI 三平台�
 
 发版脚本把 `StupidDict.App.csproj` 的 `<Version>` 提升到目标版本并打 `v` tag，CI（`.github/workflows/dotnet-desktop.yml`）随后测试、打包 macOS（.app，arm64/x64）/ Windows（绿色 zip + Inno Setup 安装包）/ Linux 应用包并创建 Release；`--watch` 会等 CI 跑完并核对产物齐全。版本必须与 csproj 一致，CI 在 tag 时强制校验，in-app 更新检查也以它为比较基准。安装包为 per-user 安装（免管理员权限，装到 `%LOCALAPPDATA%\Programs\Stupid Dict`，数据本就在 `%APPDATA%\StupidDict`），与绿色 zip 并存：想免安装的用 zip，普通用户双击 Setup 即可。
 
-数据资产（`dictionary.zip` / `audio-pack.zip`）与 App 版本解耦：它们放在独立的 **prerelease**（现为 `data-2`，对应代码里的 `ReleaseAssets.DataTag`），一次发布、基本不再动，应用内下载 URL 钉在该 tag 上（加速镜像前缀对其同样适用）。打 prerelease 标记是刻意的：prerelease 永远不参与 `releases/latest` 竞争，而应用内「检查更新」读的正是那个页面，必须始终指向 App 版本。App 发版不携带、也不需要这两件资产。数据要更新时：发布下一个 `data-N`（现为 `data-3`），把 `ReleaseAssets.DataTag` 提到新 tag，随下一个 App 版本生效。
+数据资产（`dictionary.zip` / `audio-pack.db`）与 App 版本解耦：它们放在独立的 **prerelease**（现为 `data-3`，对应代码里的 `ReleaseAssets.DataTag`），一次发布、基本不再动，应用内下载 URL 钉在该 tag 上（加速镜像前缀对其同样适用）。打 prerelease 标记是刻意的：prerelease 永远不参与 `releases/latest` 竞争，而应用内「检查更新」读的正是那个页面，必须始终指向 App 版本。App 发版不携带、也不需要这两件资产。数据要更新时：发布下一个 `data-N`，把 `ReleaseAssets.DataTag` 提到新 tag，随下一个 App 版本生效。
 
 数据资产发布 / 更新（本地打包后一次上传）：
 
 ```bash
-scripts/package.sh    # 产出 dist/dictionary.zip + dist/audio-pack.zip（含 .sha256）
-gh release create data-3 dist/dictionary.zip dist/dictionary.zip.sha256 \
-  dist/audio-pack.zip dist/audio-pack.zip.sha256 --prerelease \
-  --title "数据资源包（词典 + 发音包）" \
-  --notes "词典数据库与离线发音包；应用首次启动自动下载，与 App 版本号无关。对应 ReleaseAssets.DataTag = data-3。"
+scripts/package.sh    # 产出 dist/dictionary.zip（含 .sha256）
+# audio-pack.db 由应用内置转换器从 audio-pack.zip 生成（逐条 CRC 校验 + 全量对账），
+# 或由 AudioPackBuilder 直接产出；详见 docs/plans/2026-10-10-audio-pack-sqlite-design.md
+gh release create data-N dist/dictionary.zip dist/dictionary.zip.sha256 \
+  dist/audio-pack.db dist/audio-pack.db.sha256 --prerelease \
+  --title "数据资源包（词典 + 发音包数据库）" \
+  --notes "词典数据库与离线发音包；应用首次启动自动下载，与 App 版本号无关。对应 ReleaseAssets.DataTag = data-N。"
 ```
 
 本地打包（调试，或首次发布 / 更新数据资产时用）：

@@ -7,14 +7,16 @@ internal static class ReleaseAssets
 
     /// <summary>
     /// The prerelease holding the big data assets (dictionary / audio pack),
-    /// decoupled from app versions: publish once, bump only if the data ever
-    /// changes. Marked prerelease so it never becomes releases/latest — the
-    /// in-app update check reads that page and expects an app vX.Y.Z tag.
+    /// decoupled from app versions: publish once, bump only when the data or
+    /// its format changes. Marked prerelease so it never becomes
+    /// releases/latest — the in-app update check reads that page and expects
+    /// an app vX.Y.Z tag. data-3 switched the audio pack from
+    /// audio-pack.zip (converted in-app) to a prebuilt audio-pack.db.
     /// </summary>
-    internal const string DataTag = "data-2";
+    internal const string DataTag = "data-3";
 
     public const string DictionaryAsset = "dictionary.zip";
-    public const string AudioPackAsset = "audio-pack.zip";
+    public const string AudioPackAsset = "audio-pack.db";
 
     public static string GithubUrl(string assetName) =>
         $"https://github.com/{Repository}/releases/download/{DataTag}/{assetName}";

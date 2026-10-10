@@ -13,7 +13,8 @@
 ## 决策
 
 1. **单 db，不按字母拆**：`CREATE TABLE audio(word TEXT PRIMARY KEY, uk BLOB, us BLOB) WITHOUT ROWID`，词头小写（与查找端 `ToLowerInvariant` 一致）。每播放一次开新只读连接实测 ~1ms，拆 26 个 db 省不出可测量收益，反引入 26 倍的下载/导入/更新流程复杂度。
-2. **应用内转换，不依赖新数据资产**：data-2 的 zip 原样可用——下载完成（sha256 已验）后在应用内 zip→db 转换（逐条进度复用 `AudioPackBar`，一条事务、staging + 原子进位），转完删 zip。无需重跑 Piper，无需发 data-3。将来若要免转换的即装体验，发布 `audio-pack.db` 资产（data-3）+ `ReleaseAssets.DataTag` 一行即可生效——下载流程同时认两种资产名（`.db` 直装、`.zip` 转换），本版不切换。
+2. **资产格式**：最初按「应用内转换、不发新数据资产」实施（data-2 的 zip 原样可用）；发布前用户决策改为**直接发预构建 db**——产品尚无 1.0 正式版、全是 PreRelease，没有兼容包袱。data-3 = `dictionary.zip`（与 data-2 同字节搬运）+ `audio-pack.db`（715MB）+ 各自 `.sha256`，`ReleaseAssets.DataTag` 提至 `data-3`、`AudioPackAsset` 改为 `audio-pack.db`，下载流程按扩展名分派：`.db` 走 `ImportAudioPack` 的验证+落位分支（integrity_check + audio 表非空），`.zip` 走转换分支（保留给手动导入旧格式）。老 App（≤0.1.2）钉 data-2 的 zip，互不干扰。
+   - **db 资产的生成**：反射 harness（临时工程 ProjectReference App + 反射调用 internal `AudioPackConverter.ConvertZipToDatabase`）跑 data-2 的 zip，产出经三重验证：`integrity_check` ok、57,784 行、全量 115,568 个 MP3 条目逐字节对账零差异（zip 里另有 `manifest.txt` 185 字节，非发音包条目，转换器正确跳过）。下次重新生成数据：复用同法，或届时给 AudioPackBuilder 加 `--from-zip` 模式。
 3. **查找优先级：db 优先，散文件兜底**。旧用户（v0.1.x 已解压散文件）无 db、照常工作；手动导入 db 的用户（含散文件老用户）导入即生效。散文件路径保留 2026-10-10 的保留名映射 + 裸名回退，作为遗留布局兼容，随散文件形态退役。
 4. **播放仍经临时文件**：db 取 blob → 写 `$TMPDIR/stupiddict-audio-{pid}-{n}.mp3` → 现有播放器原样播该路径。临时文件名固定模式（不含词头），**保留名在主路径上不存在**。单播放者假设是既有事实（一个 MCI alias、一个进程），临时文件只跟踪当前一个：写新的前 best-effort 删上一个、`Stop()` 时 best-effort 删——`ProcessPlayer` 发射后不管（Kill 在下次 Play 起）、MCI 持句柄到 close，所以删除时机在「下次写入前」与「Stop 后」，删不掉（句柄未释放）就留给 OS 临时目录清理，吞 IO 异常与 Stop 的 best-effort 风格一致。
 5. **手动导入双收**：`.db`（只读连接跑 `PRAGMA integrity_check` 验证后复制进数据目录，不移动用户原文件）；`.zip`（走同一转换器）；其他扩展名报 `ImportUnsupportedFormat`。选择器过滤加 `*.db`。

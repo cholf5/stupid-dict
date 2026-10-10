@@ -110,63 +110,21 @@ public class DownloadFlowTests
     }
 
     /// <summary>
-    /// The kept-zip reuse for extraction failures that are NOT byte damage
-    /// (B-008 narrowed the 6fd870d semantics to exactly this family — damaged
-    /// bytes purge and redownload, see CrcMismatchZipIsPurged…): attempt 1
-    /// downloads, verifies and fails extraction on a zip-slip entry; the
-    /// retry must pick up from the kept zip — no second download, no second
-    /// checksum fetch — and once the file is made well-formed, install
-    /// without any network.
+    /// A pack database kept by a previous session (download finished, app
+    /// closed before it landed) installs on the next launch without a
+    /// download when its checksum still matches. Since data-3 the audio
+    /// asset IS the database — the download flow validates and places it,
+    /// no conversion pass.
     /// </summary>
     [AvaloniaFact]
-    public void ExtractionFailureRetryReusesKeptZipWithoutRedownloading()
-    {
-        var locations = NewLocations(out var dictionaryPath, out _);
-        using (var db = DictionaryDatabase.Create(dictionaryPath))
-            db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
-        var downloadDirectory = NewScratchDirectory();
-        var destination = Path.Combine(downloadDirectory, ReleaseAssets.AudioPackAsset);
-        var slip = MakeZipSlipZip(NewScratchDirectory());
-        var good = MakeAudioPackZip(NewScratchDirectory(), "pack.zip", "cat.mp3");
-        var slipBytes = File.ReadAllBytes(slip);
-        var downloader = new ScriptedDownloader(ReleaseAssets.AudioPackAsset,
-            _ => slipBytes, _ => HashFile(slip));
-        var window = new MainWindow(new DictionaryService(dictionaryPath, locations.HistoryDatabasePath),
-            downloader: downloader, locations: locations, autoDownload: true,
-            downloadDirectory: downloadDirectory);
-        window.Show();
-
-        // Attempt 1: download and checksum pass, extraction dies on the
-        // zip-slip entry (no byte damage) — the zip stays behind for retry.
-        WaitUntil(() => window.FindControl<Button>("AudioPackActionButton")!.Content as string
-            == Translations.Instance.Retry);
-        Assert.Equal(1, downloader.RequestCount);
-        Assert.True(File.Exists(destination));
-
-        // The kept zip is ours to fix in place — the same file, now
-        // well-formed, like an app update fixing what broke extraction.
-        File.WriteAllBytes(destination, File.ReadAllBytes(good));
-        window.FindControl<Button>("AudioPackActionButton")!
-            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-
-        WaitUntil(() => File.Exists(locations.AudioPackDatabasePath));
-        Assert.Equal(1, downloader.RequestCount);
-        Assert.Equal(1, downloader.ChecksumCalls);
-    }
-
-    /// <summary>
-    /// A zip kept by a previous session (app closed mid-extract) installs on
-    /// the next launch without a download when its checksum still matches.
-    /// </summary>
-    [AvaloniaFact]
-    public void CrossSessionKeptZipReusedWithoutDownloadWhenChecksumMatches()
+    public void CrossSessionKeptDatabaseReusedWithoutDownloadWhenChecksumMatches()
     {
         var locations = NewLocations(out var dictionaryPath, out _);
         using (var db = DictionaryDatabase.Create(dictionaryPath))
             db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
         var downloadDirectory = NewScratchDirectory();
         Directory.CreateDirectory(downloadDirectory);
-        var good = MakeAudioPackZip(NewScratchDirectory(), "pack.zip", "cat.mp3");
+        var good = MakeAudioPackDb(NewScratchDirectory());
         var destination = Path.Combine(downloadDirectory, ReleaseAssets.AudioPackAsset);
         File.Copy(good, destination);
         var downloader = new ScriptedDownloader(ReleaseAssets.AudioPackAsset,
@@ -183,20 +141,20 @@ public class DownloadFlowTests
     }
 
     /// <summary>
-    /// A kept zip whose checksum no longer matches (the remote asset was
-    /// replaced) is purged and the replacement downloaded — reuse must never
-    /// extract stale data past a published checksum.
+    /// A kept pack database whose checksum no longer matches (the remote
+    /// asset was replaced) is purged and the replacement downloaded — reuse
+    /// must never install stale data past a published checksum.
     /// </summary>
     [AvaloniaFact]
-    public void CrossSessionStaleZipFailsChecksumAndIsPurgedAndReplaced()
+    public void CrossSessionStaleDatabaseFailsChecksumAndIsPurgedAndReplaced()
     {
         var locations = NewLocations(out var dictionaryPath, out _);
         using (var db = DictionaryDatabase.Create(dictionaryPath))
             db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
         var downloadDirectory = NewScratchDirectory();
         Directory.CreateDirectory(downloadDirectory);
-        var stale = MakeAudioPackZip(NewScratchDirectory(), "stale.zip", "old.mp3");
-        var fresh = MakeAudioPackZip(NewScratchDirectory(), "fresh.zip", "cat.mp3");
+        var stale = MakeAudioPackDb(NewScratchDirectory(), "old.mp3");
+        var fresh = MakeAudioPackDb(NewScratchDirectory());
         var destination = Path.Combine(downloadDirectory, ReleaseAssets.AudioPackAsset);
         File.Copy(stale, destination);
         var downloader = new ScriptedDownloader(ReleaseAssets.AudioPackAsset,
@@ -213,6 +171,10 @@ public class DownloadFlowTests
         Assert.False(PackRowExists(locations.AudioPackDatabasePath, "old"));
     }
 
+    /// <summary>
+    /// A zip kept by a previous session (app closed mid-extract) installs on
+    /// the next launch without a download when its checksum still matches.
+    /// </summary>
     /// <summary>
     /// Cancelling the audio pack download must hand the (single) action
     /// button back usable: the cancel click disables it ("取消中…") and the
@@ -273,64 +235,73 @@ public class DownloadFlowTests
     }
 
     /// <summary>
-    /// B-008 TC-001, the full death-loop scenario: a corrupt zip and NO
-    /// published checksum — the exact precondition where checksum-less reuse
-    /// used to trust the kept zip and re-fail extraction forever. Extraction
-    /// now proves the bytes damaged (CRC), the artifacts are purged, and the
-    /// retry downloads again; the second download is good, so the loop ends
-    /// in a working install.
+    /// The B-008 death-loop story (corrupt bytes + NO published checksum →
+    /// purge and redownload) belonged to the zip era, where the per-entry CRC
+    /// proved byte damage. Since data-3 the audio asset is a database:
+    /// published checksums are the integrity defense (mismatch purges at
+    /// download — see CrossSessionStaleDatabase… and
+    /// ChecksumPurgeFailure…), and a structurally invalid database with no
+    /// published checksum fails validation, which is deliberately a
+    /// non-damage "keep and retry" — redownloading the same bytes could
+    /// never fix it. The scenario is unreachable; the test retired with the
+    /// zip download path.
+    /// </summary>
+    /// <summary>
+    /// B-009 TC-002, audio side: the download delete used to run before the
+    /// completion action, so a transient lock on the just-written file
+    /// surfaced as "发音包导入失败" with the pack installed but the panel
+    /// stuck on Retry — and that retry is short-circuited by
+    /// AudioPackInstalled(), freezing the panel until restart. The
+    /// completion action lands first now; the delete is best-effort cleanup.
+    /// Fault injection follows the ZipDeleteFailure… shape — pure filesystem
+    /// state that makes File.Delete throw on every platform: Windows blocks
+    /// deletion via the read-only file attribute, unix via a non-writable
+    /// containing directory.
     /// </summary>
     [AvaloniaFact]
-    public void CrcMismatchZipIsPurgedAndRetriedByDownloadingAgain()
+    public void AudioPackDeleteFailureStillCompletesInstall()
     {
         var locations = NewLocations(out var dictionaryPath, out _);
-        using (var db = DictionaryDatabase.Create(dictionaryPath))
-            db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
+        // The dictionary db exists, so the constructor starts the audio pack
+        // download directly and the dictionary flow never runs.
+        using (DictionaryDatabase.Create(dictionaryPath)) { }
         var downloadDirectory = NewScratchDirectory();
         var destination = Path.Combine(downloadDirectory, ReleaseAssets.AudioPackAsset);
-        var crcMismatch = MakeCrcMismatchZip(NewScratchDirectory());
-        var good = MakeAudioPackZip(NewScratchDirectory(), "pack.zip", "cat.mp3");
-        var crcMismatchBytes = File.ReadAllBytes(crcMismatch);
-        var downloader = new ScriptedDownloader(ReleaseAssets.AudioPackAsset,
-            callIndex => callIndex == 0 ? crcMismatchBytes : File.ReadAllBytes(good),
-            _ => null); // no checksum published: the entry CRC is the only defense
+        var pack = MakeAudioPackDb(NewScratchDirectory());
+        var downloader = new UndeletableZipDownloader(pack, ReleaseAssets.AudioPackAsset);
         var window = new MainWindow(new DictionaryService(dictionaryPath, locations.HistoryDatabasePath),
             downloader: downloader, locations: locations, autoDownload: true,
             downloadDirectory: downloadDirectory);
         window.Show();
 
-        // Attempt 1: download, nothing to verify against, extraction dies on
-        // the CRC mismatch — the damaged zip is purged, not kept.
-        WaitUntil(() => window.FindControl<Button>("AudioPackActionButton")!.Content as string
-            == Translations.Instance.Retry);
-        Assert.Equal(Translations.Instance.ExtractCorruptPurged,
+        // The completion action landed despite the deletion fault: the panel
+        // went away and the pack is installed.
+        WaitUntil(() => !window.FindControl<Border>("AudioPackPanel")!.IsVisible);
+
+        Assert.True(File.Exists(locations.AudioPackDatabasePath));
+        // The last status write is the import state line — never the
+        // import-failure text, never the Retry button: the misleading
+        // terminal state the unguarded delete used to produce.
+        Assert.Equal(Translations.Instance.Importing,
             window.FindControl<TextBlock>("AudioPackStatus")!.Text);
-        Assert.Equal(1, downloader.RequestCount);
-
-        // The retry cannot reuse the purged zip: it downloads again, and the
-        // second download (good bytes) installs cleanly.
-        window.FindControl<Button>("AudioPackActionButton")!
-            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-
-        WaitUntil(() => File.Exists(locations.AudioPackDatabasePath));
-        Assert.Equal(2, downloader.RequestCount);
-        // Purge proof: the destination did not exist when the retry started.
-        Assert.False(downloader.DestinationExisted[1]);
-        Assert.True(PackRowExists(locations.AudioPackDatabasePath, "cat"));
+        // The fault really fired: the download is still on disk, kept for
+        // the reuse path.
+        Assert.True(File.Exists(destination));
     }
 
     /// <summary>
-    /// The purge inside the corrupt-extraction catch is best-effort: a
+    /// The purge inside the checksum-mismatch recovery is best-effort: a
     /// transient Windows lock (antivirus, indexer) makes File.Delete throw,
     /// and one escaping this async void would kill the process. Fault
     /// injection: the ".part" path is made a DIRECTORY, so the purge's second
-    /// File.Delete throws on every platform (UnauthorizedAccessException) —
-    /// the flow must degrade to the plain extraction-failure text with the
-    /// real error (a "deleted" claim would be a lie) and still converge on
-    /// the next retry.
+    /// File.Delete throws on every platform — the flow must degrade to the
+    /// plain import-failure text with the real error (a "deleted" claim would
+    /// be a lie) and still converge on the next retry. The downloaded file
+    /// itself is purged before the ".part" throws, so the retry downloads
+    /// fresh instead of re-verifying the rejected bytes.
     /// </summary>
     [AvaloniaFact]
-    public void PurgeFailureDegradesToPlainExtractFailedTextAndFlowSurvives()
+    public void ChecksumPurgeFailureDegradesToPlainFailedTextAndFlowSurvives()
     {
         var locations = NewLocations(out var dictionaryPath, out _);
         using (var db = DictionaryDatabase.Create(dictionaryPath))
@@ -339,28 +310,28 @@ public class DownloadFlowTests
         var destination = Path.Combine(downloadDirectory, ReleaseAssets.AudioPackAsset);
         // The fault: a directory where the purge expects the ".part" file.
         Directory.CreateDirectory(destination + ".part");
-        var crcMismatch = MakeCrcMismatchZip(NewScratchDirectory());
-        var good = MakeAudioPackZip(NewScratchDirectory(), "pack.zip", "cat.mp3");
-        var crcMismatchBytes = File.ReadAllBytes(crcMismatch);
+        var corrupt = NewScratchDirectory();
+        File.WriteAllBytes(Path.Combine(corrupt, "garbage.db"), [0xDE, 0xAD, 0xBE, 0xEF]);
+        var good = MakeAudioPackDb(NewScratchDirectory());
+        var corruptBytes = File.ReadAllBytes(Path.Combine(corrupt, "garbage.db"));
         var downloader = new ScriptedDownloader(ReleaseAssets.AudioPackAsset,
-            callIndex => callIndex == 0 ? crcMismatchBytes : File.ReadAllBytes(good),
-            _ => null);
+            callIndex => callIndex == 0 ? corruptBytes : File.ReadAllBytes(good),
+            _ => HashFile(good));
         var window = new MainWindow(new DictionaryService(dictionaryPath, locations.HistoryDatabasePath),
             downloader: downloader, locations: locations, autoDownload: true,
             downloadDirectory: downloadDirectory);
         window.Show();
 
-        // Attempt 1: extraction dies on the CRC mismatch, the purge dies on
-        // the locked ".part" — the flow surfaces the REAL extraction error
-        // through the plain extraction-failure text and does not claim a
-        // deletion that did not happen.
+        // Attempt 1: the download verifies against the WRONG checksum — the
+        // purge dies on the locked ".part" after deleting the file itself —
+        // the flow surfaces the REAL error through the plain import-failure
+        // text and does not claim a deletion that did not happen.
         WaitUntil(() => window.FindControl<Button>("AudioPackActionButton")!.Content as string
             == Translations.Instance.Retry);
-        var crcError = string.Format(Translations.Instance.ZipCrcMismatchFormat, "uk/cat.mp3");
-        Assert.Equal(string.Format(Translations.Instance.AudioPackImportFailedFormat, crcError),
-            window.FindControl<TextBlock>("AudioPackStatus")!.Text);
-        Assert.NotEqual(Translations.Instance.ExtractCorruptPurged,
-            window.FindControl<TextBlock>("AudioPackStatus")!.Text);
+        var status = window.FindControl<TextBlock>("AudioPackStatus")!.Text!;
+        Assert.True(status.StartsWith(string.Format(Translations.Instance.AudioPackImportFailedFormat, "")),
+            $"unexpected status: {status}");
+        Assert.NotEqual(Translations.Instance.ExtractCorruptPurged, status);
         Assert.True(Directory.Exists(destination + ".part"));
 
         // The flow is alive: the next retry downloads again and installs.
@@ -406,50 +377,6 @@ public class DownloadFlowTests
             window.FindControl<TextBlock>("DictionaryDownloadStatus")!.Text);
         // The fault really fired: the zip is still on disk, kept for the
         // reuse path.
-        Assert.True(File.Exists(destination));
-    }
-
-    /// <summary>
-    /// B-009 scope extension (reviewer-confirmed adjacent bug, same root,
-    /// same fix): the audio pack flow's zip delete also ran before its
-    /// completion action — a transient lock on the just-written file (the
-    /// pack is ~10⁵ small files, so the delete is the most AV/indexer-exposed
-    /// moment) surfaced as "发音包解压失败" with Retry as the only way out,
-    /// and that retry is short-circuited by AudioPackInstalled() (uk/ already
-    /// exists), freezing the panel until restart. The completion action
-    /// (hiding the panel) lands first now; the delete is best-effort
-    /// cleanup. Same fault injection as the dictionary side.
-    /// </summary>
-    [AvaloniaFact]
-    public void AudioPackZipDeleteFailureStillCompletesInstall()
-    {
-        var locations = NewLocations(out var dictionaryPath, out _);
-        // The dictionary db exists, so the constructor starts the audio pack
-        // download directly and the dictionary flow never runs.
-        using (DictionaryDatabase.Create(dictionaryPath)) { }
-        var downloadDirectory = NewScratchDirectory();
-        var destination = Path.Combine(downloadDirectory, ReleaseAssets.AudioPackAsset);
-        var pack = MakeAudioPackZip(NewScratchDirectory(), "pack.zip", "cat.mp3");
-        var downloader = new UndeletableZipDownloader(pack, ReleaseAssets.AudioPackAsset);
-        var window = new MainWindow(new DictionaryService(dictionaryPath, locations.HistoryDatabasePath),
-            downloader: downloader, locations: locations, autoDownload: true,
-            downloadDirectory: downloadDirectory);
-        window.Show();
-
-        // The completion action landed despite the deletion fault: the panel
-        // went away and the pack is installed.
-        WaitUntil(() => !window.FindControl<Border>("AudioPackPanel")!.IsVisible);
-
-        Assert.True(File.Exists(locations.AudioPackDatabasePath));
-        // The last status write is the per-entry conversion progress (the
-        // two-entry pack reports its final (2, 2)) — never the
-        // import-failure text, never the Retry button: the misleading
-        // terminal state the unguarded delete used to produce.
-        Assert.Equal(string.Format(Translations.Instance.ConvertingFilesFormat, 2, 2),
-            window.FindControl<TextBlock>("AudioPackStatus")!.Text);
-        Assert.NotEqual(Translations.Instance.Retry,
-            window.FindControl<Button>("AudioPackActionButton")!.Content as string);
-        // The fault really fired: the zip is still on disk.
         Assert.True(File.Exists(destination));
     }
 
@@ -838,6 +765,15 @@ public class DownloadFlowTests
         return zipPath;
     }
 
+    /// <summary>Builds a small pack database through the real converter.</summary>
+    private static string MakeAudioPackDb(string directory, string entryName = "cat.mp3")
+    {
+        var zip = MakeAudioPackZip(directory, "pack.zip", entryName);
+        var db = Path.Combine(directory, "audio-pack.db");
+        AudioPackConverter.ConvertZipToDatabase(zip, db);
+        return db;
+    }
+
     /// <summary>
     /// A zip whose entry's deflate stream carries the reserved block type
     /// (BTYPE=11): decoding fails the moment extraction reaches the entry,
@@ -859,22 +795,6 @@ public class DownloadFlowTests
         var extraLength = raw[28] | (raw[29] << 8);
         raw[30 + nameLength + extraLength] |= 0x06;
         File.WriteAllBytes(zipPath, raw);
-        return zipPath;
-    }
-
-    /// <summary>
-    /// A well-formed zip whose entry paths escape the destination: extraction
-    /// fails without any byte damage — the keep-and-reuse family, since the
-    /// same file extracts fine once fixed in place.
-    /// </summary>
-    private static string MakeZipSlipZip(string directory)
-    {
-        var zipPath = Path.Combine(directory, "slip.zip");
-        using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
-        {
-            AddEntry(archive, "uk/cat.mp3", "x");
-            AddEntry(archive, "../evil.mp3", "evil");
-        }
         return zipPath;
     }
 

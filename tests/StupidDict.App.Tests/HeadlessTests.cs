@@ -1112,19 +1112,25 @@ public class HeadlessWindowTests
     }
 
     [AvaloniaFact]
-    public void AudioPackDownloadConvertsIntoDatabase()
+    public void AudioPackDownloadInstallsDatabaseDirectly()
     {
         var locations = NewLocations(out var dictionaryPath, out _, out _);
         using (var db = DictionaryDatabase.Create(dictionaryPath))
             db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫", "", 1775, 0, "");
 
-        var packDirectory = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Guid.NewGuid().ToString("N"), "pack");
+        // data-3 era: the published asset is a ready pack database, built
+        // here through the real converter.
+        var scratch = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(scratch);
+        var packDirectory = Path.Combine(scratch, "pack");
         Directory.CreateDirectory(Path.Combine(packDirectory, "uk"));
         File.WriteAllBytes(Path.Combine(packDirectory, "uk", "cat.mp3"), [0x49, 0x44, 0x33]);
-        var zipPath = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Path.GetFileName(Path.GetDirectoryName(packDirectory))!, "audio-pack.zip");
+        var zipPath = Path.Combine(scratch, "audio-pack.zip");
         System.IO.Compression.ZipFile.CreateFromDirectory(packDirectory, zipPath);
+        var packDb = Path.Combine(scratch, "audio-pack.db");
+        StupidDict.App.Assets.AudioPackConverter.ConvertZipToDatabase(zipPath, packDb);
 
-        var downloader = new StubDownloader(asset => asset == ReleaseAssets.AudioPackAsset ? zipPath : null);
+        var downloader = new StubDownloader(asset => asset == ReleaseAssets.AudioPackAsset ? packDb : null);
         using var service = new DictionaryService(dictionaryPath, locations.HistoryDatabasePath);
         var window = new MainWindow(service, downloader: downloader, locations: locations, autoDownload: true);
         window.Show();
@@ -1133,7 +1139,7 @@ public class HeadlessWindowTests
         Assert.Contains(ReleaseAssets.AudioPackAsset, downloader.Requests);
         WaitUntil(() => !window.FindControl<Border>("AudioPackPanel")!.IsVisible);
         Assert.True(File.Exists(locations.AudioPackDatabasePath));
-        Assert.False(Directory.Exists(Path.Combine(locations.AudioDirectory, "uk"))); // no loose layout anymore
+        Assert.False(Directory.Exists(Path.Combine(locations.AudioDirectory, "uk"))); // no loose layout
     }
 
     [AvaloniaFact]

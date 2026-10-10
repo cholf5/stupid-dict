@@ -956,28 +956,35 @@ public partial class MainWindow : Window
         var destination = Path.Combine(_downloadDirectory, ReleaseAssets.AudioPackAsset);
         try
         {
-            var zipPath = await DownloadAndVerifyAsync(ReleaseAssets.AudioPackAsset, destination,
+            await DownloadAndVerifyAsync(ReleaseAssets.AudioPackAsset, destination,
                 new Progress<DownloadProgress>(UpdateAudioPackProgress),
                 text => AudioPackStatus.Text = text,
                 Translations.Instance.AudioPackFailedFormat, cancellation);
-            AudioPackStatus.Text = Translations.Instance.Converting;
+            // data-3 ships the pack as a ready database; data-2-era zips
+            // (and any future zip asset) convert in place. ImportAudioPack
+            // dispatches on the extension — .db validates and lands, .zip
+            // converts with per-entry progress.
+            var database = destination.EndsWith(".db", StringComparison.OrdinalIgnoreCase);
+            AudioPackStatus.Text = database
+                ? Translations.Instance.Importing
+                : Translations.Instance.Converting;
             AudioPackBar.IsIndeterminate = true;
-            IProgress<(int Done, int Total)> convertProgress =
+            IProgress<(int Done, int Total)> importProgress =
                 new Progress<(int Done, int Total)>(p =>
                     UpdateAudioPackFileProgress(p, Translations.Instance.ConvertingFilesFormat));
             await Task.Run(
-                () => AudioPackConverter.ConvertZipToDatabase(zipPath, _locations.AudioPackDatabasePath,
-                    (done, total) => convertProgress.Report((done, total)), cancellation),
+                () => ImportAudioPack(destination, _locations.AudioPackDatabasePath,
+                    (done, total) => importProgress.Report((done, total)), cancellation),
                 cancellation);
             // Same shape as the dictionary flow (B-009): the completion
-            // action lands first, the zip delete comes last as pure cleanup —
-            // a transient lock on the just-written file (Windows antivirus,
-            // indexer) must not surface as "extraction failed" with Retry as
-            // the only way out (a retry AudioPackInstalled() would
+            // action lands first, the download delete comes last as pure
+            // cleanup — a transient lock on the just-written file (Windows
+            // antivirus, indexer) must not surface as "import failed" with
+            // Retry as the only way out (a retry AudioPackInstalled() would
             // short-circuit into a no-op, freezing this panel until restart).
             AudioPackPanel.IsVisible = false;
-            try { File.Delete(zipPath); }
-            catch { /* the zip stays behind for the reuse path */ }
+            try { File.Delete(destination); }
+            catch { /* the download stays behind for the reuse path */ }
         }
         catch (OperationCanceledException)
         {
