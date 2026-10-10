@@ -2,8 +2,8 @@
 # Release script: bump csproj <Version> -> commit -> tag vX.Y.Z -> push; CI
 # (.github/workflows/dotnet-desktop.yml) then tests, packages all platforms,
 # and creates the GitHub Release. App releases carry app packages only: the
-# big data assets (dictionary.zip / audio-pack.zip) live in their own pinned
-# prerelease (data-2, see ReleaseAssets.DataTag) and are published separately.
+# big data assets (dictionary.zip / audio-pack.db) live in their own pinned
+# prerelease (data-3, see ReleaseAssets.DataTag) and are published separately.
 #
 # Usage: scripts/release.sh <x.y.z> [--skip-test] [--watch]
 #   --skip-test  skip local dotnet test (CI still runs them; a failing test
@@ -145,7 +145,7 @@ done
 # Verify the platform builds are present. dictionary.zip / audio-pack.zip are
 # not part of app releases: the in-app first-run download pins to the data
 # prerelease below (keep in sync with ReleaseAssets.DataTag).
-DATA_TAG=data-2
+DATA_TAG=data-3
 # Distinguish "the view query itself failed" (network hiccup, gh not logged in)
 # from "assets really missing": a failed query used to surface as an empty
 # asset list and sent an actually-successful release off to a pointless Re-run.

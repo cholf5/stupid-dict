@@ -6,9 +6,11 @@ namespace StupidDict.App.Assets;
 
 /// <summary>
 /// Builds the single-file pronunciation pack database from an audio-pack zip
-/// (uk/us per-word MP3 entries — the data-2 asset and manual browser
-/// downloads). Used by the download flow after checksum verification and by
-/// manual zip imports. Entries stream into one transaction with a per-entry
+/// (uk/us per-word MP3 entries — the data-2 format, still accepted by manual
+/// imports and reproducible for future data builds). The published data
+/// asset itself is a prebuilt database since data-3. Reached from manual zip
+/// imports (and from the download flow, should a zip asset ever be pinned
+/// again). Entries stream into one transaction with a per-entry
 /// CRC check (ZipArchive does not verify while reading — B-008), and the
 /// database lands atomically: it is written to a staging file next to the
 /// target and moved into place only when complete, so a cancelled or damaged

@@ -8,9 +8,9 @@ using Xunit;
 namespace StupidDict.App.Tests;
 
 /// <summary>
-/// The audio pack ships as a zip (data-2 asset, manual browser download) and
-/// lives as a single SQLite database. The converter is the bridge — used by
-/// the download flow after checksum verification and by manual zip imports:
+/// The audio pack shipped as a zip through data-2 and still arrives that
+/// way via manual browser downloads of old releases; the converter turns it
+/// into a single SQLite database. It is used by manual zip imports:
 /// it validates the pack shape (uk/…/us/… MP3 entries), verifies each
 /// entry's CRC while streaming (ZipArchive does not; B-008), inserts into
 /// one transaction, and lands the database atomically (staging file + move),
