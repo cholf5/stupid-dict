@@ -130,6 +130,12 @@ public partial class MainWindow : Window
         };
         SearchBox.KeyDown += OnSearchBoxKeyDown;
         SearchBox.TextChanged += OnSearchTextChanged;
+        // Window regained key focus (switched back from another app, the
+        // settings dialog closed, a second launch activated us): the caret
+        // goes back to the search box with everything selected so the next
+        // keystroke starts a new query. Show() raises Activated once too,
+        // with the same net effect as the Opened focus below.
+        Activated += OnWindowActivated;
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         ActualThemeVariantChanged += OnActualThemeVariantChanged;
         // A language switch re-renders the result page just like a theme
@@ -256,6 +262,12 @@ public partial class MainWindow : Window
                 SearchBox.Focus();
                 break;
         }
+    }
+
+    private void OnWindowActivated(object? sender, EventArgs e)
+    {
+        SearchBox.Focus();
+        SearchBox.SelectAll();
     }
 
     private void OnClearSearchClick(object? sender, RoutedEventArgs e)
@@ -433,6 +445,9 @@ public partial class MainWindow : Window
                     HideSuggestions();
                     RunSearch(SearchBox.Text);
                 }
+                // The query is committed: select the whole term so the next
+                // keystroke starts a new word instead of splicing into the old one.
+                SearchBox.SelectAll();
                 break;
             case Key.Down when SuggestPanel.IsVisible && _suggestSelection < _suggestions.Count - 1:
                 e.Handled = true;

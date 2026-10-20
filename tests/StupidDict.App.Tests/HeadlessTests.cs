@@ -60,6 +60,50 @@ public class HeadlessWindowTests
     }
 
     [AvaloniaFact]
+    public void EnterQuerySelectsAllTextInTheSearchBox()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "ca";
+        WaitUntil(() => window.FindControl<Border>("SuggestPanel")!.IsVisible);
+
+        PressEnter(searchBox);
+        WaitUntil(() => window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+
+        // Enter commits the query with the whole term selected: the next
+        // keystroke starts a new word instead of splicing into the old one.
+        Assert.Equal("ca", searchBox.SelectedText);
+    }
+
+    [AvaloniaFact]
+    public void WindowRegainingActivationFocusesAndSelectsSearchBox()
+    {
+        using var service = CreateService();
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "hello";
+        // Programmatic text settles through the dispatcher queue in headless;
+        // pump once so the ✕/⚙ accessory swap has run before borrowing focus.
+        Dispatcher.UIThread.RunJobs();
+        // Take keyboard focus off the box the way another interaction would;
+        // the ✕ accessory is the button visible while the box has text.
+        window.FindControl<Button>("ClearSearchButton")!.Focus();
+        Assert.False(searchBox.IsFocused);
+
+        // Headless Activate() raises the Activated event through the
+        // dispatcher, same wiring the real window uses on app-switch back.
+        window.Activate();
+        WaitUntil(() => searchBox.IsFocused && searchBox.SelectedText == "hello");
+    }
+
+    [AvaloniaFact]
     public void WindowsCarryAppIconFromEmbeddedAssets()
     {
         // The avares prefix is the assembly name (StupidDict, not the project
@@ -357,6 +401,7 @@ public class HeadlessWindowTests
 
         // An explicit selection replaces the query; the first suggestion wins.
         Assert.Equal(firstSuggestion, searchBox.Text);
+        Assert.Equal(firstSuggestion, searchBox.SelectedText);
         Assert.False(window.FindControl<Border>("SuggestPanel")!.IsVisible);
     }
 
