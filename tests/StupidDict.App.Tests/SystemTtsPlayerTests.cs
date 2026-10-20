@@ -183,7 +183,7 @@ public sealed class SystemTtsPlayerTests
         Dictionary<string, string>? voices = null;
         for (var attempt = 0; attempt < 100 && voices is null; attempt++)
         {
-            await Task.Delay(100);
+            await Task.Delay(100, TestContext.Current.CancellationToken);
             voices = player.MacVoicesNow();
         }
 
@@ -205,7 +205,7 @@ public sealed class SystemTtsPlayerTests
         Dictionary<string, string>? voices = null;
         for (var attempt = 0; attempt < 50 && voices is null; attempt++)
         {
-            await Task.Delay(50);
+            await Task.Delay(50, TestContext.Current.CancellationToken);
             voices = player.MacVoicesNow();
         }
 

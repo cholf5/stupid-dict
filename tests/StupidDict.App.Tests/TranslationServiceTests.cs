@@ -30,7 +30,7 @@ public class TranslationServiceTests
         };
         using var service = new TranslationService(settings, cache, handler);
 
-        var first = await service.TranslateAsync("Hello world.", bypassCache: false, default);
+        var first = await service.TranslateAsync("Hello world.", bypassCache: false, TestContext.Current.CancellationToken);
 
         Assert.True(first.IsSuccess);
         Assert.Equal("你好，世界。", first.Text);
@@ -41,7 +41,7 @@ public class TranslationServiceTests
         Assert.Contains("gpt-4o-mini", requests[0].Body);
         Assert.Contains("<text>Hello world.</text>", requests[0].Body);
 
-        var second = await service.TranslateAsync("Hello world.", bypassCache: false, default);
+        var second = await service.TranslateAsync("Hello world.", bypassCache: false, TestContext.Current.CancellationToken);
         Assert.True(second.IsSuccess);
         Assert.True(second.FromCache);
         Assert.Single(requests);
@@ -61,7 +61,7 @@ public class TranslationServiceTests
             new FakeHandler(_ => Task.FromResult(
                 new HttpResponseMessage(HttpStatusCode.Unauthorized))));
 
-        var result = await service.TranslateAsync("Hello world.", false, default);
+        var result = await service.TranslateAsync("Hello world.", false, TestContext.Current.CancellationToken);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(TranslationFailureKind.Authentication, result.Failure);
@@ -89,7 +89,7 @@ public class TranslationServiceTests
             return Task.FromResult(response);
         }));
 
-        var result = await service.TranslateAsync("Hello world.", false, default);
+        var result = await service.TranslateAsync("Hello world.", false, TestContext.Current.CancellationToken);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(TranslationFailureKind.InvalidConfig, result.Failure);
@@ -116,7 +116,7 @@ public class TranslationServiceTests
         };
         using var service = new TranslationService(settings, cache, handler);
 
-        await service.TranslateAsync("Hello", false, default);
+        await service.TranslateAsync("Hello", false, TestContext.Current.CancellationToken);
 
         Assert.Null(auth); // Ollama 等本地端点允许空 key：不发 Authorization 头
     }
@@ -139,7 +139,7 @@ public class TranslationServiceTests
         };
         using var service = new TranslationService(settings, cache, handler);
 
-        await service.TranslateAsync("Hello", false, default);
+        await service.TranslateAsync("Hello", false, TestContext.Current.CancellationToken);
 
         Assert.StartsWith("stupiddict-desktop/", userAgent);
     }
@@ -157,7 +157,7 @@ public class TranslationServiceTests
             HttpStatusCode.OK,
             """{"choices":[{"message":{"content":[{"type":"text","text":"你"},{"type":"text","text":"好，世"},{"type":"text","text":"界。"}]}}]}"""))));
 
-        var result = await service.TranslateAsync("Hello world.", false, default);
+        var result = await service.TranslateAsync("Hello world.", false, TestContext.Current.CancellationToken);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("你好，世界。", result.Text);
@@ -175,7 +175,7 @@ public class TranslationServiceTests
         using var service = new TranslationService(settings, cache, new FakeHandler(_ => Task.FromResult(Json(
             HttpStatusCode.OK, """{"error":{"message":"insufficient quota"}}"""))));
 
-        var result = await service.TranslateAsync("Hello world.", false, default);
+        var result = await service.TranslateAsync("Hello world.", false, TestContext.Current.CancellationToken);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(TranslationFailureKind.InvalidResponse, result.Failure);
@@ -193,7 +193,7 @@ public class TranslationServiceTests
         using var service = new TranslationService(settings, cache, new FakeHandler(_ =>
             Task.FromCanceled<HttpResponseMessage>(new CancellationToken(canceled: true))));
 
-        var result = await service.TranslateAsync("Hello world.", false, default);
+        var result = await service.TranslateAsync("Hello world.", false, TestContext.Current.CancellationToken);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(TranslationFailureKind.Timeout, result.Failure);
@@ -220,10 +220,10 @@ public class TranslationServiceTests
         });
         service = new TranslationService(settings, cache, handlerOwner);
 
-        var first = await service.TranslateAsync("Hello world.", bypassCache: true, default);
+        var first = await service.TranslateAsync("Hello world.", bypassCache: true, TestContext.Current.CancellationToken);
         Assert.True(first.IsSuccess);
 
-        var second = await service.TranslateAsync("Hello world.", bypassCache: false, default);
+        var second = await service.TranslateAsync("Hello world.", bypassCache: false, TestContext.Current.CancellationToken);
         Assert.False(second.FromCache); // 写回被 generation 挡下 → 又发一次
     }
 
@@ -246,10 +246,10 @@ public class TranslationServiceTests
         };
         using var service = new TranslationService(settings, cache, handler);
 
-        await service.TranslateAsync("Hello world.", false, default);
+        await service.TranslateAsync("Hello world.", false, TestContext.Current.CancellationToken);
         Assert.Equal(1, requests);
         settings.TranslationModel = "gpt-4o"; // 换模型 → profile key 变 → miss
-        await service.TranslateAsync("Hello world.", false, default);
+        await service.TranslateAsync("Hello world.", false, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, requests);
     }

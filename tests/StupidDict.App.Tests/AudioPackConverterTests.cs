@@ -64,7 +64,7 @@ public sealed class AudioPackConverterTests
             ("uk/dog.mp3", [6]));
         var db = Path.Combine(scratch, "audio-pack.db");
 
-        AudioPackConverter.ConvertZipToDatabase(zip, db);
+        AudioPackConverter.ConvertZipToDatabase(zip, db, null, TestContext.Current.CancellationToken);
 
         var cat = ReadRow(db, "cat");
         Assert.Equal(1, cat.Rows);
@@ -80,7 +80,7 @@ public sealed class AudioPackConverterTests
         var zip = WritePackZip(scratch, ("uk/Cat.mp3", [1]));
         var db = Path.Combine(scratch, "audio-pack.db");
 
-        AudioPackConverter.ConvertZipToDatabase(zip, db);
+        AudioPackConverter.ConvertZipToDatabase(zip, db, null, TestContext.Current.CancellationToken);
 
         Assert.Equal(0, ReadRow(db, "Cat").Rows); // 键即小写（查找端 ToLowerInvariant）
         var row = ReadRow(db, "cat");
@@ -100,7 +100,7 @@ public sealed class AudioPackConverterTests
             ("uk/cat.mp3", [1, 1]));
         var db = Path.Combine(scratch, "audio-pack.db");
 
-        AudioPackConverter.ConvertZipToDatabase(zip, db);
+        AudioPackConverter.ConvertZipToDatabase(zip, db, null, TestContext.Current.CancellationToken);
 
         using var connection = new SqliteConnection($"Data Source={db}");
         connection.Open();
@@ -117,7 +117,7 @@ public sealed class AudioPackConverterTests
         var db = Path.Combine(scratch, "audio-pack.db");
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
-            AudioPackConverter.ConvertZipToDatabase(zip, db));
+            AudioPackConverter.ConvertZipToDatabase(zip, db, null, TestContext.Current.CancellationToken));
 
         Assert.Equal(Translations.Instance.ImportMissingPack, ex.Message);
         Assert.False(File.Exists(db));
@@ -131,7 +131,7 @@ public sealed class AudioPackConverterTests
         var db = Path.Combine(scratch, "audio-pack.db");
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
-            AudioPackConverter.ConvertZipToDatabase(zip, db));
+            AudioPackConverter.ConvertZipToDatabase(zip, db, null, TestContext.Current.CancellationToken));
 
         // Names become text keys in a conversion, but a zip that tries to
         // traverse is hostile and must not install — same verdict the old
@@ -150,7 +150,7 @@ public sealed class AudioPackConverterTests
         var db = Path.Combine(scratch, "audio-pack.db");
         var reports = new List<(int Done, int Total)>();
 
-        AudioPackConverter.ConvertZipToDatabase(zip, db, (done, total) => reports.Add((done, total)));
+        AudioPackConverter.ConvertZipToDatabase(zip, db, (done, total) => reports.Add((done, total)), TestContext.Current.CancellationToken);
 
         Assert.Equal((3, 3), reports[^1]);
         Assert.Equal(0, reports[0].Done);
@@ -178,7 +178,7 @@ public sealed class AudioPackConverterTests
         var db = Path.Combine(scratch, "audio-pack.db");
 
         Assert.Throws<InvalidDataException>(() =>
-            AudioPackConverter.ConvertZipToDatabase(zip, db));
+            AudioPackConverter.ConvertZipToDatabase(zip, db, null, TestContext.Current.CancellationToken));
 
         Assert.False(File.Exists(db));
         Assert.False(File.Exists(db + ".building"));
@@ -208,7 +208,7 @@ public sealed class AudioPackConverterTests
         var zip = WritePackZip(scratch, ("uk/cat.mp3", [1]));
         var db = Path.Combine(scratch, "audio-pack.db");
 
-        AudioPackConverter.ConvertZipToDatabase(zip, db);
+        AudioPackConverter.ConvertZipToDatabase(zip, db, null, TestContext.Current.CancellationToken);
 
         // Deliberately the 4KB default: with this pack's uneven blob sizes,
         // every alternative measured WORSE on real data (4KB 715MB, 8KB
@@ -228,10 +228,10 @@ public sealed class AudioPackConverterTests
         var scratch = NewScratchDirectory();
         var db = Path.Combine(scratch, "audio-pack.db");
         AudioPackConverter.ConvertZipToDatabase(
-            WritePackZip(scratch, ("uk/old.mp3", [9])), db);
+            WritePackZip(scratch, ("uk/old.mp3", [9])), db, null, TestContext.Current.CancellationToken);
 
         AudioPackConverter.ConvertZipToDatabase(
-            WritePackZip(scratch, ("uk/new.mp3", [8])), db);
+            WritePackZip(scratch, ("uk/new.mp3", [8])), db, null, TestContext.Current.CancellationToken);
 
         Assert.Equal(0, ReadRow(db, "old").Rows);
         Assert.Equal([8], ReadRow(db, "new").Uk);

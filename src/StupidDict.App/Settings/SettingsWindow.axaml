@@ -69,7 +69,7 @@
           <TextBlock Grid.Row="0" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
                      Text="{Binding TranslationApiUrlLabel, Source={x:Static loc:Translations.Instance}}" />
           <TextBox Name="TranslationApiUrlBox" Grid.Row="0" Grid.Column="1"
-                   Watermark="{Binding TranslationApiUrlPlaceholder, Source={x:Static loc:Translations.Instance}}" />
+                   PlaceholderText="{Binding TranslationApiUrlPlaceholder, Source={x:Static loc:Translations.Instance}}" />
 
           <TextBlock Grid.Row="1" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
                      Text="{Binding TranslationApiKeyLabel, Source={x:Static loc:Translations.Instance}}" />
@@ -78,7 +78,7 @@
           <TextBlock Grid.Row="2" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
                      Text="{Binding TranslationModelLabel, Source={x:Static loc:Translations.Instance}}" />
           <TextBox Name="TranslationModelBox" Grid.Row="2" Grid.Column="1"
-                   Watermark="{Binding TranslationModelPlaceholder, Source={x:Static loc:Translations.Instance}}" />
+                   PlaceholderText="{Binding TranslationModelPlaceholder, Source={x:Static loc:Translations.Instance}}" />
         </Grid>
         <TextBlock Classes="hint" TextWrapping="Wrap"
                    Text="{Binding TranslationEndpointHint, Source={x:Static loc:Translations.Instance}}" />

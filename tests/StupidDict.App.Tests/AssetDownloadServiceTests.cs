@@ -90,7 +90,7 @@ public class AssetDownloadServiceTests
     {
         var directory = NewScratchDirectory();
         var destination = Path.Combine(directory, "dictionary.zip");
-        await File.WriteAllBytesAsync(destination + ".part", [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]);
+        await File.WriteAllBytesAsync(destination + ".part", [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88], TestContext.Current.CancellationToken);
         var fresh = Enumerable.Range(0, 100).Select(i => (byte)i).ToArray();
         var handler = new ScriptedHttpHandler((range, index) =>
         {
@@ -128,7 +128,7 @@ public class AssetDownloadServiceTests
         var directory = NewScratchDirectory();
         var destination = Path.Combine(directory, "dictionary.zip");
         var partBytes = new byte[] { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88 };
-        await File.WriteAllBytesAsync(destination + ".part", partBytes);
+        await File.WriteAllBytesAsync(destination + ".part", partBytes, TestContext.Current.CancellationToken);
         var tail = Enumerable.Range(0, 100).Select(i => (byte)(0x80 + i)).ToArray();
         var handler = new ScriptedHttpHandler((range, _) =>
         {
@@ -155,7 +155,7 @@ public class AssetDownloadServiceTests
     {
         var directory = NewScratchDirectory();
         var destination = Path.Combine(directory, "dictionary.zip");
-        await File.WriteAllBytesAsync(destination + ".part", [0x11, 0x22, 0x33]);
+        await File.WriteAllBytesAsync(destination + ".part", [0x11, 0x22, 0x33], TestContext.Current.CancellationToken);
         var full = Enumerable.Range(0, 50).Select(i => (byte)i).ToArray();
         var handler = new ScriptedHttpHandler((range, _) =>
         {
@@ -181,7 +181,7 @@ public class AssetDownloadServiceTests
     {
         var directory = NewScratchDirectory();
         var destination = Path.Combine(directory, "dictionary.zip");
-        await File.WriteAllBytesAsync(destination + ".part", [0x11, 0x22, 0x33]);
+        await File.WriteAllBytesAsync(destination + ".part", [0x11, 0x22, 0x33], TestContext.Current.CancellationToken);
         var handler = new ScriptedHttpHandler((_, _) =>
             Respond(HttpStatusCode.RequestedRangeNotSatisfiable, Array.Empty<byte>()));
         var service = new AssetDownloadService(() => handler, bodyIdleTimeout: TimeSpan.FromSeconds(10));

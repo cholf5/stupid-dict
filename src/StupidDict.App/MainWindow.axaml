@@ -38,7 +38,7 @@
             CornerRadius="10" Background="{DynamicResource CardBackground}"
             BorderBrush="{DynamicResource CardBorder}" BorderThickness="1">
       <TextBox Name="SearchBox"
-               Watermark="{Binding SearchWatermark, Source={x:Static loc:Translations.Instance}}">
+               PlaceholderText="{Binding SearchWatermark, Source={x:Static loc:Translations.Instance}}">
         <TextBox.InnerLeftContent>
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0" Spacing="1">
             <!-- Vector icons (Material Icons, Apache-2.0): text glyphs carry

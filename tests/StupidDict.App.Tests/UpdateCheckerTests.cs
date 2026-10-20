@@ -89,7 +89,7 @@ public class UpdateCheckerTests
             return RedirectResponse(LatestReleaseUrl);
         }), currentVersion: "v1.0.0");
 
-        var result = await checker.CheckAsync();
+        var result = await checker.CheckAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(new Uri(UpdateChecker.LatestReleaseUrl), requested);
         // The User-Agent lowers the chance of GitHub's anti-abuse interception.
@@ -105,7 +105,7 @@ public class UpdateCheckerTests
             Headers = { Location = new Uri("/cholf5/stupid-dict/releases/tag/v1.2.3", UriKind.Relative) },
         }), currentVersion: "v1.0.0");
 
-        var result = await checker.CheckAsync();
+        var result = await checker.CheckAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(UpdateCheckOutcome.UpdateAvailable, result.Outcome);
         Assert.Equal(LatestReleaseUrl, result.ReleaseUrl);
@@ -117,7 +117,7 @@ public class UpdateCheckerTests
         var checker = new UpdateChecker(
             new FakeHandler(_ => throw new HttpRequestException("offline")), currentVersion: "v1.0.0");
 
-        var result = await checker.CheckAsync();
+        var result = await checker.CheckAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(UpdateCheckOutcome.Failed, result.Outcome);
         Assert.Equal("offline", result.Error);
@@ -130,7 +130,7 @@ public class UpdateCheckerTests
         var checker = new UpdateChecker(
             new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.Forbidden)), currentVersion: "v1.0.0");
 
-        var result = await checker.CheckAsync();
+        var result = await checker.CheckAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(UpdateCheckOutcome.Failed, result.Outcome);
         Assert.Equal("HTTP 403", result.Error);
@@ -143,7 +143,7 @@ public class UpdateCheckerTests
         var checker = new UpdateChecker(
             new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)), currentVersion: "v1.0.0");
 
-        var result = await checker.CheckAsync();
+        var result = await checker.CheckAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(UpdateCheckOutcome.Failed, result.Outcome);
         Assert.Equal(UpdateCheckErrorKind.InvalidResponse, result.ErrorKind);

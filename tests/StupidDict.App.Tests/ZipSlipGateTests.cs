@@ -56,7 +56,7 @@ public class ZipSlipGateTests
 
         var reports = new List<(int Done, int Total)>();
         var db = Path.Combine(scratch, "audio-pack.db");
-        MainWindow.ImportAudioPack(zipPath, db, (done, total) => reports.Add((done, total)));
+        MainWindow.ImportAudioPack(zipPath, db, (done, total) => reports.Add((done, total)), TestContext.Current.CancellationToken);
 
         Assert.True(File.Exists(db));
         Assert.False(File.Exists(db + ".building")); // landed atomically, no staging left

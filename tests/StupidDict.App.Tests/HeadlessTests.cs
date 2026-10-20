@@ -1842,7 +1842,8 @@ public class HeadlessWindowTests
 
     private static void SaveScreenshot(Window window, string fileName)
     {
-        window.CaptureRenderedFrame()?.Save(Path.Combine(Path.GetTempPath(), fileName));
+        window.CaptureRenderedFrame()?.Save(Path.Combine(Path.GetTempPath(), fileName),
+            new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
     }
 }
 
