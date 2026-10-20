@@ -60,6 +60,53 @@
       </StackPanel>
     </TabItem>
 
+    <TabItem Header="{Binding SectionTranslation, Source={x:Static loc:Translations.Instance}}">
+      <StackPanel Margin="16,14" Spacing="12">
+        <!-- 翻译（BYO OpenAI 兼容 API）：draft 字段由 code-behind 加载/保存，
+             不直接绑共享 AppSettings——WireSettings 是属性变更即落盘，直绑会
+             每敲一个字符写一次 key。密钥掩码显示；保存时归一化并校验 URL。 -->
+        <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+          <TextBlock Grid.Row="0" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
+                     Text="{Binding TranslationApiUrlLabel, Source={x:Static loc:Translations.Instance}}" />
+          <TextBox Name="TranslationApiUrlBox" Grid.Row="0" Grid.Column="1"
+                   Watermark="{Binding TranslationApiUrlPlaceholder, Source={x:Static loc:Translations.Instance}}" />
+
+          <TextBlock Grid.Row="1" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
+                     Text="{Binding TranslationApiKeyLabel, Source={x:Static loc:Translations.Instance}}" />
+          <TextBox Name="TranslationApiKeyBox" Grid.Row="1" Grid.Column="1" />
+
+          <TextBlock Grid.Row="2" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
+                     Text="{Binding TranslationModelLabel, Source={x:Static loc:Translations.Instance}}" />
+          <TextBox Name="TranslationModelBox" Grid.Row="2" Grid.Column="1"
+                   Watermark="{Binding TranslationModelPlaceholder, Source={x:Static loc:Translations.Instance}}" />
+        </Grid>
+        <TextBlock Classes="hint" TextWrapping="Wrap"
+                   Text="{Binding TranslationEndpointHint, Source={x:Static loc:Translations.Instance}}" />
+        <CheckBox Name="TranslationAutoCheckBox"
+                  Content="{Binding TranslationAutoLabel, Source={x:Static loc:Translations.Instance}}" />
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <Button Name="TranslationSaveButton" Classes="chip"
+                  Content="{Binding TranslationSave, Source={x:Static loc:Translations.Instance}}"
+                  Click="OnTranslationSaveClick" />
+          <Button Name="TranslationTestButton" Classes="chip"
+                  Content="{Binding TranslationTest, Source={x:Static loc:Translations.Instance}}"
+                  Click="OnTranslationTestClick" />
+        </StackPanel>
+        <TextBlock Name="TranslationStatusText" TextWrapping="Wrap" Classes="hint" />
+        <TextBlock TextWrapping="Wrap" Classes="hint"
+                   Text="{Binding TranslationPrivacy, Source={x:Static loc:Translations.Instance}}" />
+        <TextBlock TextWrapping="Wrap" Classes="hint"
+                   Text="{Binding TranslationExamples, Source={x:Static loc:Translations.Instance}}" />
+        <Separator />
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <TextBlock Name="TranslationCacheSizeText" VerticalAlignment="Center" Classes="hint" />
+          <Button Name="TranslationClearCacheButton" Classes="chip"
+                  Content="{Binding TranslationClearCache, Source={x:Static loc:Translations.Instance}}"
+                  Click="OnTranslationClearCacheClick" />
+        </StackPanel>
+      </StackPanel>
+    </TabItem>
+
     <TabItem Header="{Binding SectionShortcuts, Source={x:Static loc:Translations.Instance}}">
       <StackPanel Margin="16,14" Spacing="14">
         <!-- 只读参考列表：左列键帽、右列动作；键名语言无关，带修饰键的键帽随平台（macOS ⌘、其余 Ctrl） -->

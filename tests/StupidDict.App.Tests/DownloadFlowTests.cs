@@ -665,7 +665,8 @@ public class DownloadFlowTests
         dictionaryPath = Path.Combine(directory, "dictionary.db");
         historyPath = Path.Combine(directory, "history.db");
         return new AppLocations(directory, dictionaryPath, historyPath, Path.Combine(directory, "audio"),
-            Path.Combine(directory, "audio-pack.db"));
+            Path.Combine(directory, "audio-pack.db"),
+            Path.Combine(directory, "translation-cache.db"));
     }
 
     private static void AddEntry(ZipArchive archive, string name, string content)

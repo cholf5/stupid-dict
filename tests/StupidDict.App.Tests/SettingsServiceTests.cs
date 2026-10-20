@@ -1,3 +1,4 @@
+using Avalonia.Headless.XUnit;
 using StupidDict.App.Settings;
 using Xunit;
 
@@ -119,6 +120,19 @@ public class SettingsServiceTests
     }
 
     [Fact]
+    public void SavedSettingsFileIsUserReadWriteOnlyOnUnix()
+    {
+        // 设计（密钥存储）：settings.json 含明文 API key，Unix 侧 best-effort
+        // 0600；Windows 依赖用户 profile ACL，本断言只在 Unix 有意义。
+        if (OperatingSystem.IsWindows()) return;
+
+        var path = NewPath();
+        SettingsService.Save(new AppSettings { TranslationApiKey = "secret" }, path);
+
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+    }
+
+    [Fact]
     public void RoundTripsWindowBounds()
     {
         var path = NewPath();
@@ -163,6 +177,51 @@ public class SettingsServiceTests
         SettingsService.Save(new AppSettings { Theme = AppTheme.Dark }, path);
 
         Assert.False(File.Exists(path));
+    }
+
+    [Fact]
+    public void TranslationSettingsRoundTripAndDefaults()
+    {
+        var path = NewPath();
+        var settings = new AppSettings
+        {
+            TranslationApiUrl = "http://localhost:11434/v1",
+            TranslationApiKey = "secret",
+            TranslationModel = "qwen2.5:7b",
+            TranslationAutoOnMiss = false,
+        };
+        SettingsService.Save(settings, path);
+        var loaded = SettingsService.Load(path);
+
+        Assert.Equal("http://localhost:11434/v1", loaded.TranslationApiUrl);
+        Assert.Equal("secret", loaded.TranslationApiKey);
+        Assert.Equal("qwen2.5:7b", loaded.TranslationModel);
+        Assert.False(loaded.TranslationAutoOnMiss);
+        Assert.True(new AppSettings().TranslationAutoOnMiss);
+    }
+
+    [AvaloniaFact]
+    public void TranslationPropertyChangePersists()
+    {
+        // WireSettings persists only the property names it knows: the switch's
+        // default returns without saving. The translation fields must be in
+        // the saved set or the settings window's save button silently does
+        // nothing on disk. AvaloniaFact: WireSettings opens by applying the
+        // theme, which needs the headless application.
+        var path = NewPath();
+        var settings = new AppSettings();
+        App.WireSettings(settings, path);
+
+        settings.TranslationApiUrl = "http://localhost:11434/v1";
+        settings.TranslationApiKey = "secret";
+        settings.TranslationModel = "qwen2.5:7b";
+        settings.TranslationAutoOnMiss = false;
+
+        var loaded = SettingsService.Load(path);
+        Assert.Equal("http://localhost:11434/v1", loaded.TranslationApiUrl);
+        Assert.Equal("secret", loaded.TranslationApiKey);
+        Assert.Equal("qwen2.5:7b", loaded.TranslationModel);
+        Assert.False(loaded.TranslationAutoOnMiss);
     }
 
     private static string NewPath()

@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using StupidDict.App.Assets;
 using StupidDict.App.Localization;
+using StupidDict.App.Translation;
 using System.ComponentModel;
 using System.Diagnostics;
 
@@ -10,10 +11,15 @@ namespace StupidDict.App.Settings;
 
 public partial class SettingsWindow : Window
 {
+    /// <summary>翻译页签位置：通用之后、快捷键之前（MainWindow 错误卡直达用）。</summary>
+    internal const int TranslationTabIndex = 1;
+
     private readonly AppSettings _settings;
     private readonly UpdateChecker? _updateChecker;
     private readonly AppLocations _locations;
     private readonly Action<string> _openDataDirectory;
+    private readonly Func<ITranslationService>? _translationServiceFactory;
+    private ITranslationService? _translationService;
 
     // 选项实例一次创建、跨语言复用，顺序与枚举下标一一对应；ItemsSource 全程不换
     // （重建会异步清空选区并把旧选中项经双向绑定推回），切语言只更新 Label
@@ -33,7 +39,8 @@ public partial class SettingsWindow : Window
     public SettingsWindow() : this(new AppSettings()) { }
 
     public SettingsWindow(AppSettings settings, UpdateChecker? updateChecker = null,
-        AppLocations? locations = null, Action<string>? openDataDirectory = null)
+        AppLocations? locations = null, Action<string>? openDataDirectory = null,
+        Func<ITranslationService>? translationServiceFactory = null, int initialTabIndex = 0)
     {
         InitializeComponent();
         _settings = settings;
@@ -41,6 +48,7 @@ public partial class SettingsWindow : Window
         // 数据区块对注入的布局对磁盘求值；测试注入临时副本，绝不碰真实数据。
         _locations = locations ?? AppLocations.Default;
         _openDataDirectory = openDataDirectory ?? OpenDirectoryInFileManager;
+        _translationServiceFactory = translationServiceFactory;
         var t = Translations.Instance;
         _themeOptions = [new(t.FollowSystem), new(t.ThemeLight), new(t.ThemeDark)];
         _languageOptions = [new(t.FollowSystem), new(t.LangChinese), new(t.LangEnglish)];
@@ -53,6 +61,14 @@ public partial class SettingsWindow : Window
         Translations.Instance.PropertyChanged += OnTranslationsPropertyChanged;
         DataDownloadPageButton.Tag = ReleaseAssets.DataReleasePageUrl;
         RefreshDataStatus();
+        // 翻译页签是 draft：加载已保存值，点保存才写回共享 AppSettings（那里
+        // 属性变更即落盘），避免每敲一个字符持久化一次密钥。
+        LoadTranslationDraft();
+        TranslationApiKeyBox.PasswordChar = '●';
+        RefreshTranslationCacheSize();
+        // 错误卡直达：打开时落在翻译页签（OnOpened 的聚焦随之切到地址框）。
+        if (initialTabIndex >= 0 && initialTabIndex < SettingsTabs.ItemCount)
+            SettingsTabs.SelectedIndex = initialTabIndex;
     }
 
     protected override void OnOpened(EventArgs e)
@@ -62,7 +78,10 @@ public partial class SettingsWindow : Window
         // Focusable=false，打开后全局 FocusedElement 仍停留在主窗口搜索框，
         // Esc / ⌘, 会被路由回主窗口（模态下它已禁用）。照 inpaint
         // ConfirmWindow 的做法在 OnOpened 里显式聚焦（首个可聚焦控件）。
-        ThemeComboBox.Focus();
+        if (SettingsTabs.SelectedIndex == TranslationTabIndex)
+            TranslationApiUrlBox.Focus();
+        else
+            ThemeComboBox.Focus();
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -106,6 +125,9 @@ public partial class SettingsWindow : Window
         _languageOptions[2].Label = t.LangEnglish;
         // 安装状态是稳定事实而非瞬态进度，跟随语言一起重算刷新。
         RefreshDataStatus();
+        // 缓存大小同属稳定事实，跟随语言刷新；TranslationStatusText 是瞬态，
+        // 保持出现时的语言。
+        RefreshTranslationCacheSize();
     }
 
     private void OnThemeSelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -118,6 +140,99 @@ public partial class SettingsWindow : Window
     {
         if (LanguageComboBox.SelectedIndex is { } index && index >= 0)
             _settings.Language = (AppLanguage)index;
+    }
+
+    // ---- 翻译页签：draft 加载/保存 + 测试连接 + 缓存 ----
+
+    private void LoadTranslationDraft()
+    {
+        TranslationApiUrlBox.Text = _settings.TranslationApiUrl;
+        TranslationApiKeyBox.Text = _settings.TranslationApiKey;
+        TranslationModelBox.Text = _settings.TranslationModel;
+        TranslationAutoCheckBox.IsChecked = _settings.TranslationAutoOnMiss;
+    }
+
+    private ITranslationService? TranslationService =>
+        _translationService ??= _translationServiceFactory?.Invoke();
+
+    private void OnTranslationSaveClick(object? sender, RoutedEventArgs e)
+    {
+        var url = TranslationApiUrlBox.Text?.Trim() ?? "";
+        var model = TranslationModelBox.Text?.Trim() ?? "";
+        if (url.Length == 0 || model.Length == 0)
+        {
+            TranslationStatusText.Text = Translations.Instance.TranslationUrlAndModelRequired;
+            return;
+        }
+        if (!TranslationEndpoint.TryCreate(url, out var endpoint, out _))
+        {
+            TranslationStatusText.Text = Translations.Instance.TranslationInvalidUrl;
+            return;
+        }
+
+        // 设计文档：保存时归一化——存 base（scheme://host/path），完整
+        // /chat/completions 端点剥回 base，请求时再拼回。
+        _settings.TranslationApiUrl = endpoint!.BaseUri.ToString();
+        _settings.TranslationApiKey = TranslationApiKeyBox.Text ?? "";
+        _settings.TranslationModel = model;
+        _settings.TranslationAutoOnMiss = TranslationAutoCheckBox.IsChecked == true;
+        TranslationService?.ResetCircuit();
+        TranslationStatusText.Text = Translations.Instance.TranslationSaved;
+        RefreshTranslationCacheSize();
+    }
+
+    private async void OnTranslationTestClick(object? sender, RoutedEventArgs e)
+    {
+        var service = TranslationService;
+        if (service is null) return;
+
+        // 用 draft 值测试，不要求先保存；测试连接发固定 "Hello"，不带用户内容。
+        var config = new TranslationConfig(
+            TranslationApiUrlBox.Text?.Trim() ?? "",
+            TranslationApiKeyBox.Text ?? "",
+            TranslationModelBox.Text?.Trim() ?? "",
+            TranslationAutoCheckBox.IsChecked == true);
+        TranslationTestButton.IsEnabled = false;
+        TranslationStatusText.Text = Translations.Instance.TranslationTesting;
+        try
+        {
+            var result = await service.TestAsync(config, CancellationToken.None);
+            TranslationStatusText.Text = result.Success
+                ? Translations.Instance.TranslationTestSucceeded
+                : string.Format(Translations.Instance.TranslationTestFailedFormat, result.Failure);
+        }
+        catch (Exception ex)
+        {
+            // async void 点击回调绝不外抛；TestAsync 已把 HTTP/网络失败折进
+            // 结果，这里只兜非网络异常。
+            TranslationStatusText.Text =
+                string.Format(Translations.Instance.TranslationTestFailedFormat, ex.Message);
+        }
+        finally
+        {
+            TranslationTestButton.IsEnabled = true;
+        }
+    }
+
+    private void OnTranslationClearCacheClick(object? sender, RoutedEventArgs e)
+    {
+        TranslationService?.ClearCache();
+        RefreshTranslationCacheSize();
+        TranslationStatusText.Text = Translations.Instance.TranslationCacheCleared;
+    }
+
+    private void RefreshTranslationCacheSize()
+    {
+        // 缓存大小是纯展示：绝不能为了取数把服务/缓存文件创建出来——未配置
+        // 的应用不碰用户数据目录（README/AGENTS 承诺）。服务没建过时读磁盘
+        // 文件长度：未配置即文件不存在 → 0；配置过但本会话还没动过翻译时，
+        // 文件长度就是如实的占用。
+        var bytes = _translationService?.GetCacheSizeBytes()
+            ?? (File.Exists(_locations.TranslationCacheDatabasePath)
+                ? new FileInfo(_locations.TranslationCacheDatabasePath).Length
+                : 0);
+        TranslationCacheSizeText.Text =
+            string.Format(Translations.Instance.TranslationCacheFormat, bytes / 1024.0 / 1024.0);
     }
 
     // ---- 关于页数据区块：词典/发音包安装状态 + 打开数据目录 ----

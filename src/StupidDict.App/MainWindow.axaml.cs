@@ -13,6 +13,7 @@ using StupidDict.App.Assets;
 using StupidDict.App.Localization;
 using StupidDict.App.Settings;
 using StupidDict.App.Speech;
+using StupidDict.App.Translation;
 using StupidDict.Core.Application;
 using StupidDict.Core.Dictionary;
 using StupidDict.Core.History;
@@ -96,7 +97,8 @@ public partial class MainWindow : Window
 
     public MainWindow(DictionaryService service, ISpeechPlayer? speechPlayer = null,
         IAssetDownloader? downloader = null, AppLocations? locations = null, bool autoDownload = true,
-        AppSettings? settings = null, string? downloadDirectory = null)
+        AppSettings? settings = null, string? downloadDirectory = null,
+        ITranslationService? translationService = null)
     {
         InitializeComponent();
         _service = service;
@@ -108,6 +110,7 @@ public partial class MainWindow : Window
         _downloader = downloader ?? new AssetDownloadService();
         _downloadDirectory = downloadDirectory ?? Path.Combine(Path.GetTempPath(), "stupiddict-downloads");
         _dictionaryAvailable = File.Exists(service.DictionaryPath);
+        InitializeTranslation(translationService);
 
         // Restore the size recorded at last close (XAML defaults otherwise);
         // the maximized flag rides along. WindowState is a styled property,
@@ -473,6 +476,7 @@ public partial class MainWindow : Window
             return; // the download panel owns the screen until the dictionary lands
 
         var generation = ++_searchGeneration;
+        BeginTranslationQuery(query);
         LookupResult result;
         try
         {
@@ -486,10 +490,12 @@ public partial class MainWindow : Window
         }
         if (generation != _searchGeneration) return;
 
+        PrepareTranslationForResult(result, allowAuto: true);
         RenderResult(result);
         _navigator.Push(result);
         UpdateNavButtons();
         RefreshRecents();
+        StartPreparedTranslation();
     }
 
     private void OnSettingsClick(object? sender, RoutedEventArgs e) => OpenSettings();
@@ -498,8 +504,22 @@ public partial class MainWindow : Window
     /// Single-instance modal dialog. While it is open the main window is
     /// disabled, so the ⌘, "toggle" closes from the settings side (its own
     /// key handler): here it only ever opens, and the re-open guard just
-    /// focuses the existing dialog.
+    /// focuses the existing dialog. <paramref name="initialTabIndex"/> lands
+    /// on the translation tab when opened from a translation error card.
     /// </summary>
+    internal void OpenSettings(int initialTabIndex)
+    {
+        if (_settingsWindow is { } open)
+        {
+            open.Activate();
+            return;
+        }
+        _settingsWindow = new SettingsWindow(_settings, locations: _locations,
+            translationServiceFactory: EnsureTranslationService, initialTabIndex: initialTabIndex);
+        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _ = ShowSettingsDialogAsync(_settingsWindow, this);
+    }
+
     private void OpenSettings()
     {
         if (_settingsWindow is { } open)
@@ -507,7 +527,8 @@ public partial class MainWindow : Window
             open.Activate();
             return;
         }
-        _settingsWindow = new SettingsWindow(_settings, locations: _locations);
+        _settingsWindow = new SettingsWindow(_settings, locations: _locations,
+            translationServiceFactory: EnsureTranslationService);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _ = ShowSettingsDialogAsync(_settingsWindow, this);
     }
@@ -607,6 +628,7 @@ public partial class MainWindow : Window
         // the search box showing the navigated word over a different page.
         // Same contract ShowEmptyState already follows.
         _searchGeneration++;
+        PrepareTranslationForNavigation(result);
         RenderResult(result);
         ShowQueryInSearchBox(result.Query);
         UpdateNavButtons();
@@ -630,6 +652,7 @@ public partial class MainWindow : Window
     private void ShowEmptyState()
     {
         _searchGeneration++;
+        CancelTranslation();
         HintPanel.IsVisible = _dictionaryAvailable;
         DictionaryDownloadPanel.IsVisible = !_dictionaryAvailable;
         ResultsPanel.IsVisible = false;
@@ -1353,6 +1376,9 @@ public partial class MainWindow : Window
         ResultsPanel.Children.Clear();
         _rebuildResults = () => RenderResult(result);
 
+        // 翻译卡先于词条渲染：句子未命中时它是主内容；词条命中时
+        // _translationUi 为 None，这里什么都不加。
+        RenderTranslationSection(result);
         if (result.IsChineseQuery)
             RenderChineseResult(result);
         else
@@ -1364,14 +1390,19 @@ public partial class MainWindow : Window
     {
         if (result.Primary is not { } entry)
         {
-            ResultsPanel.Children.Add(Text(string.Format(Translations.Instance.NoResultFormat, result.Query),
-                20, FontWeight.SemiBold, Palette.TextTitle, margin: new Thickness(2, 8, 0, 0)));
+            // 句子未命中时翻译卡是主内容，"没有找到"/TryShorter 降为不渲染；
+            // 单词未命中保留原样（设计文档 UI 约定），翻译按钮只是加进来。
+            var translationOwnsThePage = _translationUi.Kind != TranslationUiKind.None
+                && TranslationText.LooksLikeSentence(result.Query);
+            if (!translationOwnsThePage)
+                ResultsPanel.Children.Add(Text(string.Format(Translations.Instance.NoResultFormat, result.Query),
+                    20, FontWeight.SemiBold, Palette.TextTitle, margin: new Thickness(2, 8, 0, 0)));
             if (result.WordSuggestions.Count > 0)
             {
                 ResultsPanel.Children.Add(Text(Translations.Instance.DidYouMean, fontSize: 12, brushKey: Palette.TextMuted, margin: new Thickness(2, 18, 0, 8)));
                 ResultsPanel.Children.Add(BuildChips(result.WordSuggestions.Select(w => w.Word)));
             }
-            else
+            else if (!translationOwnsThePage)
             {
                 ResultsPanel.Children.Add(Text(Translations.Instance.TryShorter, fontSize: 14, brushKey: Palette.TextMuted, margin: new Thickness(2, 10, 0, 0)));
             }
@@ -1485,8 +1516,12 @@ public partial class MainWindow : Window
     {
         if (result.Primary is null && result.ChineseMatches.Count == 0)
         {
-            ResultsPanel.Children.Add(Text(string.Format(Translations.Instance.NoResultFormat, result.Query),
-                20, FontWeight.SemiBold, Palette.TextTitle, margin: new Thickness(2, 8, 0, 0)));
+            // 与英文侧同规则：句子未命中时翻译卡是主内容。
+            var translationOwnsThePage = _translationUi.Kind != TranslationUiKind.None
+                && TranslationText.LooksLikeSentence(result.Query);
+            if (!translationOwnsThePage)
+                ResultsPanel.Children.Add(Text(string.Format(Translations.Instance.NoResultFormat, result.Query),
+                    20, FontWeight.SemiBold, Palette.TextTitle, margin: new Thickness(2, 8, 0, 0)));
             return;
         }
 

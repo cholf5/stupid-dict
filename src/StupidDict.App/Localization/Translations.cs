@@ -130,6 +130,44 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(UpdateAvailableStatus)] = "发现新版本 {0}，当前 {1}",
         [nameof(UpdateCheckFailed)] = "检查失败：{0}",
         [nameof(BrowserOpenFailed)] = "无法打开浏览器：{0}",
+        [nameof(SectionTranslation)] = "翻译",
+        [nameof(TranslationApiUrlLabel)] = "API 地址",
+        [nameof(TranslationApiUrlPlaceholder)] = "例如 https://api.openai.com/v1",
+        [nameof(TranslationApiKeyLabel)] = "API 密钥",
+        [nameof(TranslationModelLabel)] = "模型",
+        [nameof(TranslationModelPlaceholder)] = "例如 gpt-4o-mini 或 qwen2.5:7b",
+        [nameof(TranslationEndpointHint)] = "填服务地址即可，如 https://api.openai.com/v1、https://api.deepseek.com、http://localhost:11434（Ollama）或完整的 /chat/completions 端点；只支持 OpenAI 兼容接口。",
+        [nameof(TranslationAutoLabel)] = "未命中的句子自动翻译",
+        [nameof(TranslationSave)] = "保存",
+        [nameof(TranslationTest)] = "测试连接",
+        [nameof(TranslationTesting)] = "正在测试连接…",
+        [nameof(TranslationSaved)] = "已保存。",
+        [nameof(TranslationInvalidUrl)] = "API 地址无效：需要 http/https 地址，不能带账号信息或查询参数；公网地址必须用 https。",
+        [nameof(TranslationUrlAndModelRequired)] = "请填写 API 地址和模型。",
+        [nameof(TranslationTestSucceeded)] = "连接成功。",
+        [nameof(TranslationTestFailedFormat)] = "测试失败：{0}",
+        [nameof(TranslationPrivacy)] = "查词始终离线。只有词典未命中的句子才会发送到你配置的 API；应用不收集、不转存任何内容。密钥以明文保存在本机设置文件中。",
+        [nameof(TranslationExamples)] = "示例：OpenAI https://api.openai.com/v1 · DeepSeek https://api.deepseek.com · Ollama http://localhost:11434 · OpenRouter https://openrouter.ai/api/v1",
+        [nameof(TranslationCacheFormat)] = "翻译缓存：{0:N1} MB",
+        [nameof(TranslationCacheCleared)] = "缓存已清除。",
+        [nameof(TranslationClearCache)] = "清除缓存",
+        [nameof(TranslationInProgress)] = "正在翻译…",
+        [nameof(TranslateSentence)] = "翻译这句话",
+        [nameof(TranslateWord)] = "翻译这个词",
+        [nameof(TranslationOpenSettings)] = "配置翻译",
+        [nameof(TranslationNotConfigured)] = "配置翻译 API 后可以翻译整句；查词不受影响。",
+        [nameof(TranslationLocalFormat)] = "本地模型（{0}）",
+        [nameof(TranslationCloudFormat)] = "机器翻译（{0}）",
+        [nameof(TranslationFailedFormat)] = "翻译失败：{0}",
+        [nameof(TranslationAuthFailed)] = "密钥无效或无权限，请检查设置",
+        [nameof(TranslationEndpointFailed)] = "地址或模型名不对，请检查设置",
+        [nameof(TranslationRateLimited)] = "请求过于频繁或额度不足，稍后再试",
+        [nameof(TranslationServerFailed)] = "服务端错误，稍后再试",
+        [nameof(TranslationTimeout)] = "连接超时",
+        [nameof(TranslationNetworkFailed)] = "网络错误，请检查连接",
+        [nameof(TranslationInvalidResponse)] = "服务返回了无法解析的结果",
+        [nameof(TranslationIncomplete)] = "译文可能不完整",
+        [nameof(TranslationRefused)] = "服务拒绝了这次翻译请求",
     };
 
     private static readonly Dictionary<string, string> En = new()
@@ -236,6 +274,44 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(UpdateAvailableStatus)] = "New version {0} available, current {1}",
         [nameof(UpdateCheckFailed)] = "Check failed: {0}",
         [nameof(BrowserOpenFailed)] = "Could not open the browser: {0}",
+        [nameof(SectionTranslation)] = "Translation",
+        [nameof(TranslationApiUrlLabel)] = "API URL",
+        [nameof(TranslationApiUrlPlaceholder)] = "e.g. https://api.openai.com/v1",
+        [nameof(TranslationApiKeyLabel)] = "API key",
+        [nameof(TranslationModelLabel)] = "Model",
+        [nameof(TranslationModelPlaceholder)] = "e.g. gpt-4o-mini or qwen2.5:7b",
+        [nameof(TranslationEndpointHint)] = "Enter the service base URL, e.g. https://api.openai.com/v1, https://api.deepseek.com, http://localhost:11434 (Ollama), or a full /chat/completions endpoint. Only OpenAI-compatible APIs are supported.",
+        [nameof(TranslationAutoLabel)] = "Auto-translate sentences that miss the dictionary",
+        [nameof(TranslationSave)] = "Save",
+        [nameof(TranslationTest)] = "Test connection",
+        [nameof(TranslationTesting)] = "Testing connection…",
+        [nameof(TranslationSaved)] = "Saved.",
+        [nameof(TranslationInvalidUrl)] = "Invalid API URL: an http/https URL is required without user info or query parameters; public addresses must use https.",
+        [nameof(TranslationUrlAndModelRequired)] = "Fill in the API URL and the model.",
+        [nameof(TranslationTestSucceeded)] = "Connection OK.",
+        [nameof(TranslationTestFailedFormat)] = "Test failed: {0}",
+        [nameof(TranslationPrivacy)] = "Lookups stay offline. Only sentences that miss the dictionary are sent to the API you configured; the app collects and forwards nothing else. The key is stored in plain text in the local settings file.",
+        [nameof(TranslationExamples)] = "Examples: OpenAI https://api.openai.com/v1 · DeepSeek https://api.deepseek.com · Ollama http://localhost:11434 · OpenRouter https://openrouter.ai/api/v1",
+        [nameof(TranslationCacheFormat)] = "Translation cache: {0:N1} MB",
+        [nameof(TranslationCacheCleared)] = "Cache cleared.",
+        [nameof(TranslationClearCache)] = "Clear cache",
+        [nameof(TranslationInProgress)] = "Translating…",
+        [nameof(TranslateSentence)] = "Translate this sentence",
+        [nameof(TranslateWord)] = "Translate this word",
+        [nameof(TranslationOpenSettings)] = "Configure translation",
+        [nameof(TranslationNotConfigured)] = "Configure a translation API to translate whole sentences; lookups are unaffected.",
+        [nameof(TranslationLocalFormat)] = "Local model ({0})",
+        [nameof(TranslationCloudFormat)] = "Machine translation ({0})",
+        [nameof(TranslationFailedFormat)] = "Translation failed: {0}",
+        [nameof(TranslationAuthFailed)] = "The key is invalid or unauthorized — check Settings",
+        [nameof(TranslationEndpointFailed)] = "Wrong URL or model name — check Settings",
+        [nameof(TranslationRateLimited)] = "Rate limited or out of quota — try again later",
+        [nameof(TranslationServerFailed)] = "Server error — try again later",
+        [nameof(TranslationTimeout)] = "Connection timed out",
+        [nameof(TranslationNetworkFailed)] = "Network error — check your connection",
+        [nameof(TranslationInvalidResponse)] = "The service returned an unparseable response",
+        [nameof(TranslationIncomplete)] = "The translation may be incomplete",
+        [nameof(TranslationRefused)] = "The service refused this translation request",
     };
 
     public static Translations Instance { get; } = new();
@@ -416,4 +492,52 @@ public sealed class Translations : INotifyPropertyChanged
     public string UpdateAvailableStatus => Get();
     public string UpdateCheckFailed => Get();
     public string BrowserOpenFailed => Get();
+
+    // ---- 翻译（BYO OpenAI 兼容 API）----
+
+    public string SectionTranslation => Get();
+    public string TranslationApiUrlLabel => Get();
+    public string TranslationApiUrlPlaceholder => Get();
+    public string TranslationApiKeyLabel => Get();
+    public string TranslationModelLabel => Get();
+    public string TranslationModelPlaceholder => Get();
+    public string TranslationEndpointHint => Get();
+    public string TranslationAutoLabel => Get();
+    public string TranslationSave => Get();
+    public string TranslationTest => Get();
+    public string TranslationTesting => Get();
+    public string TranslationSaved => Get();
+    public string TranslationInvalidUrl => Get();
+    public string TranslationUrlAndModelRequired => Get();
+    public string TranslationTestSucceeded => Get();
+    /// <summary>{0} 为失败原因短诊断或异常消息。</summary>
+    public string TranslationTestFailedFormat => Get();
+    public string TranslationPrivacy => Get();
+    public string TranslationExamples => Get();
+    /// <summary>{0} 为缓存字节数折算的 MB。</summary>
+    public string TranslationCacheFormat => Get();
+    public string TranslationCacheCleared => Get();
+    public string TranslationClearCache => Get();
+
+    // ---- 翻译卡（结果页）----
+
+    public string TranslationInProgress => Get();
+    public string TranslateSentence => Get();
+    public string TranslateWord => Get();
+    public string TranslationOpenSettings => Get();
+    public string TranslationNotConfigured => Get();
+    /// <summary>{0} 为模型名；loopback 端点用 TranslationLocalFormat。</summary>
+    public string TranslationCloudFormat => Get();
+    public string TranslationLocalFormat => Get();
+    /// <summary>{0} 为按失败类别映射的短文案（Translation*Failed 族）。</summary>
+    public string TranslationFailedFormat => Get();
+    public string TranslationAuthFailed => Get();
+    public string TranslationEndpointFailed => Get();
+    public string TranslationRateLimited => Get();
+    public string TranslationServerFailed => Get();
+    public string TranslationTimeout => Get();
+    public string TranslationNetworkFailed => Get();
+    public string TranslationInvalidResponse => Get();
+    public string TranslationIncomplete => Get();
+    public string TranslationRefused => Get();
 }

@@ -10,6 +10,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using StupidDict.App.Translation;
 using SkiaSharp;
 using StupidDict.App;
 using StupidDict.App.Assets;
@@ -1290,9 +1291,9 @@ public class HeadlessWindowTests
         settingsWindow.Show();
         Dispatcher.UIThread.RunJobs();
 
-        // The update controls live on the About tab (index 3, after the data
-        // tab); tab content is instantiated on selection only.
-        settingsWindow.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = 3;
+        // The update controls live on the About tab (index 4, after the
+        // translation and data tabs); tab content is instantiated on selection only.
+        settingsWindow.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = 4;
         Dispatcher.UIThread.RunJobs();
 
         RaiseClick(settingsWindow.FindControl<Button>("CheckUpdateButton")!);
@@ -1544,7 +1545,7 @@ public class HeadlessWindowTests
         Dispatcher.UIThread.RunJobs();
 
         var tabs = settingsWindow.FindControl<TabControl>("SettingsTabs")!;
-        tabs.SelectedIndex = 1;
+        tabs.SelectedIndex = 2;
         Dispatcher.UIThread.RunJobs();
         var keycaps = settingsWindow.GetVisualDescendants().OfType<TextBlock>()
             .Where(b => b.Parent is Border).Select(b => b.Text).ToList();
@@ -1552,7 +1553,7 @@ public class HeadlessWindowTests
         Assert.Contains(SettingsWindow.BackForwardKeycap, keycaps);
         Assert.Contains("Enter", keycaps);
 
-        tabs.SelectedIndex = 3;
+        tabs.SelectedIndex = 4;
         Dispatcher.UIThread.RunJobs();
         var about = settingsWindow.GetVisualDescendants().OfType<TextBlock>()
             .Select(b => b.Text).ToList();
@@ -1561,6 +1562,63 @@ public class HeadlessWindowTests
         Assert.Equal("MIT", about[about.IndexOf("开源许可") + 1]);
         SaveScreenshot(settingsWindow, "stupiddict-settings-about.png");
         settingsWindow.Close();
+    }
+
+    [AvaloniaFact]
+    public void TranslationTabDoesNotInstantiateServiceForDisplay()
+    {
+        // 缓存大小是纯展示：打开设置（含语言切换重算）绝不能把服务/缓存文件
+        // 创建出来——README/AGENTS 承诺未配置的应用不碰用户数据目录。
+        var locations = NewLocations(out _, out _, out _);
+        var settings = new AppSettings { Language = AppLanguage.SimplifiedChinese };
+        var creations = 0;
+        var fake = new FakeTranslationService();
+        var window = new SettingsWindow(settings, locations: locations,
+            translationServiceFactory: () => { creations++; return fake; });
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(0, creations);
+        Assert.False(File.Exists(locations.TranslationCacheDatabasePath));
+
+        window.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = SettingsWindow.TranslationTabIndex;
+        Dispatcher.UIThread.RunJobs();
+        Assert.Contains("0.0", window.FindControl<TextBlock>("TranslationCacheSizeText")!.Text);
+        try
+        {
+            Translations.Instance.SetLanguage(AppLanguage.English); // 语言切换重算缓存行
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(0, creations);
+        }
+        finally
+        {
+            Translations.Instance.SetLanguage(AppLanguage.SimplifiedChinese);
+        }
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void TranslationTabSavesDraftAndMasksKey()
+    {
+        var settings = new AppSettings { Language = AppLanguage.SimplifiedChinese };
+        var fake = new FakeTranslationService();
+        var window = new SettingsWindow(settings, translationServiceFactory: () => fake);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        window.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = SettingsWindow.TranslationTabIndex;
+        Dispatcher.UIThread.RunJobs();
+        window.FindControl<TextBox>("TranslationApiUrlBox")!.Text = "http://localhost:11434/v1";
+        window.FindControl<TextBox>("TranslationApiKeyBox")!.Text = "secret";
+        window.FindControl<TextBox>("TranslationModelBox")!.Text = "qwen2.5:7b";
+        window.FindControl<CheckBox>("TranslationAutoCheckBox")!.IsChecked = false;
+        RaiseClick(window.FindControl<Button>("TranslationSaveButton")!);
+
+        Assert.Equal("http://localhost:11434/v1", settings.TranslationApiUrl);
+        Assert.Equal("secret", settings.TranslationApiKey);
+        Assert.Equal("qwen2.5:7b", settings.TranslationModel);
+        Assert.False(settings.TranslationAutoOnMiss);
+        Assert.NotEqual('\0', window.FindControl<TextBox>("TranslationApiKeyBox")!.PasswordChar);
+        window.Close();
     }
 
     [AvaloniaFact]
@@ -1574,7 +1632,7 @@ public class HeadlessWindowTests
         Dispatcher.UIThread.RunJobs();
 
         // 空目录：两行都是未安装；打开目录按钮交给注入的缝并收到数据目录。
-        settingsWindow.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = 2;
+        settingsWindow.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = 3;
         Dispatcher.UIThread.RunJobs();
         var dataTexts = settingsWindow.GetVisualDescendants().OfType<TextBlock>()
             .Select(b => b.Text).ToList();
@@ -1594,7 +1652,7 @@ public class HeadlessWindowTests
             locations: locations, openDataDirectory: _ => { });
         reopened.Show();
         Dispatcher.UIThread.RunJobs();
-        reopened.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = 2;
+        reopened.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = 3;
         Dispatcher.UIThread.RunJobs();
         Assert.Equal("已安装", reopened.FindControl<TextBlock>("DictionaryDataStatus")!.Text);
         Assert.Equal("已安装", reopened.FindControl<TextBlock>("AudioPackDataStatus")!.Text);
@@ -1610,7 +1668,7 @@ public class HeadlessWindowTests
             openDataDirectory: _ => throw new InvalidOperationException("boom"));
         settingsWindow.Show();
         Dispatcher.UIThread.RunJobs();
-        settingsWindow.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = 2;
+        settingsWindow.FindControl<TabControl>("SettingsTabs")!.SelectedIndex = 3;
         Dispatcher.UIThread.RunJobs();
 
         RaiseClick(settingsWindow.FindControl<Button>("OpenDataDirectoryButton")!);
@@ -1628,7 +1686,8 @@ public class HeadlessWindowTests
         historyPath = Path.Combine(directory, "history.db");
         audioPath = Path.Combine(directory, "audio");
         return new AppLocations(directory, dictionaryPath, historyPath, audioPath,
-            Path.Combine(directory, "audio-pack.db"));
+            Path.Combine(directory, "audio-pack.db"),
+            Path.Combine(directory, "translation-cache.db"));
     }
 
     private sealed class StubDownloader(Func<string, string?> assets) : IAssetDownloader
@@ -1740,4 +1799,65 @@ public class HeadlessWindowTests
     {
         window.CaptureRenderedFrame()?.Save(Path.Combine(Path.GetTempPath(), fileName));
     }
+}
+
+/// <summary>
+/// Shared translation fake: HeadlessWindowTests uses it for the settings-tab
+/// draft flow; TranslationFlowTests extends its recorded requests for the
+/// session semantics. Defaults never hit the network.
+/// </summary>
+internal sealed class FakeTranslationService : ITranslationService
+{
+    public List<TranslationConfig> TestCalls { get; } = [];
+    public List<(string Query, bool BypassCache)> Requests { get; } = [];
+    public List<CancellationToken> Tokens { get; } = [];
+    public TranslationTestResult NextTestResult { get; set; } = new(true, "fake-model");
+
+    /// <summary>Set to hold TranslateAsync in flight until CompletedPending resolves it (C-semantics tests).</summary>
+    public TaskCompletionSource<TranslationResult>? Gate { get; set; }
+
+    /// <summary>When set, TranslateAsync fails with this kind (models the circuit breaker's 401/404 set).</summary>
+    public TranslationFailureKind? FailWith { get; set; }
+
+    private readonly Dictionary<string, TranslationResult> _completed = [];
+
+    public int CallCount => Requests.Count;
+
+    public TranslationConfig GetConfig() => new("", "", "", true);
+    public bool AutoPaused { get; private set; }
+    public void ResetCircuit() => AutoPaused = false;
+    public TranslationResult? TryGetCached(string text) =>
+        _completed.TryGetValue(text, out var result) ? result : null;
+    public Task<TranslationResult> TranslateAsync(string text, bool bypassCache, CancellationToken cancellationToken)
+    {
+        Requests.Add((text, bypassCache));
+        Tokens.Add(cancellationToken);
+        if (FailWith is { } kind)
+        {
+            // 与真实服务一致：401/404 类失败置熔断位。
+            if (kind is TranslationFailureKind.Authentication or TranslationFailureKind.EndpointOrModel)
+                AutoPaused = true;
+            return Task.FromResult(TranslationResult.Fail(kind, canRetry: false));
+        }
+        if (Gate is { } gate) return gate.Task;
+        var result = TranslationResult.Success($"假译文：{text}", "fake-model", false, false);
+        _completed[text] = result;
+        return Task.FromResult(result);
+    }
+    public void CompletePending(string text = "延迟完成的译文")
+    {
+        if (Gate?.TrySetResult(TranslationResult.Success(text, "fake-model", false, false)) == true
+            && Requests.Count > 0)
+            _completed[Requests[^1].Query] =
+                TranslationResult.Success(text, "fake-model", false, false);
+    }
+    public Task<TranslationTestResult> TestAsync(TranslationConfig config, CancellationToken cancellationToken)
+    {
+        TestCalls.Add(config);
+        return Task.FromResult(NextTestResult);
+    }
+    public void Reset() => Requests.Clear();
+    public void ClearCache() { }
+    public long GetCacheSizeBytes() => 42;
+    public void Dispose() { }
 }

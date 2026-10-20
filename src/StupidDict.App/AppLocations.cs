@@ -10,12 +10,14 @@ public sealed record AppLocations(
     string DictionaryDatabasePath,
     string HistoryDatabasePath,
     string AudioDirectory,
-    string AudioPackDatabasePath)
+    string AudioPackDatabasePath,
+    string TranslationCacheDatabasePath)
 {
     public static AppLocations Default { get; } = new(
         AppPaths.DataDirectory,
         AppPaths.DictionaryDatabasePath,
         AppPaths.HistoryDatabasePath,
         AppPaths.AudioDirectory,
-        AppPaths.AudioPackDatabasePath);
+        AppPaths.AudioPackDatabasePath,
+        AppPaths.TranslationCacheDatabasePath);
 }

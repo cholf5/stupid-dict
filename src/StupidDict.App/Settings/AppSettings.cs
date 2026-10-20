@@ -33,6 +33,10 @@ public sealed class AppSettings : INotifyPropertyChanged
     private double? _windowWidth;
     private double? _windowHeight;
     private bool _windowMaximized;
+    private string _translationApiUrl = "";
+    private string _translationApiKey = "";
+    private string _translationModel = "";
+    private bool _translationAutoOnMiss = true;
 
     public AppTheme Theme
     {
@@ -89,6 +93,54 @@ public sealed class AppSettings : INotifyPropertyChanged
             if (_windowMaximized == value) return;
             _windowMaximized = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WindowMaximized)));
+        }
+    }
+
+    /// <summary>OpenAI-compatible base URL for optional sentence translation; empty = disabled.</summary>
+    public string TranslationApiUrl
+    {
+        get => _translationApiUrl;
+        set
+        {
+            if (_translationApiUrl == value) return;
+            _translationApiUrl = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TranslationApiUrl)));
+        }
+    }
+
+    /// <summary>Bearer key for the translation API; may be empty for local endpoints. Stored in plain text.</summary>
+    public string TranslationApiKey
+    {
+        get => _translationApiKey;
+        set
+        {
+            if (_translationApiKey == value) return;
+            _translationApiKey = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TranslationApiKey)));
+        }
+    }
+
+    /// <summary>Model name sent with each translation request; required for translation to be active.</summary>
+    public string TranslationModel
+    {
+        get => _translationModel;
+        set
+        {
+            if (_translationModel == value) return;
+            _translationModel = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TranslationModel)));
+        }
+    }
+
+    /// <summary>Whether a sentence that misses the dictionary is translated automatically.</summary>
+    public bool TranslationAutoOnMiss
+    {
+        get => _translationAutoOnMiss;
+        set
+        {
+            if (_translationAutoOnMiss == value) return;
+            _translationAutoOnMiss = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TranslationAutoOnMiss)));
         }
     }
 

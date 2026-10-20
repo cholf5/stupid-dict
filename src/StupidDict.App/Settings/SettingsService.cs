@@ -51,6 +51,12 @@ internal static class SettingsService
             using (var stream = File.Create(temporary))
                 JsonSerializer.Serialize(stream, settings, Options);
             File.Move(temporary, path, overwrite: true);
+            // settings.json 携带明文 API key（v1 取舍）：Unix 侧 best-effort 收
+            // 紧到 0600（Windows 依赖用户 profile ACL）。Move 会丢失 tmp 文件上
+            // 掩码无关的继承权限差异，落盘后显式收紧；失败走下面的 best-effort
+            // catch（共享主机上仍可读，但持久化本身绝不能因此崩溃）。
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                                       or NotSupportedException)

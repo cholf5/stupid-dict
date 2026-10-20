@@ -104,6 +104,12 @@ public partial class App : Application
                 case nameof(AppSettings.WindowWidth):
                 case nameof(AppSettings.WindowHeight):
                 case nameof(AppSettings.WindowMaximized):
+                // Translation config is applied on the next lookup; the write
+                // below is the whole job.
+                case nameof(AppSettings.TranslationApiUrl):
+                case nameof(AppSettings.TranslationApiKey):
+                case nameof(AppSettings.TranslationModel):
+                case nameof(AppSettings.TranslationAutoOnMiss):
                     break;
                 default:
                     return;

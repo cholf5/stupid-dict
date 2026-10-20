@@ -27,6 +27,12 @@ internal static class AppPaths
     public static string AudioPackDatabasePath { get; } = Path.Combine(DataDirectory, "audio-pack.db");
 
     /// <summary>
+    /// Translation cache: user data, never shipped; safe to delete.
+    /// </summary>
+    public static string TranslationCacheDatabasePath { get; } =
+        Path.Combine(DataDirectory, "translation-cache.db");
+
+    /// <summary>
     /// Legacy loose layout (uk/us per-word MP3 directories) extracted by app
     /// versions before the database store; kept as a lookup fallback so
     /// existing installs keep working. New installs never create it.
