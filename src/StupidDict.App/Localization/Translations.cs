@@ -102,6 +102,7 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(LanguageLabel)] = "语言",
         [nameof(LangChinese)] = "简体中文",
         [nameof(LangEnglish)] = "English",
+        [nameof(LaunchAtLoginLabel)] = "开机自启",
         [nameof(SectionShortcuts)] = "快捷键",
         [nameof(ShortcutLookup)] = "查你输入的词；有选中候选时查该候选",
         [nameof(ShortcutEscape)] = "关闭候选列表；再按清空输入；设置窗口内关闭设置",
@@ -246,6 +247,7 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(ThemeDark)] = "Dark",
         [nameof(LanguageLabel)] = "Language",
         [nameof(LangChinese)] = "Simplified Chinese",
+        [nameof(LaunchAtLoginLabel)] = "Launch at login",
         [nameof(SectionShortcuts)] = "Shortcuts",
         [nameof(ShortcutLookup)] = "Look up what you typed; the selected suggestion, if one is chosen",
         [nameof(ShortcutEscape)] = "Close the suggestion list; press again to clear the box; closes the settings window",
@@ -457,6 +459,7 @@ public sealed class Translations : INotifyPropertyChanged
     public string LanguageLabel => Get();
     public string LangChinese => Get();
     public string LangEnglish => Get();
+    public string LaunchAtLoginLabel => Get();
     public string SectionShortcuts => Get();
     public string ShortcutLookup => Get();
     public string ShortcutEscape => Get();

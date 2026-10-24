@@ -224,6 +224,23 @@ public class SettingsServiceTests
         Assert.False(loaded.TranslationAutoOnMiss);
     }
 
+    [AvaloniaFact]
+    public void LaunchAtLoginPropertyChangePersists()
+    {
+        // WireSettings persists only the property names its switch knows —
+        // default returns without saving. The boot-start toggle must be in
+        // the saved set or flipping it in the settings window silently does
+        // nothing on disk. Side effects (the actual OS registration) are
+        // deliberately NOT wired here: tests call WireSettings directly.
+        var path = NewPath();
+        var settings = new AppSettings();
+        App.WireSettings(settings, path);
+
+        settings.LaunchAtLogin = true;
+
+        Assert.True(SettingsService.Load(path).LaunchAtLogin);
+    }
+
     private static string NewPath()
     {
         var directory = Path.Combine(Path.GetTempPath(), "stupiddict-settings-tests", Guid.NewGuid().ToString("N"));

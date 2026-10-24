@@ -1460,6 +1460,56 @@ public class HeadlessWindowTests
         combo.GetVisualDescendants().OfType<TextBlock>().Select(b => b.Text).ToList();
 
     [AvaloniaFact]
+    public void TogglingLaunchAtLoginAppliesAndPersists()
+    {
+        // 开关即时生效（同主题/语言，非翻译页的 draft+保存）：勾选写共享设置
+        // （WireSettings 落盘）并经可注入缝驱动系统注册——这里注入 recorder，
+        // 绝不写真实注册表/用户文件。
+        var settings = new AppSettings { Language = AppLanguage.SimplifiedChinese };
+        var savePath = Path.Combine(Path.GetTempPath(), "stupiddict-uitests",
+            Guid.NewGuid().ToString("N"), "settings.json");
+        App.WireSettings(settings, savePath);
+        var applied = new List<bool>();
+        try
+        {
+            var settingsWindow = new SettingsWindow(settings, applyLaunchAtLogin: applied.Add);
+            settingsWindow.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            var checkbox = settingsWindow.FindControl<CheckBox>("LaunchAtLoginCheckBox")!;
+            Assert.False(checkbox.IsChecked);   // 初值来自设置（默认关），构造期不触发注册
+
+            checkbox.IsChecked = true;
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(settings.LaunchAtLogin);
+            Assert.Equal([true], applied);
+            Assert.True(SettingsService.Load(savePath).LaunchAtLogin);
+
+            checkbox.IsChecked = false;
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(settings.LaunchAtLogin);
+            Assert.Equal([true, false], applied);
+            Assert.False(SettingsService.Load(savePath).LaunchAtLogin);
+
+            settingsWindow.Close();
+
+            // 重开窗口时开关反映已保存的设置；构造期赋初值同样不触发注册。
+            var second = new SettingsWindow(new AppSettings { LaunchAtLogin = true },
+                applyLaunchAtLogin: applied.Add);
+            second.Show();
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(second.FindControl<CheckBox>("LaunchAtLoginCheckBox")!.IsChecked);
+            Assert.Equal([true, false], applied);
+            second.Close();
+        }
+        finally
+        {
+            App.ApplyTheme(AppTheme.System);
+            Translations.Instance.SetLanguage(AppLanguage.SimplifiedChinese);
+        }
+    }
+
+    [AvaloniaFact]
     public void LanguageSwitchRebuildsResultPageExactlyOnce()
     {
         // TC-001 (B-002): SetLanguage raises PropertyChanged for every

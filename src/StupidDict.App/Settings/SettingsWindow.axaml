@@ -57,6 +57,13 @@
             </ComboBox.ItemTemplate>
           </ComboBox>
         </Grid>
+        <Grid ColumnDefinitions="70,*">
+          <TextBlock FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
+                     Text="{Binding LaunchAtLoginLabel, Source={x:Static loc:Translations.Instance}}" />
+          <!-- 即时生效（同主题/语言，非翻译页的 draft 模式）：勾选写共享设置并
+               经可注入缝注册系统启动项，code-behind 先赋初值再订阅事件 -->
+          <CheckBox Name="LaunchAtLoginCheckBox" Grid.Column="1" HorizontalAlignment="Left" />
+        </Grid>
       </StackPanel>
     </TabItem>
 
