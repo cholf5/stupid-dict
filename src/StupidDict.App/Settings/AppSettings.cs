@@ -37,6 +37,7 @@ public sealed class AppSettings : INotifyPropertyChanged
     private string _translationApiKey = "";
     private string _translationModel = "";
     private bool _translationAutoOnMiss = true;
+    private bool _launchAtLogin;
 
     public AppTheme Theme
     {
@@ -141,6 +142,18 @@ public sealed class AppSettings : INotifyPropertyChanged
             if (_translationAutoOnMiss == value) return;
             _translationAutoOnMiss = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TranslationAutoOnMiss)));
+        }
+    }
+
+    /// <summary>Whether the app registers a per-user OS entry to launch at login.</summary>
+    public bool LaunchAtLogin
+    {
+        get => _launchAtLogin;
+        set
+        {
+            if (_launchAtLogin == value) return;
+            _launchAtLogin = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LaunchAtLogin)));
         }
     }
 

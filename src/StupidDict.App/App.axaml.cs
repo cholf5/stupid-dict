@@ -41,6 +41,12 @@ public partial class App : Application
             Dispatcher.UIThread.Post(MacDockIcon.TrySetFromEmbeddedIcon, DispatcherPriority.ApplicationIdle);
             var settings = SettingsService.Load();
             WireSettings(settings);
+            // Converge the OS boot entry onto the setting at every start —
+            // re-registers after a portable zip moved (stale recorded path)
+            // and removes leftovers a settings reset left behind. Headless
+            // tests never reach the classic-desktop branch, so this line is
+            // production-only by construction.
+            AutoStart.Apply(settings.LaunchAtLogin);
             desktop.MainWindow = new MainWindow(
                 new DictionaryService(AppPaths.DictionaryDatabasePath, AppPaths.HistoryDatabasePath),
                 settings: settings);
@@ -110,6 +116,12 @@ public partial class App : Application
                 case nameof(AppSettings.TranslationApiKey):
                 case nameof(AppSettings.TranslationModel):
                 case nameof(AppSettings.TranslationAutoOnMiss):
+                // Boot registration is applied by the settings toggle's seam
+                // and reconciled at startup in OnFrameworkInitializationCompleted;
+                // the write below is the whole job. Deliberately NOT applied
+                // here: tests call WireSettings directly and a side effect in
+                // this switch would write the real registry/user files.
+                case nameof(AppSettings.LaunchAtLogin):
                     break;
                 default:
                     return;

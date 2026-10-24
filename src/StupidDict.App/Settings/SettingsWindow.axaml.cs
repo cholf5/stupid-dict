@@ -19,6 +19,7 @@ public partial class SettingsWindow : Window
     private readonly AppLocations _locations;
     private readonly Action<string> _openDataDirectory;
     private readonly Func<ITranslationService>? _translationServiceFactory;
+    private readonly Action<bool> _applyLaunchAtLogin;
     private ITranslationService? _translationService;
 
     // 选项实例一次创建、跨语言复用，顺序与枚举下标一一对应；ItemsSource 全程不换
@@ -40,7 +41,8 @@ public partial class SettingsWindow : Window
 
     public SettingsWindow(AppSettings settings, UpdateChecker? updateChecker = null,
         AppLocations? locations = null, Action<string>? openDataDirectory = null,
-        Func<ITranslationService>? translationServiceFactory = null, int initialTabIndex = 0)
+        Func<ITranslationService>? translationServiceFactory = null,
+        Action<bool>? applyLaunchAtLogin = null, int initialTabIndex = 0)
     {
         InitializeComponent();
         _settings = settings;
@@ -49,6 +51,8 @@ public partial class SettingsWindow : Window
         _locations = locations ?? AppLocations.Default;
         _openDataDirectory = openDataDirectory ?? OpenDirectoryInFileManager;
         _translationServiceFactory = translationServiceFactory;
+        // 开机自启注册缝：测试注入 recorder，绝不写真实注册表/用户文件。
+        _applyLaunchAtLogin = applyLaunchAtLogin ?? AutoStart.Apply;
         var t = Translations.Instance;
         _themeOptions = [new(t.FollowSystem), new(t.ThemeLight), new(t.ThemeDark)];
         _languageOptions = [new(t.FollowSystem), new(t.LangChinese), new(t.LangEnglish)];
@@ -58,6 +62,8 @@ public partial class SettingsWindow : Window
         ThemeComboBox.SelectionChanged += OnThemeSelectionChanged;
         LanguageComboBox.SelectedIndex = (int)settings.Language;
         LanguageComboBox.SelectionChanged += OnLanguageSelectionChanged;
+        LaunchAtLoginCheckBox.IsChecked = settings.LaunchAtLogin;
+        LaunchAtLoginCheckBox.IsCheckedChanged += OnLaunchAtLoginToggle;
         Translations.Instance.PropertyChanged += OnTranslationsPropertyChanged;
         DataDownloadPageButton.Tag = ReleaseAssets.DataReleasePageUrl;
         RefreshDataStatus();
@@ -140,6 +146,15 @@ public partial class SettingsWindow : Window
     {
         if (LanguageComboBox.SelectedIndex is { } index && index >= 0)
             _settings.Language = (AppLanguage)index;
+    }
+
+    private void OnLaunchAtLoginToggle(object? sender, RoutedEventArgs e)
+    {
+        var enabled = LaunchAtLoginCheckBox.IsChecked == true;
+        // 先写共享设置（WireSettings 落盘），再注册系统启动项；注册失败不回滚
+        // 设置——下次启动的收敛会重试。
+        _settings.LaunchAtLogin = enabled;
+        _applyLaunchAtLogin(enabled);
     }
 
     // ---- 翻译页签：draft 加载/保存 + 测试连接 + 缓存 ----
