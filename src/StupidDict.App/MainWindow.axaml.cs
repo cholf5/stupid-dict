@@ -500,11 +500,20 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             if (generation == _searchGeneration)
+            {
+                HideSuggestions();
                 RenderError(query, ex);
+            }
             return;
         }
         if (generation != _searchGeneration) return;
 
+        // A committed page owns the screen: a completion still in flight was
+        // scheduled by the very text this lookup commits (Avalonia posts
+        // TextChanged, so Enter's HideSuggestions can predate the schedule)
+        // and must not land on top of the page — an open panel here also made
+        // Escape take the close-suggestions branch instead of clearing.
+        HideSuggestions();
         PrepareTranslationForResult(result, allowAuto: true);
         RenderResult(result);
         _navigator.Push(result);

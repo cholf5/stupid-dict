@@ -23,7 +23,7 @@ cholf5/stupid-dict：.NET 10 + Avalonia 桌面离线英汉词典（Windows / mac
 ## 查询语义（Core，改动前先跑 Core.Tests）
 
 - 匹配顺序 `Exact → Normalized Exact → Word Form（cats→cat）→ Prefix → Fuzzy`，结果带 `Tier`；未命中给「你是不是要找」建议但**绝不自动改写用户的词**。中英判定 `DictionaryService.IsChineseQuery`（CJK 区间），中文查询走 zh_index 反向索引。
-- `LookupAsync`/`SuggestAsync` 都是 `Task.Run` 包同步实现；UI 侧用 generation 代数丢弃过期结果（`_searchGeneration`/`_suggestGeneration`），迟到结果不渲染。
+- `LookupAsync`/`SuggestAsync` 都是 `Task.Run` 包同步实现；UI 侧用 generation 代数丢弃过期结果（`_searchGeneration`/`_suggestGeneration`），迟到结果不渲染。**查询提交渲染（成功/失败）时必须 `HideSuggestions()` 作废在途补全**：Avalonia 对程序化赋值的 TextChanged 是 posted 的（IME 提交同路），Enter 路径的 `HideSuggestions` 可能跑在该次文本产生的防抖调度之前，不补这一刀则建议面板会盖到结果页上、Escape 也只走「关建议」分支不清结果（windows CI 实证，`CommittedLookupRetiresSuggestionScheduledWhileItWasInFlight` 钉住）。
 - 输入补全：120ms 防抖（`SuggestDebounce`），1–2 字母只查常用词内存索引（`CommonWordIndex`，启动 `WarmupAsync` 预热），3 字母起全量前缀；`Enter` 永远优先查输入框原文，选中候选才查候选（headless 测试 `EnterWithSuggestionsOpenStillQueriesTypedText` 钉住了这个语义）。
 - 历史导航 `LookupNavigator`：前进/后退整页缓存、不重新查询、后退不写最近搜索；重复查当前页折叠不重复入栈（`DoubleClickingHeadwordDoesNotDuplicateHistory`）。最近搜索 30 条去重，由 `RecentSearchStore` 落 SQLite。
 

@@ -383,6 +383,57 @@ public class HeadlessWindowTests
     }
 
     [AvaloniaFact]
+    public void CommittedLookupRetiresSuggestionScheduledWhileItWasInFlight()
+    {
+        // Avalonia posts TextChanged for programmatic text (IME commits ride
+        // the same path), so Enter's HideSuggestions can run before the
+        // schedule that the committed text itself produces: the lookup goes
+        // in flight with a live debounce behind it, the panel opens over the
+        // pending search, the commit never retired it, and Escape then took
+        // the close-suggestions branch instead of clearing to the empty
+        // state (seen as a windows-CI timeout in
+        // RecentSearchesHiddenOnResultsBackOnEmptyState). Hold the lookup
+        // past the debounce to pin the moment deterministically.
+        using var service = CreateService();
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        var suggestPanel = window.FindControl<Border>("SuggestPanel")!;
+        var recentPanel = window.FindControl<StackPanel>("RecentPanel")!;
+
+        var gate = new TaskCompletionSource<LookupResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        window.LookupOverride = _ => gate.Task;
+        try
+        {
+            searchBox.Text = "cat";
+            PressEnter(searchBox);
+
+            // The debounce elapses while the lookup is still held: the panel
+            // opens over the pending search — before the fix it stayed there.
+            WaitUntil(() => suggestPanel.IsVisible);
+            Assert.False(window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+
+            gate.SetResult(service.Lookup("cat"));
+            WaitUntil(() => window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+            // A committed page owns the screen; no completion dropdown on top.
+            Assert.False(suggestPanel.IsVisible);
+
+            searchBox.Clear();
+            PressKey(searchBox, Key.Escape);
+            Assert.True(recentPanel.IsVisible);
+            Assert.True(window.FindControl<StackPanel>("HintPanel")!.IsVisible);
+            Assert.False(window.FindControl<StackPanel>("ResultsPanel")!.IsVisible);
+        }
+        finally
+        {
+            window.LookupOverride = null;
+        }
+    }
+
+    [AvaloniaFact]
     public void ArrowDownSelectsSuggestionAndEnterSearchesIt()
     {
         using var service = CreateService();
