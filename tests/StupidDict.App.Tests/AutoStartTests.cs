@@ -32,7 +32,14 @@ public class AutoStartTests
 
         Assert.Contains("Type=Application", content);
         Assert.Contains("Name=Stupid Dict", content);
+        // 跨语言展示名：GNOME/KDE 的自启列表按语言取 Name / Name[zh_CN]。
+        Assert.Contains("Name[zh_CN]=傻瓜词典", content);
         Assert.Contains("Exec=\"/opt/my apps/StupidDict\"", content);
+        // 图标指向 exe 同目录的 app-icon.png（package.sh 在 Linux zip 携带）；
+        // 文件不存在时桌面环境回退通用图标，条目不因此失效。期望路径用同一
+        // API 计算——分隔符随平台（生产消费方在 Linux 上恒为 /）。
+        var expectedIcon = Path.Combine(Path.GetDirectoryName("/opt/my apps/StupidDict")!, "app-icon.png");
+        Assert.Contains($"Icon={expectedIcon}", content);
         Assert.Contains("Terminal=false", content);
     }
 
@@ -49,6 +56,8 @@ public class AutoStartTests
         AutoStart.WriteEntryFile(path, content);
         Assert.True(File.Exists(path));
         Assert.True(AutoStart.EntryFileIsCurrent(path, content));
+        // 原子写（temp + Move 进位）不留 .tmp 在场。
+        Assert.False(File.Exists(path + ".tmp"));
 
         // Stale content (e.g. the exe moved and the entry was rewritten with
         // the old path) must not count as current.
@@ -59,6 +68,40 @@ public class AutoStartTests
         Assert.False(File.Exists(path));
         // Removing a missing entry is a no-op, never a throw.
         AutoStart.RemoveEntryFile(path);
+        // Remove 顺带清扫崩溃残留的 .tmp。
+        File.WriteAllText(path + ".tmp", "junk");
+        AutoStart.RemoveEntryFile(path);
+        Assert.False(File.Exists(path + ".tmp"));
+    }
+
+    [Fact]
+    public void FileEntryConvergesOntoEnabledState()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "stupiddict-autostart-tests",
+            Guid.NewGuid().ToString("N"), "autostart", "StupidDict.desktop");
+        var content = AutoStart.DesktopEntryContent("/opt/StupidDict");
+
+        // Disabled with nothing on disk: nothing appears (no churn).
+        AutoStart.ApplyFileEntry(enabled: false, path, content);
+        Assert.False(File.Exists(path));
+
+        // Enabling writes the entry, creating parent directories on demand.
+        AutoStart.ApplyFileEntry(enabled: true, path, content);
+        Assert.True(AutoStart.EntryFileIsCurrent(path, content));
+
+        // Already current: re-apply keeps the exact bytes (no rewrite churn —
+        // the startup converge path runs on every launch).
+        AutoStart.ApplyFileEntry(enabled: true, path, content);
+        Assert.True(AutoStart.EntryFileIsCurrent(path, content));
+
+        // Stale content (the exe moved) is rewritten by the next apply.
+        File.WriteAllText(path, "stale");
+        AutoStart.ApplyFileEntry(enabled: true, path, content);
+        Assert.True(AutoStart.EntryFileIsCurrent(path, content));
+
+        // Disabling removes the entry.
+        AutoStart.ApplyFileEntry(enabled: false, path, content);
+        Assert.False(File.Exists(path));
     }
 
     [Fact]

@@ -127,6 +127,11 @@ PLIST
     sign_app "$APP"
   else
     cp "$PUBLISHED" "$STAGE/"
+    # Linux only: the launch-at-login desktop entry points Icon= at this
+    # sibling file (AutoStart.DesktopEntryContent); Windows doesn't need it.
+    if [[ "$rid" == linux-* ]]; then
+      cp src/StupidDict.App/Assets/app-icon.png "$STAGE/"
+    fi
   fi
   APP_ZIP="$DIST/StupidDict-$rid.zip"
   # zip -r into an existing file UPDATES it instead of rebuilding: entries from

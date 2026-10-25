@@ -1,8 +1,11 @@
 # CI / packaging pipeline
 #
 # Triggers and behavior:
-#   - PR / push to main: tests only (pure doc changes like **.md, LICENSE, docs/**
-#     do not trigger; tag pushes ignore paths filters and always trigger).
+#   - PR / push to main: tests only, on ubuntu + windows (pure doc changes like
+#     **.md, LICENSE, docs/** do not trigger; tag pushes ignore paths filters
+#     and always trigger). The windows leg covers what no other machine can:
+#     the AutoStart registry helpers against a real HKCU, plus the
+#     Windows-only file semantics recorded in AGENTS.md.
 #   - tag v*: after tests pass, package — macOS .app (scripts/package.sh,
 #     arm64+x64, self-contained), Windows win-x64 self-contained zip + Inno
 #     Setup per-user installer (scripts/StupidDict.iss),
@@ -84,11 +87,26 @@ jobs:
         # pin down slow tests; local runs stay on default verbosity.
         run: dotnet test StupidDict.slnx --logger "console;verbosity=normal"
 
+  # Windows leg of the test suite. Covers what no other CI machine can: the
+  # AutoStart registry helpers against a real HKCU (AutoStartTests early-returns
+  # everywhere else), and the Windows-only file semantics documented in AGENTS.md
+  # (SQLite Pooling=false file locks, reserved device names, FileStream scope
+  # before move/rename/delete). Blocks packaging the same way the ubuntu leg does.
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Run tests
+        run: dotnet test StupidDict.slnx --logger "console;verbosity=normal"
+
   # Packaging jobs run only on tag / manual triggers. The version comes from
   # the csproj <Version> as the single source, read once in the test job.
   macos:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    needs: test
+    needs: [test, test-windows]
     runs-on: macos-latest
     env:
       VERSION: ${{ needs.test.outputs.version }}
@@ -114,7 +132,7 @@ jobs:
 
   windows:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    needs: test
+    needs: [test, test-windows]
     runs-on: windows-latest
     env:
       VERSION: ${{ needs.test.outputs.version }}
@@ -156,7 +174,7 @@ jobs:
 
   linux:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    needs: test
+    needs: [test, test-windows]
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.test.outputs.version }}

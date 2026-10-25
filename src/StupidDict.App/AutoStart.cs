@@ -70,7 +70,9 @@ internal static class AutoStart
         ApplyFileEntry(enabled, path, DesktopEntryContent(exe));
     }
 
-    private static void ApplyFileEntry(bool enabled, string path, string content)
+    // internal for the convergence test (AutoStartTests.FileEntryConvergesOntoEnabledState);
+    // platform dispatch happens above this level and stays untestable cross-platform.
+    internal static void ApplyFileEntry(bool enabled, string path, string content)
     {
         if (!enabled)
         {
@@ -99,18 +101,29 @@ internal static class AutoStart
 </plist>
 """;
 
+    // Icon points at app-icon.png shipped next to the exe by package.sh on
+    // Linux; desktop environments fall back to a generic icon when the file is
+    // missing (source builds, dev runs), so the entry never breaks over it.
     internal static string DesktopEntryContent(string exePath) => $"""
 [Desktop Entry]
 Type=Application
 Name=Stupid Dict
+Name[zh_CN]=傻瓜词典
 Exec="{exePath}"
+Icon={Path.Combine(Path.GetDirectoryName(exePath) ?? "", "app-icon.png")}
 Terminal=false
 """;
 
     internal static void WriteEntryFile(string path, string content)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, content);
+        // Temp + Move(overwrite), same discipline as SettingsService: a crash
+        // mid-write must not leave a half file for launchd / the session
+        // manager to choke on. A leftover .tmp is overwritten by the next
+        // write and swept by RemoveEntryFile.
+        var tmp = path + ".tmp";
+        File.WriteAllText(tmp, content);
+        File.Move(tmp, path, overwrite: true);
     }
 
     internal static void RemoveEntryFile(string path)
@@ -118,6 +131,7 @@ Terminal=false
         try
         {
             File.Delete(path);
+            File.Delete(path + ".tmp");
         }
         catch (IOException)
         {
