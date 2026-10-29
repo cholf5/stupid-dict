@@ -22,7 +22,7 @@
 ## 平台选型
 
 - **Windows：`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`**（值名 `StupidDict`，数据 = 带引号 exe 路径）。备选：Task Scheduler（能做更精细的触发但重出一个抽象面）、开始菜单 Startup 文件夹（同 per-user 但 shell:startup 路径解析间接，无收益）。Run 键的额外好处：任务管理器「启动」页对它的禁用写在 `StartupApproved\Run`，应用按内容比对重写 Run 值**不会**覆盖用户在任务管理器里做的禁用，两种关闭途径兼容。
-- **macOS：`~/Library/LaunchAgents/com.cholf5.stupiddict.plist`**（Label = bundle id 与 package.sh 的 `CFBundleIdentifier` 一致，`Program` = `Environment.ProcessPath`，`RunAtLoad`）。备选：SMAppService（macOS 13+ 才有，且与系统设置「登录项」页耦合，语义不再由文件内容唯一决定，收敛模型复杂化）；`launchctl` 即时 load（需求是「登录自启」不是「立即拉起」，落盘文件下次登录自然生效，还免掉 launchctl 的进程依赖）。plist 里 `Program` 用单个字符串路径（launchd 不经 shell，无引号问题），内容经 `WebUtility.HtmlEncode` 转义——非 ASCII（如中文用户名路径）转成数字实体，XML 合法。
+- **macOS：`~/Library/LaunchAgents/com.cholf5.stupiddict.plist`**（Label = bundle id 与 package.sh 的 `CFBundleIdentifier` 一致，`Program` = `Environment.ProcessPath`，`RunAtLoad`）。备选：SMAppService（macOS 13+ 才有，且与系统设置「登录项」页耦合，语义不再由文件内容唯一决定，收敛模型复杂化）；`launchctl` 即时 load（需求是「登录自启」不是「立即拉起」，落盘文件下次登录自然生效，还免掉 launchctl 的进程依赖）。plist 里 `Program` 用单个字符串路径（launchd 不经 shell，无引号问题），内容经 `WebUtility.HtmlEncode` 转义 XML 特殊字符（`& < > ' "` 与 U+00A0–U+00FF；CJK 等更高码位按原样 UTF-8 落盘，文件声明 UTF-8，XML 合法）。
 - **Linux：`~/.config/autostart/StupidDict.desktop`**（XDG autostart，`SpecialFolder.ApplicationData` 在 Linux 上映射 `XDG_CONFIG_HOME`）。`Exec` 带引号处理空格路径；`Name[zh_CN]=傻瓜词典` 本地化名；`Icon` 指向 exe 同目录的 `app-icon.png`（package.sh 在 Linux zip 里携带），文件不存在时桌面环境回退通用图标、无副作用。
 
 ## 实现要点

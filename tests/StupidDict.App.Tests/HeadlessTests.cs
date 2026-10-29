@@ -1561,6 +1561,37 @@ public class HeadlessWindowTests
     }
 
     [AvaloniaFact]
+    public void LaunchAtLoginLabelFitsItsColumnInEnglish()
+    {
+        // 通用页签三行共用固定首列（120px）：最宽标签是英文 "Launch at login"
+        // （~90-105px，随平台字体浮动），70px 时代它溢出列宽、尾部字形顶进
+        // 复选框。溢出不体现在 arrange 后的 Bounds/DesiredSize 上——列宽约束
+        // 会把测量结果钳到列宽本身，字形只在渲染层越界——须 Measure(Infinity)
+        // 探无约束全文宽，对右列起点比。
+        Translations.Instance.SetLanguage(AppLanguage.English);
+        try
+        {
+            var settingsWindow = new SettingsWindow(new AppSettings());
+            settingsWindow.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            var label = settingsWindow.FindControl<TextBlock>("LaunchAtLoginLabel")!;
+            var checkbox = settingsWindow.FindControl<CheckBox>("LaunchAtLoginCheckBox")!;
+            label.Measure(Size.Infinity);
+            Assert.True(
+                label.DesiredSize.Width <= checkbox.Bounds.Left,
+                $"English label desired width {label.DesiredSize.Width:F1} exceeds the " +
+                $"fixed label column (checkbox starts at {checkbox.Bounds.Left:F1})");
+
+            settingsWindow.Close();
+        }
+        finally
+        {
+            Translations.Instance.SetLanguage(AppLanguage.SimplifiedChinese);
+        }
+    }
+
+    [AvaloniaFact]
     public void LanguageSwitchRebuildsResultPageExactlyOnce()
     {
         // TC-001 (B-002): SetLanguage raises PropertyChanged for every

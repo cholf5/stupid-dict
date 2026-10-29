@@ -27,8 +27,11 @@
 
     <TabItem Header="{Binding SectionGeneral, Source={x:Static loc:Translations.Instance}}">
       <StackPanel Margin="16,14" Spacing="16">
-        <!-- Grid 行高由 32px 的 ComboBox 决定，label 垂直居中后与下拉框中心严格对齐 -->
-        <Grid ColumnDefinitions="70,*" RowDefinitions="Auto,Auto" RowSpacing="10">
+        <!-- 三行 Grid 共用 120px 固定首列：最宽标签是英文 "Launch at login"
+             （各平台字体 ~90-105px），70px 曾被它溢出、尾部字形顶进复选框；
+             别缩回小值，再加标签时先核最宽语言。行高由 32px 的 ComboBox 决定，
+             label 垂直居中后与下拉框中心严格对齐 -->
+        <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto" RowSpacing="10">
           <TextBlock FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
                      Text="{Binding ThemeLabel, Source={x:Static loc:Translations.Instance}}" />
           <!-- 选项顺序对应 AppTheme：0 跟随系统 / 1 日间 / 2 夜间；选项实例由
@@ -44,7 +47,7 @@
             </ComboBox.ItemTemplate>
           </ComboBox>
         </Grid>
-        <Grid ColumnDefinitions="70,*" RowDefinitions="Auto,Auto" RowSpacing="10">
+        <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto" RowSpacing="10">
           <TextBlock FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
                      Text="{Binding LanguageLabel, Source={x:Static loc:Translations.Instance}}" />
           <!-- 选项顺序对应 AppLanguage：0 跟随系统 / 1 简体中文 / 2 English -->
@@ -57,8 +60,8 @@
             </ComboBox.ItemTemplate>
           </ComboBox>
         </Grid>
-        <Grid ColumnDefinitions="70,*">
-          <TextBlock FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
+        <Grid ColumnDefinitions="120,*">
+          <TextBlock Name="LaunchAtLoginLabel" FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
                      Text="{Binding LaunchAtLoginLabel, Source={x:Static loc:Translations.Instance}}" />
           <!-- 即时生效（同主题/语言，非翻译页的 draft 模式）：勾选写共享设置并
                经可注入缝注册系统启动项，code-behind 先赋初值再订阅事件 -->
