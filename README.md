@@ -104,8 +104,8 @@ English→Chinese  English→English  Chinese→English
 
 ```bash
 dotnet build
-dotnet test                                    # 单元测试 + 无头 UI 测试
-dotnet run --project src/StupidDict.App -f net10.0   # 运行（需要先构建词典数据）
+dotnet test                              # 单元测试 + 无头 UI 测试
+dotnet run --project src/StupidDict.App  # 运行（需要先构建词典数据）
 ```
 
 ## 词典与资源
@@ -181,6 +181,8 @@ scripts/release.sh 1.0.1 --watch    # bump 版本 → 打 tag → CI 三平台�
 ```
 
 发版脚本把 `StupidDict.App.csproj` 的 `<Version>` 提升到目标版本并打 `v` tag，CI（`.github/workflows/dotnet-desktop.yml`）随后测试、打包 macOS（.app，arm64/x64）/ Windows（绿色 zip + Inno Setup 安装包）/ Linux 应用包并创建 Release；`--watch` 会等 CI 跑完并核对产物齐全。版本必须与 csproj 一致，CI 在 tag 时强制校验，in-app 更新检查也以它为比较基准。安装包为 per-user 安装（免管理员权限，装到 `%LOCALAPPDATA%\Programs\Stupid Dict`，数据本就在 `%APPDATA%\StupidDict`），与绿色 zip 并存：想免安装的用 zip，普通用户双击 Setup 即可。
+
+发布产物默认 **NativeAOT** 编译：单原生可执行文件 + 随行图形/数据库原生库，启动无 JIT 预热、app-only 包体积约为 CoreCLR 打包的两成；`scripts/package.sh --no-aot` 可临时回退 CoreCLR 单文件打包（仅本地排障用，Release 不出双轨）。
 
 数据资产（`dictionary.zip` / `audio-pack.db`）与 App 版本解耦：它们放在独立的 **prerelease**（现为 `data-3`，对应代码里的 `ReleaseAssets.DataTag`），一次发布、基本不再动，应用内下载 URL 钉在该 tag 上（加速镜像前缀对其同样适用）。打 prerelease 标记是刻意的：prerelease 永远不参与 `releases/latest` 竞争，而应用内「检查更新」读的正是那个页面，必须始终指向 App 版本。App 发版不携带、也不需要这两件资产。数据要更新时：发布下一个 `data-N`，把 `ReleaseAssets.DataTag` 提到新 tag，随下一个 App 版本生效。
 

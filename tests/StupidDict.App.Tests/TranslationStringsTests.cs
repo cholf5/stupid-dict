@@ -39,6 +39,26 @@ public class TranslationStringsTests
         }
     }
 
+    [Fact]
+    public void AllPropertyNamesMatchesActualProperties()
+    {
+        // The production array went explicit for NativeAOT (a GetProperties
+        // scan at static-init time is what trimming punishes). This mirror
+        // keeps the array honest: every public instance property must be
+        // listed, and nothing stale may linger — SetLanguage fans
+        // PropertyChanged over the array, so a missing name would leave that
+        // binding speaking the old language after a switch.
+        var actual = typeof(Translations).GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Select(p => p.Name)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+        var declared = (string[])typeof(Translations)
+            .GetField("AllPropertyNames", BindingFlags.NonPublic | BindingFlags.Static)!
+            .GetValue(null)!;
+
+        Assert.Equal(actual, declared.OrderBy(n => n, StringComparer.Ordinal).ToArray());
+    }
+
     private static Dictionary<string, string> PrivateStringTable(string name)
     {
         var field = typeof(Translations).GetField(name,

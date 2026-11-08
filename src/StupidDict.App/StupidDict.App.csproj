@@ -2,9 +2,10 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <!-- Multi-target: net10.0-windows unlocks System.Speech for the Windows
-         TTS fallback; the other platforms build against plain net10.0. -->
-    <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
+    <!-- Single TFM: the Windows TTS fallback drives SAPI through a PowerShell
+         one-liner, so System.Speech — and with it the net10.0-windows TFM it
+         needed — is gone. -->
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>StupidDict</AssemblyName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -13,6 +14,13 @@
          script: release.sh bumps this and tags vX.Y.Z, CI enforces equality. -->
     <Version>1.2.0</Version>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- NativeAOT readiness: the AOT/trim analyzers ride along in every
+         normal build, so reflection the AOT compiler cannot handle turns red
+         in dotnet test (TreatWarningsAsErrors), not only at publish time.
+         TrimmerSingleWarn=false keeps each warning distinct instead of one
+         aggregate. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
     <!-- App icon embedded into the Windows exe (Explorer / taskbar); the same
          ico doubles as the window icon via avares:// below. -->
     <ApplicationIcon>Assets/app-icon.ico</ApplicationIcon>
@@ -32,10 +40,6 @@
     <PackageReference Include="Avalonia" Version="12.1.4" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
-  </ItemGroup>
-
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
-    <PackageReference Include="System.Speech" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 namespace StupidDict.App.Speech;
@@ -5,8 +6,10 @@ namespace StupidDict.App.Speech;
 /// <summary>
 /// Offline text-to-speech through the OS, the fallback when the audio pack
 /// has no recording for a word. macOS uses the preinstalled voices via say
-/// (British: Daniel/Arthur/Gordon, American: Samantha/Aaron); Windows uses
-/// System.Speech; Linux uses espeak. All of them are free, no download.
+/// (British: Daniel/Arthur/Gordon, American: Samantha/Aaron); Windows drives
+/// the same SAPI voices through a Windows PowerShell one-liner (in-proc
+/// System.Speech is COM interop, which NativeAOT cannot run); Linux uses
+/// espeak. All of them are free, no download.
 /// </summary>
 public sealed class SystemTtsPlayer : ISpeechPlayer
 {
@@ -17,13 +20,14 @@ public sealed class SystemTtsPlayer : ISpeechPlayer
 
     private readonly ProcessPlayer _process = new();
     // Voice enumeration runs off the UI thread at most once (B-011): the first
-    // macOS playback kicks it off and speaks with the default voice while the
+    // TTS fallback kicks it off and speaks with the default voice while the
     // probe is still running, later plays pick from the parsed table.
-    private readonly object _macVoicesGate = new();
-    private Task<Dictionary<string, string>>? _macVoices;
-    // Test seam for the probe (B-011): null in production (real `say -v ?`
-    // below); a test substitutes its own command. The timeout rides along so a
-    // test can use a short deadline against a hung substitute.
+    private readonly object _voicesGate = new();
+    private Task<Dictionary<string, string>>? _voices;
+    // Test seam for the probe (B-011): null in production (real `say -v ?` /
+    // powershell listing below); a test substitutes its own command. The
+    // timeout rides along so a test can use a short deadline against a hung
+    // substitute.
     private readonly ProcessStarter? _voiceProbeOverride;
     private readonly int _voiceProbeTimeoutMs;
 
@@ -40,16 +44,10 @@ public sealed class SystemTtsPlayer : ISpeechPlayer
     /// <summary>Starts a probe process and returns it, or null when it could not start.</summary>
     internal delegate System.Diagnostics.Process? ProcessStarter(System.Diagnostics.ProcessStartInfo info);
 
-#if WINDOWS
-    private System.Speech.Synthesis.SpeechSynthesizer? _synthesizer;
-#endif
-
     public bool Play(string word, SpeechAccent accent)
     {
         if (OperatingSystem.IsMacOS()) return PlayMac(word, accent);
-#if WINDOWS
         if (OperatingSystem.IsWindows()) return PlayWindows(word, accent);
-#endif
         if (OperatingSystem.IsLinux()) return PlayLinux(word, accent);
         return false;
     }
@@ -61,6 +59,20 @@ public sealed class SystemTtsPlayer : ISpeechPlayer
         return voice is not null
             ? _process.Play("/usr/bin/say", "-v", voice, word)
             : _process.Play("/usr/bin/say", word);
+    }
+
+    private bool PlayWindows(string word, SpeechAccent accent)
+    {
+        var powershell = WindowsPowerShellPath();
+        if (powershell is null) return false;
+        var voices = VoicesNow();
+        var voice = voices is null ? null : SelectWindowsVoice(WindowsVoiceList(voices), accent);
+        // Table landed and no English voice is installed: nothing to say (the
+        // old in-proc code returned false in the same case). While the probe
+        // is still pending, speak with the default voice instead — the B-011
+        // semantics the macOS path already has.
+        if (voices is not null && voice is null) return false;
+        return _process.Play(powershell, "-NoProfile", "-NonInteractive", "-Command", WindowsSpeakScript(word, voice));
     }
 
     private bool PlayLinux(string word, SpeechAccent accent)
@@ -75,36 +87,12 @@ public sealed class SystemTtsPlayer : ISpeechPlayer
         return false;
     }
 
-#if WINDOWS
-    private bool PlayWindows(string word, SpeechAccent accent)
-    {
-        if (!OperatingSystem.IsWindows()) return false;
-        try
-        {
-            _synthesizer ??= new System.Speech.Synthesis.SpeechSynthesizer();
-            var installed = _synthesizer.GetInstalledVoices()
-                .Where(v => v.Enabled)
-                .Select(v => (v.VoiceInfo.Name, Culture: v.VoiceInfo.Culture.Name))
-                .ToList();
-            if (SelectWindowsVoice(installed, accent) is not { } voice) return false;
-            _synthesizer.SpeakAsyncCancelAll();
-            _synthesizer.SelectVoice(voice);
-            _synthesizer.SpeakAsync(word);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-#endif
-
     /// <summary>
     /// Windows voice selection, pure so tests can run off the SAPI stack (CI
-    /// is ubuntu). Returns the voice NAME — SpeechSynthesizer.SelectVoice
-    /// matches names only; handing it a culture string ("en-US") throws
-    /// ArgumentException, which PlayWindows's best-effort catch swallowed,
-    /// so Windows TTS never made a sound (2026-10-10).
+    /// is ubuntu). Returns the voice NAME — the PowerShell script selects by
+    /// name only; handing SelectVoice a culture string ("en-US") throws
+    /// ArgumentException, which the best-effort catch swallowed, so Windows
+    /// TTS never made a sound (2026-10-10).
     /// </summary>
     internal static string? SelectWindowsVoice(
         IReadOnlyList<(string Name, string Culture)> installed, SpeechAccent accent)
@@ -118,71 +106,97 @@ public sealed class SystemTtsPlayer : ISpeechPlayer
     }
 
     /// <summary>
-    /// Exit-time cleanup (B-012): kills an in-flight CLI voice, and on Windows
-    /// cancels the async utterance and releases the synthesizer. Best-effort —
-    /// every fault is swallowed so the window-close path never breaks.
+    /// Exit-time cleanup (B-012): kills an in-flight CLI voice (say, the
+    /// powershell one-liner, espeak). Best-effort — every fault is swallowed
+    /// so the window-close path never breaks.
     /// </summary>
     public void Stop()
     {
         _process.Stop();
-#if WINDOWS
-        try
+    }
+
+    private string? VoiceFor(SpeechAccent accent)
+    {
+        var voices = VoicesNow();
+        if (voices is null) return null;
+        return OperatingSystem.IsWindows()
+            ? SelectWindowsVoice(WindowsVoiceList(voices), accent)
+            : SelectMacVoice(voices, accent);
+    }
+
+    private static List<(string Name, string Culture)> WindowsVoiceList(Dictionary<string, string> voices) =>
+        voices.Select(v => (Name: v.Key, Culture: v.Value)).ToList();
+
+    /// <summary>
+    /// The one-liner that speaks on Windows. Synchronous Speak: the process
+    /// exits when the utterance ends, so ProcessPlayer's Stop (kill) cuts the
+    /// speech exactly like it cuts `say`. Single-quoted PowerShell literals;
+    /// a single quote inside doubles (headwords are [a-z' -], escape anyway).
+    /// </summary>
+    private static string WindowsSpeakScript(string word, string? voice)
+    {
+        static string Quote(string value) => "'" + value.Replace("'", "''") + "'";
+        var select = voice is { } name ? "$s.SelectVoice(" + Quote(name) + "); " : "";
+        return "Add-Type -AssemblyName System.Speech; " +
+               "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; " +
+               select +
+               "$s.Speak(" + Quote(word) + ")";
+    }
+
+    /// <summary>
+    /// Resolves Windows PowerShell (ships with every Windows; pwsh is not a
+    /// given). System32 explicitly first — a mangled PATH should not kill the
+    /// fallback — then PATH.
+    /// </summary>
+    private static string? WindowsPowerShellPath()
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
+        if (!string.IsNullOrEmpty(systemRoot))
         {
-            if (_synthesizer is { } synthesizer)
-            {
-                // Cancel first so the in-flight SpeakAsync is not running while
-                // the engine is disposed; null the field so a later Play
-                // recreates the synthesizer instead of touching a disposed one.
-                synthesizer.SpeakAsyncCancelAll();
-                synthesizer.Dispose();
-                _synthesizer = null;
-            }
+            var candidate = Path.Combine(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+            if (File.Exists(candidate)) return candidate;
         }
-        catch
-        {
-            // a broken synthesizer must not break the close path
-        }
-#endif
+        return PathLookup.Which("powershell");
     }
 
     /// <summary>
     /// The parsed voice table, or null while the first enumeration has not
-    /// finished yet. The probe (`say -v ?` — reads can hang on a wedged
-    /// speech stack) runs on the thread pool at most once per player, never
-    /// on the UI thread (B-011): callers speak with the default voice until
-    /// the table lands. Internal for tests, which drive the probe seam.
+    /// finished yet. The probe (`say -v ?` on macOS, a PowerShell SAPI voice
+    /// listing on Windows — reads can hang on a wedged speech stack) runs on
+    /// the thread pool at most once per player, never on the UI thread
+    /// (B-011): callers speak with the default voice until the table lands.
+    /// Internal for tests, which drive the probe seam.
     /// </summary>
-    internal Dictionary<string, string>? MacVoicesNow()
+    internal Dictionary<string, string>? VoicesNow()
     {
-        if (_macVoices is null)
+        if (_voices is null)
         {
-            lock (_macVoicesGate)
+            lock (_voicesGate)
             {
-                _macVoices ??= Task.Run(EnumerateMacVoices);
+                _voices ??= Task.Run(EnumerateVoices);
             }
         }
 
-        return _macVoices.Status == TaskStatus.RanToCompletion ? _macVoices.Result : null;
+        return _voices.Status == TaskStatus.RanToCompletion ? _voices.Result : null;
     }
 
-    private Dictionary<string, string> EnumerateMacVoices()
+    private Dictionary<string, string> EnumerateVoices()
     {
         var voices = new Dictionary<string, string>();
         try
         {
-            var info = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "/usr/bin/say",
-                ArgumentList = { "-v", "?" },
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                CreateNoWindow = true,
-            };
-            using var process = _voiceProbeOverride is { } probe ? probe(info) : System.Diagnostics.Process.Start(info);
+            var info = VoiceProbeInfo();
+            if (info is null) return voices;
+            using var process = _voiceProbeOverride is { } probe ? probe(info) : Process.Start(info);
             if (process is not null)
             {
                 var output = SubprocessOutput.ReadWithTimeout(process, _voiceProbeTimeoutMs);
-                if (output is not null) ParseVoiceList(output, voices);
+                if (output is not null)
+                {
+                    if (OperatingSystem.IsWindows()) ParseWindowsVoiceList(output, voices);
+                    else ParseVoiceList(output, voices);
+                }
             }
         }
         catch
@@ -191,6 +205,59 @@ public sealed class SystemTtsPlayer : ISpeechPlayer
         }
 
         return voices;
+    }
+
+    /// <summary>
+    /// Builds the probe command for the platform, or null when there is
+    /// nothing to probe (Linux's espeak takes a -v variant directly; a
+    /// Windows box without Windows PowerShell has no SAPI stack either).
+    /// With the test seam injected the platform check is bypassed: tests run
+    /// on every host and rewrite the info entirely (ubuntu CI drives the
+    /// macOS parse path through /bin/sh).
+    /// </summary>
+    private ProcessStartInfo? VoiceProbeInfo()
+    {
+        if (_voiceProbeOverride is not null)
+            return new ProcessStartInfo
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true,
+            };
+        if (OperatingSystem.IsMacOS())
+        {
+            return new ProcessStartInfo
+            {
+                FileName = "/usr/bin/say",
+                ArgumentList = { "-v", "?" },
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true,
+            };
+        }
+        if (OperatingSystem.IsWindows())
+        {
+            var powershell = WindowsPowerShellPath();
+            if (powershell is null) return null;
+            // One line per installed voice, "Name|Culture" — cultures never
+            // contain a pipe, so the parser splits on the last one even if a
+            // voice name ever did.
+            return new ProcessStartInfo
+            {
+                FileName = powershell,
+                ArgumentList =
+                {
+                    "-NoProfile", "-NonInteractive", "-Command",
+                    "Add-Type -AssemblyName System.Speech; " +
+                    "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; " +
+                    "$s.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo.Name + '|' + $_.VoiceInfo.Culture.Name }",
+                },
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true,
+            };
+        }
+        return null;
     }
 
     /// <summary>Parses `say -v ?` output: voice name → locale ("Daniel" → "en_GB").</summary>
@@ -205,10 +272,16 @@ public sealed class SystemTtsPlayer : ISpeechPlayer
         }
     }
 
-    private string? VoiceFor(SpeechAccent accent)
+    /// <summary>Parses the PowerShell listing: "Name|Culture" → ("Microsoft Zira Desktop" → "en-US").</summary>
+    internal static void ParseWindowsVoiceList(string output, Dictionary<string, string> voices)
     {
-        var voices = MacVoicesNow();
-        return voices is null ? null : SelectMacVoice(voices, accent);
+        foreach (var line in output.Split('\n'))
+        {
+            var trimmed = line.TrimEnd('\r');
+            var separator = trimmed.LastIndexOf('|');
+            if (separator <= 0 || separator == trimmed.Length - 1) continue;
+            voices.TryAdd(trimmed[..separator].Trim(), trimmed[(separator + 1)..].Trim());
+        }
     }
 
     /// <summary>

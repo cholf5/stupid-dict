@@ -141,17 +141,26 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
-      # net10.0-windows unlocks System.Speech for the TTS fallback, matching
-      # scripts/package.sh; zipped via PowerShell because Git Bash lacks zip.
+      # Single net10.0 TFM: the Windows TTS fallback drives SAPI through a
+      # PowerShell one-liner (System.Speech is gone). NativeAOT yields one
+      # native exe — no PublishSingleFile involved.
       - name: Publish self-contained exe
         shell: pwsh
         run: >
-          dotnet publish $env:APP_PROJECT -c Release -f net10.0-windows -r win-x64
-          --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          dotnet publish $env:APP_PROJECT -c Release -r win-x64
+          --self-contained true -p:PublishAot=true
           -o "StupidDict-${env:VERSION}-win-x64"
-      - name: Zip portable exe
+      # NativeAOT emits a large native .pdb beside the exe. The Inno script
+      # packs SourceDir\* recursively, so the pdb must be gone before ISCC
+      # runs (the zip step below only picks StupidDict.exe anyway).
+      - name: Remove debug symbols
         shell: pwsh
-        run: Compress-Archive -Path "StupidDict-${env:VERSION}-win-x64/StupidDict.exe" -DestinationPath "StupidDict-${env:VERSION}-win-x64.zip"
+        run: Remove-Item "StupidDict-${env:VERSION}-win-x64/*.pdb" -ErrorAction SilentlyContinue
+      - name: Zip portable files
+        shell: pwsh
+        # AOT output = exe + native libraries (e_sqlite3, libSkiaSharp); the
+        # pdb is gone by now, so take the whole publish directory.
+        run: Compress-Archive -Path "StupidDict-${env:VERSION}-win-x64/*" -DestinationPath "StupidDict-${env:VERSION}-win-x64.zip"
       - name: Install Inno Setup
         # Pinned to the newest 6.x (verified present in the choco feed): the
         # ISCC path below is hardcoded to "Inno Setup 6", so a future Inno 7

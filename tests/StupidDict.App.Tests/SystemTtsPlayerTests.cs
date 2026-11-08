@@ -176,7 +176,7 @@ public sealed class SystemTtsPlayerTests
 
         // First call kicks the probe off and must not block on it: the probe
         // needs 500ms before writing, so the answer right away is "not ready".
-        var pending = player.MacVoicesNow();
+        var pending = player.VoicesNow();
         Assert.Null(pending);
 
         // The table lands afterwards, parsed from the substituted output.
@@ -184,7 +184,7 @@ public sealed class SystemTtsPlayerTests
         for (var attempt = 0; attempt < 100 && voices is null; attempt++)
         {
             await Task.Delay(100, TestContext.Current.CancellationToken);
-            voices = player.MacVoicesNow();
+            voices = player.VoicesNow();
         }
 
         Assert.NotNull(voices);
@@ -192,7 +192,7 @@ public sealed class SystemTtsPlayerTests
         Assert.Equal(1, starts);
 
         // Later calls reuse the cached table without re-probing.
-        Assert.Same(voices, player.MacVoicesNow());
+        Assert.Same(voices, player.VoicesNow());
         Assert.Equal(1, starts);
     }
 
@@ -206,10 +206,62 @@ public sealed class SystemTtsPlayerTests
         for (var attempt = 0; attempt < 50 && voices is null; attempt++)
         {
             await Task.Delay(50, TestContext.Current.CancellationToken);
-            voices = player.MacVoicesNow();
+            voices = player.VoicesNow();
         }
 
         Assert.NotNull(voices);
         Assert.Empty(voices);
+    }
+
+    // --- ParseWindowsVoiceList: pure parsing of the PowerShell listing ---
+
+    [Fact]
+    public void ParseWindowsVoiceListExtractsVoiceNamesAndCultures()
+    {
+        var voices = new Dictionary<string, string>();
+        SystemTtsPlayer.ParseWindowsVoiceList(
+            "Microsoft Zira Desktop|en-US\n" +
+            "Microsoft Hazel Desktop|en-GB\n" +
+            "Microsoft Huihui Desktop|zh-CN\n",
+            voices);
+
+        Assert.Equal("en-US", voices["Microsoft Zira Desktop"]);
+        Assert.Equal("en-GB", voices["Microsoft Hazel Desktop"]);
+        Assert.Equal("zh-CN", voices["Microsoft Huihui Desktop"]);
+    }
+
+    /// <summary>
+    /// Cultures never contain a pipe, so the LAST pipe separates — a voice
+    /// name that someday does would still land intact. CR line endings ride
+    /// along (Windows console output), empty halves are garbage.
+    /// </summary>
+    [Fact]
+    public void ParseWindowsVoiceListUsesTheLastPipeAndSkipsGarbage()
+    {
+        var voices = new Dictionary<string, string>();
+        SystemTtsPlayer.ParseWindowsVoiceList(
+            "Weird|Name|en-US\r\n" +
+            "no separator at all\r\n" +
+            "|en-GB\r\n" +
+            "DanglingPipe|\r\n",
+            voices);
+
+        Assert.Equal("en-US", voices["Weird|Name"]);
+        // and nothing else survived the parse:
+        Assert.Single(voices);
+    }
+
+    /// <summary>
+    /// The first listing wins (TryAdd): GetInstalledVoices is ordered by the
+    /// SAPI registry, so a duplicate name would describe the same voice
+    /// anyway.
+    /// </summary>
+    [Fact]
+    public void ParseWindowsVoiceListKeepsTheFirstEntryForDuplicateNames()
+    {
+        var voices = new Dictionary<string, string>();
+        SystemTtsPlayer.ParseWindowsVoiceList("A Voice|en-US\nA Voice|en-GB\n", voices);
+
+        Assert.Equal("en-US", voices["A Voice"]);
     }
 }

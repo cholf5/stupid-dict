@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 namespace StupidDict.App.Settings;
 
@@ -12,11 +13,26 @@ namespace StupidDict.App.Settings;
 /// </summary>
 internal static class SettingsService
 {
-    private static readonly JsonSerializerOptions Options = new()
+    // The context supplies AOT-safe metadata (WriteIndented is baked there);
+    // the copy keeps the generated resolver and layers the forgiving enum
+    // converters on top — closed generics, statically referenced, so NativeAOT
+    // compiles them.
+    private static readonly JsonSerializerOptions Options = new(AppSettingsJsonContext.Default.Options)
     {
-        WriteIndented = true,
-        Converters = { new ForgivingEnumConverterFactory() },
+        Converters =
+        {
+            new ForgivingEnumConverter<AppTheme>(),
+            new ForgivingEnumConverter<AppLanguage>(),
+        },
     };
+
+    // Type info resolved through Options (so the forgiving converters apply)
+    // and handed to the JsonTypeInfo overloads — the generic
+    // JsonSerializer.Deserialize/Serialize overloads carry
+    // RequiresUnreferencedCode/RequiresDynamicCode and are exactly what
+    // NativeAOT cannot run.
+    private static readonly JsonTypeInfo<AppSettings> SettingsTypeInfo =
+        (JsonTypeInfo<AppSettings>)Options.GetTypeInfo(typeof(AppSettings));
 
     public static string DefaultPath => Path.Combine(AppPaths.DataDirectory, "settings.json");
 
@@ -26,7 +42,7 @@ internal static class SettingsService
         try
         {
             using var stream = File.OpenRead(path);
-            return JsonSerializer.Deserialize<AppSettings>(stream, Options) ?? new AppSettings();
+            return JsonSerializer.Deserialize(stream, SettingsTypeInfo) ?? new AppSettings();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                                       or JsonException or NotSupportedException)
@@ -49,7 +65,7 @@ internal static class SettingsService
             if (directory is not null) Directory.CreateDirectory(directory);
             var temporary = path + ".tmp";
             using (var stream = File.Create(temporary))
-                JsonSerializer.Serialize(stream, settings, Options);
+                JsonSerializer.Serialize(stream, settings, SettingsTypeInfo);
             File.Move(temporary, path, overwrite: true);
             // settings.json 携带明文 API key（v1 取舍）：Unix 侧 best-effort 收
             // 紧到 0600（Windows 依赖用户 profile ACL）。Move 会丢失 tmp 文件上

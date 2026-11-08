@@ -15,16 +15,11 @@ namespace StupidDict.App.Settings;
 /// (hand-editable, file format unchanged); bare numbers keep the stock
 /// behavior — an undefined number still deserializes, landing on the app's
 /// own fallback downstream.
+/// Registered as explicitly closed generics in SettingsService (one instance
+/// per enum on AppSettings): the old JsonConverterFactory opened the generic
+/// via Activator.CreateInstance + MakeGenericType, which NativeAOT cannot
+/// execute, while closed generics the source references are compiled in.
 /// </summary>
-internal sealed class ForgivingEnumConverterFactory : JsonConverterFactory
-{
-    public override bool CanConvert(Type typeToConvert) => typeToConvert.IsEnum;
-
-    public override JsonConverter? CreateConverter(Type typeToConvert, JsonSerializerOptions options) =>
-        (JsonConverter)Activator.CreateInstance(
-            typeof(ForgivingEnumConverter<>).MakeGenericType(typeToConvert))!;
-}
-
 internal sealed class ForgivingEnumConverter<T> : JsonConverter<T> where T : struct, Enum
 {
     public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)

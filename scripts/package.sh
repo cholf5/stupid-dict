@@ -5,7 +5,7 @@
 #   dictionary.zip + .sha256              — for the in-app first-run download
 #   audio-pack.zip + .sha256              — pronunciation pack, if one was built
 #
-# Usage: scripts/package.sh [--rids "osx-arm64 win-x64 ..."] [--dictionary <db>] [--audio-pack <zip>]
+# Usage: scripts/package.sh [--rids "osx-arm64 win-x64 ..."] [--dictionary <db>] [--audio-pack <zip>] [--no-aot]
 # App packages upload to the version Release; dictionary.zip / audio-pack.zip
 # (+ .sha256) upload to the separate data prerelease (data-N, see
 # ReleaseAssets.DataTag) — never one shared "gh release create vX dist/*": a
@@ -27,6 +27,7 @@ while [[ $# -gt 0 ]]; do
     --rids) RID_LIST="$2"; shift 2 ;;
     --dictionary) DICTIONARY="$2"; shift 2 ;;
     --audio-pack) AUDIO_PACK="$2"; shift 2 ;;
+    --no-aot) NO_AOT=1; shift ;;
     *) echo "未知参数: $1"; exit 1 ;;
   esac
 done
@@ -55,6 +56,15 @@ sha256_file() {
   else shasum -a 256 "$1"; fi
 }
 
+# NativeAOT output is the exe plus its native libraries beside it (Avalonia/
+# Skia/SQLite/HarfBuzz — the CoreCLR packaging's single-file self-extract does
+# not exist here). Stage everything except debug symbols (.pdb) and the dSYM
+# bundle; the stage layout below keys on the exe name.
+stage_publish_binaries() {
+  local src="$1" dst="$2"
+  find "$src" -maxdepth 1 -type f ! -name '*.pdb' -exec cp {} "$dst/" \;
+}
+
 # Ad-hoc sign the assembled .app: the single-file apphost's embedded signature
 # covers only the executable itself, so a bundle that was never re-sealed
 # fails `codesign --verify`, and a *downloaded* copy (quarantine attribute set)
@@ -81,14 +91,20 @@ mkdir -p "$DIST"
 
 for rid in $RID_LIST; do
   echo "==> publish $rid"
-  # Windows needs the windows TFM: it unlocks System.Speech for the TTS fallback.
-  case "$rid" in
-    win-*) TFM="net10.0-windows" ;;
-    *) TFM="net10.0" ;;
-  esac
-  dotnet publish src/StupidDict.App -c Release -f "$TFM" -r "$rid" --self-contained true \
-    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
-    -o "dist/publish/$rid"
+  if [[ -n "${NO_AOT:-}" ]]; then
+    # Escape hatch: CoreCLR single-file, the pre-NativeAOT packaging.
+    dotnet publish src/StupidDict.App -c Release -r "$rid" --self-contained true \
+      -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+      -o "dist/publish/$rid"
+  else
+    # NativeAOT (default): no JIT warmup at startup, smaller artifact. AOT
+    # output is a single native exe on its own — PublishSingleFile is not
+    # part of it; the .pdb beside the exe is debug info and never gets
+    # staged (only the exe is copied below).
+    dotnet publish src/StupidDict.App -c Release -r "$rid" --self-contained true \
+      -p:PublishAot=true \
+      -o "dist/publish/$rid"
+  fi
 
   EXE="StupidDict"
   [[ "$rid" == win-* ]] && EXE="StupidDict.exe"
@@ -103,7 +119,7 @@ for rid in $RID_LIST; do
     # A minimal .app bundle so macOS users get a double-clickable program.
     APP="$STAGE/Stupid Dict.app"
     mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-    cp "$PUBLISHED" "$APP/Contents/MacOS/StupidDict"
+    stage_publish_binaries "dist/publish/$rid" "$APP/Contents/MacOS"
     chmod +x "$APP/Contents/MacOS/StupidDict"
     # Same icns MacDockIcon embeds for bare `dotnet run`; LaunchServices reads it
     # from CFBundleIconFile for the packaged bundle.
@@ -126,7 +142,7 @@ for rid in $RID_LIST; do
 PLIST
     sign_app "$APP"
   else
-    cp "$PUBLISHED" "$STAGE/"
+    stage_publish_binaries "dist/publish/$rid" "$STAGE"
     # Linux only: the launch-at-login desktop entry points Icon= at this
     # sibling file (AutoStart.DesktopEntryContent); Windows doesn't need it.
     if [[ "$rid" == linux-* ]]; then

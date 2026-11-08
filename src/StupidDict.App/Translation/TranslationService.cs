@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using StupidDict.App.Settings;
 
 namespace StupidDict.App.Translation;
@@ -22,11 +23,16 @@ public sealed class TranslationService : ITranslationService
 
     // Default escaping would \u003C-encode the <text> wrapper; this body goes
     // out as application/json, never into an HTML context, so keep it literal
-    // and readable.
-    private static readonly JsonSerializerOptions RequestJsonOptions = new()
+    // and readable. Options come from the source-gen context (AOT-safe) with
+    // the encoder swapped on the copy; the type info rides the same options so
+    // the JsonTypeInfo overload needs no reflection serializer.
+    private static readonly JsonSerializerOptions RequestJsonOptions = new(TranslationJsonContext.Default.Options)
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
+
+    private static readonly JsonTypeInfo<TranslationRequestBody> RequestTypeInfo =
+        (JsonTypeInfo<TranslationRequestBody>)RequestJsonOptions.GetTypeInfo(typeof(TranslationRequestBody));
 
     private readonly AppSettings _settings;
     private readonly TranslationCache _cache;
@@ -135,17 +141,15 @@ public sealed class TranslationService : ITranslationService
     private async Task<ApiCall> SendCoreAsync(
         TranslationConfig config, TranslationEndpoint endpoint, string text, CancellationToken cancellationToken)
     {
-        var body = JsonSerializer.Serialize(new
-        {
-            model = config.Model,
-            messages = new object[]
-            {
-                new { role = "system", content = TranslationPrompt.System },
-                new { role = "user", content = TranslationPrompt.User(text) },
-            },
-            temperature = 0.2,
-            stream = false,
-        }, RequestJsonOptions);
+        var body = JsonSerializer.Serialize(new TranslationRequestBody(
+            Model: config.Model,
+            Messages:
+            [
+                new TranslationMessage("system", TranslationPrompt.System),
+                new TranslationMessage("user", TranslationPrompt.User(text)),
+            ],
+            Temperature: 0.2,
+            Stream: false), RequestTypeInfo);
 
         try
         {

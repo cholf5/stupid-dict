@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Globalization;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using StupidDict.App.Settings;
 
@@ -20,10 +19,34 @@ public sealed class Translations : INotifyPropertyChanged
 {
     // Static fields initialize in declaration order: the dictionaries must
     // come before Instance (its constructor needs them).
+    // The names are explicit instead of a GetProperties scan: reflection at
+    // static-init time is exactly what trimming/NativeAOT punish (metadata for
+    // "unreferenced" members may be dropped). TranslationStringsTests keeps a
+    // reflection mirror and asserts this array equals the real property set.
     private static readonly string[] AllPropertyNames =
-        typeof(Translations).GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Select(p => p.Name)
-            .ToArray();
+    [
+        "AboutBlurb", "AllSourcesFailed", "Antonyms", "AppName", "AssetInstalled", "AssetNotInstalled", "AudioPackCancelled",
+        "AudioPackDataLabel", "AudioPackDownloadButton", "AudioPackFailedFormat", "AudioPackImportFailedFormat", "AuthorLabel", "AuthorName", "BrowserOpenFailed",
+        "Cancel", "Cancelling", "CheckUpdate", "CheckingUpdate", "ChecksumFailed", "ChecksumRedownloading", "ClearSearchTip",
+        "Converting", "ConvertingFilesFormat", "CurrentLanguage", "DataDirectoryHint", "DictionaryDataLabel", "DidYouMean", "DownloadCancelled",
+        "DownloadFailedFormat", "DownloadPrompt", "DownloadResumeFormat", "DownloadResumeUnsizedFormat", "DownloadingAudioPack", "DownloadingAudioPackFormat", "DownloadingAudioPackUnsizedFormat",
+        "DownloadingDictionaryFormat", "DownloadingDictionaryUnsizedFormat", "EnglishDefinitions", "ExtractCorruptPurged", "ExtractFailedFormat", "Extracting", "ExtractingFilesFormat",
+        "FileTypeAudioPack", "FileTypeDictionary", "FollowSystem", "ImportFailedFormat", "ImportInvalidDatabase", "ImportMissingDb", "ImportMissingPack",
+        "ImportUnsupportedFormat", "Importing", "LangChinese", "LangEnglish", "LanguageLabel", "LaunchAtLoginLabel", "LicenseLabel",
+        "LookupErrorFormat", "NavBackTip", "NavForwardTip", "NoLocalPronunciation", "NoResultFormat", "OpenDataDirectory", "OpenDataDirectoryFailed",
+        "OpenDownloadPage", "OpenReleasePage", "OtherEntries", "PickLocalFile", "PickerFailedFormat", "PickerTitle", "PickerTitleAudioPack",
+        "Recent", "RelatedEntries", "RelatedWords", "RepoLabel", "Retry", "SearchWatermark", "SectionAbout",
+        "SectionData", "SectionGeneral", "SectionShortcuts", "SectionTranslation", "SettingsTip", "SettingsTitle", "ShortcutArrows",
+        "ShortcutBackForward", "ShortcutEscape", "ShortcutFocusSearch", "ShortcutLookup", "ShortcutSettings", "StartDownload", "Synonyms",
+        "Tagline", "ThemeDark", "ThemeLabel", "ThemeLight", "TranslateSentence", "TranslateWord", "TranslationApiKeyLabel",
+        "TranslationApiUrlLabel", "TranslationApiUrlPlaceholder", "TranslationAuthFailed", "TranslationAutoLabel", "TranslationCacheCleared", "TranslationCacheFormat", "TranslationClearCache",
+        "TranslationCloudFormat", "TranslationEndpointFailed", "TranslationEndpointHint", "TranslationExamples", "TranslationFailedFormat", "TranslationInProgress", "TranslationIncomplete",
+        "TranslationInvalidResponse", "TranslationInvalidUrl", "TranslationLocalFormat", "TranslationModelLabel", "TranslationModelPlaceholder", "TranslationNetworkFailed", "TranslationNotConfigured",
+        "TranslationOpenSettings", "TranslationPrivacy", "TranslationRateLimited", "TranslationRefused", "TranslationSave", "TranslationSaved", "TranslationServerFailed",
+        "TranslationTest", "TranslationTestFailedFormat", "TranslationTestSucceeded", "TranslationTesting", "TranslationTimeout", "TranslationUrlAndModelRequired", "TryShorter",
+        "UkPhoneticPrefix", "UkTip", "UpToDateStatus", "UpdateAvailableStatus", "UpdateCheckFailed", "UsPhoneticPrefix", "UsTip",
+        "Verifying", "ZipCrcMismatchFormat", "ZipSlipFormat",
+    ];
 
     private static readonly Dictionary<string, string> Zh = new()
     {
