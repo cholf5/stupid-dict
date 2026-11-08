@@ -78,6 +78,13 @@ stage_publish_binaries() {
 sign_app() {
   local app="$1"
   if command -v codesign >/dev/null 2>&1; then
+    # 嵌套代码先签、外层后签：AOT 产物把原生 dylib 放进 MacOS/，而
+    # `codesign --force -s -` 不带 --deep 不会补签未签名的嵌套代码——arm64
+    # 侥幸不炸（Apple 要求 arm64 代码必有签名，工具链默认给 ad-hoc），x64
+    # 变体不带自动签名，CI 的 osx-x64 job 实证「code object is not signed
+    # at all / In subcomponent: libe_sqlite3.dylib」。逐个签比 --deep 正统。
+    find "$app/Contents/MacOS" -type f -name '*.dylib' \
+      -exec codesign --force -s - {} \; || { echo "dylib 签名失败: ${app}" >&2; exit 1; }
     codesign --force -s - "$app" || { echo "ad-hoc 签名失败: ${app}" >&2; exit 1; }
     codesign --verify --strict "$app" || { echo "签名校验失败（封签不完整）: ${app}" >&2; exit 1; }
   else
