@@ -138,6 +138,9 @@ public partial class MainWindow : Window
         Activated += OnWindowActivated;
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         ActualThemeVariantChanged += OnActualThemeVariantChanged;
+        // The caption is native chrome, so it needs its own dark-mode
+        // declaration; Avalonia only does it on Windows 11 builds (WindowsCaptionTheme).
+        WindowsCaptionTheme.Attach(this);
         // A language switch re-renders the result page just like a theme
         // switch does; XAML bindings refresh themselves.
         Translations.Instance.PropertyChanged += OnTranslationsChanged;

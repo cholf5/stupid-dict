@@ -45,6 +45,9 @@ public partial class SettingsWindow : Window
         Action<bool>? applyLaunchAtLogin = null, int initialTabIndex = 0)
     {
         InitializeComponent();
+        // Each window owns its HWND, so the settings dialog needs its own
+        // caption declaration (WindowsCaptionTheme).
+        WindowsCaptionTheme.Attach(this);
         _settings = settings;
         _updateChecker = updateChecker;
         // 数据区块对注入的布局对磁盘求值；测试注入临时副本，绝不碰真实数据。
