@@ -20,7 +20,8 @@ docs/plans/2026-10-08-app-icon-design.md):
 written as:
 
     src/StupidDict.App/Assets/app-icon.png    1024 master (Apple margins)
-    src/StupidDict.App/Assets/app-icon.ico    full-bleed, 16/24/32/48/64/128/256 frames
+    src/StupidDict.App/Assets/app-icon.ico    full-bleed 16..256 frames (256 = PNG,
+                                              <256 = 32bpp BMP, see write_ico)
     src/StupidDict.App/Assets/app-icon.icns   full iconset (needs macOS iconutil)
 
 A preview sheet lands at /tmp/app-icon-preview.png: the candidate's
@@ -34,6 +35,8 @@ written. Everything here is regenerable, so the Assets/ files stay committed.
 """
 
 import argparse
+import io
+import struct
 import subprocess
 import sys
 import tempfile
@@ -56,6 +59,7 @@ ICONSET = [(f"icon_{s}x{s}.png", s) for s in (16, 32, 128, 256, 512)] + [
 PREVIEW_SIZES = (16, 24, 32, 48)
 PREVIEW_SCALE = 6  # nearest-neighbor blowup so single pixels stay judgeable
 PREVIEW_BACKGROUNDS = (("dark", (24, 24, 28)), ("light", (232, 232, 236)))
+ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
 
 
 def styled_icon(source: Path, content: int, radius: int) -> Image.Image:
@@ -95,6 +99,54 @@ def write_icns(master: Path, out: Path) -> bool:
             print("警告: iconutil 生成 icns 失败，跳过（png/ico 已写出）")
             return False
     return True
+
+
+def ico_bmp_frame(im: Image.Image) -> bytes:
+    """Encode one frame as a 32bpp DIB (BITMAPINFOHEADER + bottom-up BGRA
+    rows + 1bpp all-zero AND mask). biHeight is doubled because the DIB must
+    describe the XOR bitmap plus the AND mask below it. The mask stays zero:
+    with 32bpp the alpha channel governs transparency, the mask is just the
+    stride legacy parsers expect (online converters that botch these frames
+    are the classic broken-alpha icon source)."""
+    w, h = im.size
+    bgra = im.convert("RGBA").tobytes("raw", "BGRA")
+    xor = b"".join(bgra[y * w * 4:(y + 1) * w * 4] for y in range(h - 1, -1, -1))
+    and_stride = ((w + 31) // 32) * 4
+    and_mask = b"\x00" * (and_stride * h)
+    header = struct.pack(
+        "<IiiHHIIiiII", 40, w, h * 2, 1, 32, 0, len(xor) + len(and_mask), 0, 0, 0, 0
+    )
+    return header + xor + and_mask
+
+
+def write_ico(full_bleed: Image.Image, out: Path) -> None:
+    # Vista icon convention: only the 256 frame is PNG-compressed, frames
+    # below it must be 32bpp BMP/DIB. Pillow >=9.3 writes every frame as PNG
+    # by default, and small PNG frames break icon extraction in parts of the
+    # Windows shell (2026-11-16 desktop-icon report: shell picked a wrong
+    # fallback frame and the artwork rendered smaller than neighbours).
+    frames = {}
+    for size in ICO_SIZES:
+        if size == 256:
+            png = io.BytesIO()
+            full_bleed.resize((256, 256), Image.LANCZOS).save(png, format="PNG")
+            frames[size] = png.getvalue()
+        else:
+            frames[size] = ico_bmp_frame(full_bleed.resize((size, size), Image.LANCZOS))
+    body = b"".join(frames[size] for size in ICO_SIZES)
+    offset = 6 + 16 * len(ICO_SIZES)
+    with out.open("wb") as fp:
+        fp.write(struct.pack("<HHH", 0, 1, len(ICO_SIZES)))
+        for size in ICO_SIZES:
+            data = frames[size]
+            # bWidth/bHeight bytes are 0 for 256 (single byte can't hold it)
+            fp.write(struct.pack(
+                "<BBBBHHII",
+                0 if size == 256 else size, 0 if size == 256 else size,
+                0, 0, 1, 32, len(data), offset,
+            ))
+            offset += len(data)
+        fp.write(body)
 
 
 def write_preview(candidate: Image.Image, out: Path, previous=None) -> None:
@@ -149,7 +201,7 @@ def main() -> None:
     # 同比例放大到画布，不另造几何。
     bleed_radius = round(CANVAS * args.radius / args.content)
     full_bleed = styled_icon(args.source, CANVAS, bleed_radius)
-    full_bleed.save(ASSETS / "app-icon.ico", format="ICO")
+    write_ico(full_bleed, ASSETS / "app-icon.ico")
     icns_ok = write_icns(png, ASSETS / "app-icon.icns")
 
     alpha = styled.getchannel("A")
@@ -163,10 +215,22 @@ def main() -> None:
     bleed_bbox = bleed_alpha.getbbox()
     assert bleed_bbox == (0, 0, CANVAS, CANVAS), f"满幅 ico 未撑满画布: {bleed_bbox}"
 
+    # parse-back sanity on the container we just assembled
+    ico = (ASSETS / "app-icon.ico").read_bytes()
+    assert struct.unpack("<H", ico[4:6])[0] == len(ICO_SIZES), "ico 帧数异常"
+    for i, size in enumerate(ICO_SIZES):
+        e = 6 + i * 16
+        data_off = struct.unpack("<I", ico[e + 12:e + 16])[0]
+        sig = ico[data_off:data_off + 4]
+        if size == 256:
+            assert sig == b"\x89PNG", "256 帧应为 PNG"
+        else:
+            assert ico[e] == size and sig == struct.pack("<I", 40), f"{size} 帧应为 32bpp BMP"
+
     preview = Path(tempfile.gettempdir()) / "app-icon-preview.png"
     write_preview(full_bleed, preview, previous)
     print(f"已写出 {png}（Apple 网格边距）")
-    print(f"已写出 {ASSETS / 'app-icon.ico'}（满幅）")
+    print(f"已写出 {ASSETS / 'app-icon.ico'}（满幅；256=PNG，<256=32bpp BMP）")
     if icns_ok:
         print(f"已写出 {ASSETS / 'app-icon.icns'}")
     print(f"预览（满幅 ico vs 旧母版，深/浅底 16/24/32/48px）: {preview}")

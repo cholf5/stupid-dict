@@ -144,6 +144,59 @@ public class HeadlessWindowTests
         Assert.Equal((byte)255, bmp.GetPixel(252, 128).Alpha); // right mid-edge
     }
 
+    [AvaloniaFact]
+    public void IcoSmallFramesAreBmpAndOnly256IsPng()
+    {
+        // Pillow >=9.3 saves every ICO frame as PNG by default. PNG
+        // compression below 256px breaks frame selection in parts of the
+        // Windows shell (Vista convention: 256 = PNG, smaller = 32bpp
+        // BMP/DIB) — the desktop icon could then render from a wrong
+        // fallback frame and look smaller than its neighbours
+        // (2026-11-16 user report). This pins the container format so a
+        // regenerated ico can't regress to all-PNG; the artwork geometry
+        // is pinned separately by WindowsTaskbarIconArtworkIsFullBleed.
+        using var stream = AssetLoader.Open(new Uri("avares://StupidDict/Assets/app-icon.ico"));
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        var ico = ms.ToArray();
+        int count = BitConverter.ToUInt16(ico, 4);
+        Assert.Equal(7, count);
+        var sizes = new List<int>();
+        for (int i = 0; i < count; i++)
+        {
+            int e = 6 + i * 16;
+            int w = ico[e] == 0 ? 256 : ico[e];
+            int h = ico[e + 1] == 0 ? 256 : ico[e + 1];
+            Assert.Equal(w, h);
+            int bytes = BitConverter.ToInt32(ico, e + 8);
+            int offset = BitConverter.ToInt32(ico, e + 12);
+            var frame = ico[offset..(offset + bytes)];
+            if (w == 256)
+            {
+                Assert.Equal((byte)0x89, frame[0]); // PNG signature
+                Assert.Equal((byte)0x50, frame[1]);
+                Assert.Equal((byte)0x4E, frame[2]);
+                Assert.Equal((byte)0x47, frame[3]);
+            }
+            else
+            {
+                // BITMAPINFOHEADER: biSize=40, biHeight doubled (XOR rows
+                // bottom-up + AND mask below), 32bpp, BI_RGB uncompressed.
+                // A PNG signature here is exactly the regression this
+                // test exists to catch.
+                Assert.NotEqual((byte)0x89, frame[0]);
+                Assert.Equal(40, BitConverter.ToInt32(frame, 0));
+                Assert.Equal(2 * h, BitConverter.ToInt32(frame, 8));
+                Assert.Equal(32, BitConverter.ToUInt16(frame, 14));
+                Assert.Equal(0, BitConverter.ToInt32(frame, 16));
+                int andStride = (w + 31) / 32 * 4;
+                Assert.Equal(40 + w * h * 4 + andStride * h, bytes);
+            }
+            sizes.Add(w);
+        }
+        Assert.Equal(new[] { 16, 24, 32, 48, 64, 128, 256 }, sizes.OrderBy(s => s).ToArray());
+    }
+
     private static byte[]? ExtractIcoFrame(byte[] ico, int size)
     {
         // ICONDIR: reserved(2) type(2) count(2); ICONDIRENTRY: width(1)
