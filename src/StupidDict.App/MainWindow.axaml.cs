@@ -13,6 +13,7 @@ using StupidDict.App.Assets;
 using StupidDict.App.Localization;
 using StupidDict.App.Settings;
 using StupidDict.App.Speech;
+using StupidDict.App.Tray;
 using StupidDict.App.Translation;
 using StupidDict.Core.Application;
 using StupidDict.Core.Dictionary;
@@ -54,6 +55,19 @@ public partial class MainWindow : Window
     // tests, which replay the "ShowDialog failed before the window appeared"
     // state that the Closed handler alone cannot clear.
     internal SettingsWindow? _settingsWindow;
+    // Tray host: production shows a real notification-area icon, tests inject a
+    // recorder (headless has no tray backend) through the internal seam below.
+    private ITrayHost _tray = new TrayIconHost();
+    // True only between HideToTray and the restore/quit that follows it. It
+    // distinguishes "hidden to tray" from "closed / not shown yet", which both
+    // look like IsVisible == false.
+    private bool _trayHidden;
+    // Set when a close must go through unconditionally (tray Quit, prompt
+    // answer, tray backend missing). Never reset: the window is gone after it.
+    private bool _allowClose;
+    // Guards against re-entering the one-time prompt (a second close click
+    // while the modal dialog is up).
+    private bool _closePromptOpen;
     // Last client size seen while the window was Normal; Width/Height are
     // clobbered by maximize (Window.HandleResized assigns them on every
     // platform resize), so a close in a maximized state saves these instead.
@@ -91,6 +105,23 @@ public partial class MainWindow : Window
     /// </summary>
     internal Func<FilePickerOpenOptions, Task<IReadOnlyList<IStorageFile>>>? OpenFilePickerOverride;
 
+    /// <summary>
+    /// Test seam (InternalsVisibleTo): stands in for the one-time close prompt.
+    /// Null in production, where a modal <see cref="CloseToTrayPrompt"/> is
+    /// shown; tests return an answer without a dialog.
+    /// </summary>
+    internal Func<Task<CloseToTrayChoice>>? CloseToTrayPromptOverride;
+
+    /// <summary>
+    /// Test seam (InternalsVisibleTo): replaces the real tray icon so a test can
+    /// record show/hide/quit without a platform tray. Set before the first close.
+    /// </summary>
+    internal ITrayHost TrayHost
+    {
+        get => _tray;
+        set => _tray = value;
+    }
+
     public MainWindow() : this(new DictionaryService(AppPaths.DictionaryDatabasePath, AppPaths.HistoryDatabasePath))
     {
     }
@@ -104,8 +135,11 @@ public partial class MainWindow : Window
         _service = service;
         _locations = locations ?? AppLocations.Default;
         _autoDownload = autoDownload;
-        // Tests pass no settings: never read the user's real settings file.
-        _settings = settings ?? new AppSettings();
+        // Tests pass no settings: never read the user's real settings file, and
+        // never pop the one-time close-to-tray prompt (nothing in a headless
+        // test would answer it, so Close() would stall). Tests that exercise
+        // the prompt inject an explicit AppSettings — see CloseToTrayTests.
+        _settings = settings ?? new AppSettings { CloseToTrayAsked = true };
         _speech = speechPlayer ?? SpeechPlayback.Create(_locations.AudioDirectory, _locations.AudioPackDatabasePath);
         _downloader = downloader ?? new AssetDownloadService();
         _downloadDirectory = downloadDirectory ?? Path.Combine(Path.GetTempPath(), "stupiddict-downloads");
@@ -156,6 +190,11 @@ public partial class MainWindow : Window
         // headless tests reach the same handler by closing the window. Stop is
         // best-effort and never throws.
         Closed += (_, _) => _speech.Stop();
+        // Close to tray: the first user-initiated close asks once, later closes
+        // follow the saved answer. System/app shutdowns are never vetoed (see
+        // OnWindowClosing), so this cannot block logout or Shutdown().
+        Closing += OnWindowClosing;
+        Closed += (_, _) => _tray.Dispose();
 
         ShowEmptyState();
         UpdateNavButtons();
@@ -228,6 +267,138 @@ public partial class MainWindow : Window
         var area = screen.WorkingArea;
         if (Width > area.Width) Width = area.Width;
         if (Height > area.Height) Height = area.Height;
+    }
+
+    // ---- 关闭到托盘 ----
+
+    /// <summary>
+    /// Vetoes a user-initiated close when the app should keep running: the
+    /// very first close asks once ("tray or quit?"), later closes follow the
+    /// saved answer. Application/OS shutdowns are deliberately not vetoed — a
+    /// tray preference must never block logout or <c>Shutdown()</c>.
+    /// </summary>
+    private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (_allowClose
+            || e.CloseReason is WindowCloseReason.ApplicationShutdown
+                or WindowCloseReason.OSShutdown or WindowCloseReason.OwnerWindowClosing)
+            return;
+
+        if (!_settings.CloseToTrayAsked)
+        {
+            e.Cancel = true;
+            // Deferred: opening the modal dialog synchronously would run it on
+            // the stack of the platform's close request (macOS/Windows both
+            // dispatch the close on their own callback). The veto above is
+            // already in place, so nothing else happens before the answer.
+            if (!_closePromptOpen)
+            {
+                _closePromptOpen = true;
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => _ = AskThenCloseAsync());
+            }
+            return;
+        }
+
+        if (_settings.MinimizeToTrayOnClose)
+        {
+            e.Cancel = true;
+            HideToTray();
+        }
+    }
+
+    /// <summary>
+    /// Runs the one-time prompt (after the close was vetoed) and applies the
+    /// answer. Cancel leaves the window open and consumes nothing, so the next
+    /// close asks again. Never throws: the close was already vetoed, so a
+    /// failure must simply leave the window open instead of faulting a
+    /// fire-and-forget task.
+    /// </summary>
+    private async Task AskThenCloseAsync()
+    {
+        try
+        {
+            var choice = CloseToTrayPromptOverride is { } ask
+                ? await ask()
+                : await ShowCloseToTrayPromptAsync();
+            switch (choice)
+            {
+                case CloseToTrayChoice.MinimizeToTray:
+                    _settings.CloseToTrayAsked = true;
+                    _settings.MinimizeToTrayOnClose = true;
+                    HideToTray();
+                    break;
+                case CloseToTrayChoice.Quit:
+                    _settings.CloseToTrayAsked = true;
+                    _allowClose = true;
+                    Close();
+                    break;
+                // Cancel: no setting is touched and the prompt stays pending.
+            }
+        }
+        catch (Exception)
+        {
+            // Dialog or hide failure: stay open, ask again next close.
+        }
+        finally
+        {
+            _closePromptOpen = false;
+        }
+    }
+
+    private async Task<CloseToTrayChoice> ShowCloseToTrayPromptAsync()
+    {
+        var prompt = new CloseToTrayPrompt();
+        return await prompt.ShowDialog<CloseToTrayChoice?>(this) ?? CloseToTrayChoice.Cancel;
+    }
+
+    /// <summary>
+    /// Hides the window behind a tray icon. When the platform cannot show a
+    /// tray, the close proceeds as a real exit instead — hiding into nowhere
+    /// would leave the process with no visible way back.
+    /// </summary>
+    private void HideToTray()
+    {
+        if (_tray.Show(RestoreFromTray, RequestExit))
+        {
+            _trayHidden = true;
+            // The window may never be closed again (killed from the tray, OS
+            // reboot), so record the geometry now instead of losing it.
+            SaveWindowBounds();
+            Hide();
+            return;
+        }
+        _allowClose = true;
+        Close();
+    }
+
+    /// <summary>
+    /// Brings the window back. Also the second-launch activation path: a hidden
+    /// window is shown rather than ignored. A window that is merely minimized
+    /// keeps the old un-minimize-and-activate semantics, and a closed one is
+    /// left alone (the process is exiting).
+    /// </summary>
+    internal void RestoreFromTray()
+    {
+        if (!_trayHidden)
+        {
+            if (IsVisible) SingleInstanceGuard.BringToFront(this);
+            return;
+        }
+        _trayHidden = false;
+        _tray.Hide();
+        Show();
+        if (WindowState == WindowState.Minimized)
+            WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    /// <summary>Quit from the tray menu: remove the icon and close the window for real.</summary>
+    private void RequestExit()
+    {
+        _trayHidden = false;
+        _tray.Hide();
+        _allowClose = true;
+        Close();
     }
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)

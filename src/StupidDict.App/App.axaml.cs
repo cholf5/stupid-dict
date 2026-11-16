@@ -51,13 +51,14 @@ public partial class App : Application
                 new DictionaryService(AppPaths.DictionaryDatabasePath, AppPaths.HistoryDatabasePath),
                 settings: settings);
             // Second-launch activation: the guard raises it on its listener thread,
-            // hence the dispatcher hop. A closed (invisible) main window means the
-            // app is already shutting down and there is nothing to raise.
+            // hence the dispatcher hop. RestoreFromTray also reopens a window that
+            // was closed to the tray; a closed (invisible) window is still ignored,
+            // which means the app is already shutting down.
             SingleInstanceGuard.Current?.ActivationRequested +=
                 () => Dispatcher.UIThread.Post(() =>
                 {
-                    if (desktop.MainWindow is { } window && window.IsVisible)
-                        SingleInstanceGuard.BringToFront(window);
+                    if (desktop.MainWindow is MainWindow window)
+                        window.RestoreFromTray();
                 });
         }
         base.OnFrameworkInitializationCompleted();
@@ -122,6 +123,9 @@ public partial class App : Application
                 // here: tests call WireSettings directly and a side effect in
                 // this switch would write the real registry/user files.
                 case nameof(AppSettings.LaunchAtLogin):
+                // Tray behaviour is read at close time; the write is the job.
+                case nameof(AppSettings.MinimizeToTrayOnClose):
+                case nameof(AppSettings.CloseToTrayAsked):
                     break;
                 default:
                     return;

@@ -60,7 +60,9 @@ public class WindowBoundsTests
     public void ClosingSavesResizedNormalSize()
     {
         using var service = CreateService();
-        var settings = new AppSettings();
+        // CloseToTrayAsked: these tests are about geometry, not the tray
+        // prompt — an unanswered first close would veto Close() and stall.
+        var settings = new AppSettings { CloseToTrayAsked = true };
         var window = new MainWindow(service, autoDownload: false, settings: settings);
         window.Show();
 
@@ -79,7 +81,7 @@ public class WindowBoundsTests
     public void ClosingWhileMaximizedSavesMaximizedAndLastNormalSize()
     {
         using var service = CreateService();
-        var settings = new AppSettings();
+        var settings = new AppSettings { CloseToTrayAsked = true };
         var window = new MainWindow(service, autoDownload: false, settings: settings);
         window.Show();
 
@@ -102,7 +104,11 @@ public class WindowBoundsTests
     [AvaloniaFact]
     public void ClosingWritesPersistedBoundsThroughWiring()
     {
-        var settings = new AppSettings { Language = AppLanguage.SimplifiedChinese };
+        var settings = new AppSettings
+        {
+            Language = AppLanguage.SimplifiedChinese,
+            CloseToTrayAsked = true,
+        };
         var path = Path.Combine(Path.GetTempPath(), "stupiddict-uitests",
             Guid.NewGuid().ToString("N") + "-settings.json");
         App.WireSettings(settings, path);

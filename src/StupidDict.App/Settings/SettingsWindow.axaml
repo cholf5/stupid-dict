@@ -27,18 +27,20 @@
 
     <TabItem Header="{Binding SectionGeneral, Source={x:Static loc:Translations.Instance}}">
       <StackPanel Margin="16,14" Spacing="16">
-        <!-- 三行 Grid 共用 120px 固定首列：最宽标签是英文 "Launch at login"
-             （各平台字体 ~90-105px），70px 曾被它溢出、尾部字形顶进复选框；
-             别缩回小值，再加标签时先核最宽语言。行高由 32px 的 ComboBox 决定，
-             label 垂直居中后与下拉框中心严格对齐 -->
-        <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto" RowSpacing="10">
-          <TextBlock FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
+        <!-- 一张 Grid 承载四行：首列 Auto 由最宽标签决定——英文
+             "Minimize to the tray when closing" 是最长项，固定 70px 时英文
+             "Launch at login" 就已溢出、尾部字形顶进复选框（曾改 120px 兜住），
+             Auto 让新增标签不再有折行/溢出风险。控件列对齐同一水平线；行高由
+             32px 的 ComboBox 决定，label 垂直居中后与控件中心严格对齐。 -->
+        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto"
+              RowSpacing="10" ColumnSpacing="16">
+          <TextBlock Grid.Row="0" FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
                      Text="{Binding ThemeLabel, Source={x:Static loc:Translations.Instance}}" />
           <!-- 选项顺序对应 AppTheme：0 跟随系统 / 1 日间 / 2 夜间；选项实例由
                code-behind 提供（ItemsSource 先于 SelectedIndex 就位），模板绑
                OptionItem.Label 让文案随语言刷新——直接绑 Translations 的
                ComboBoxItem.Content 会被选中框快照，切语言不回显 -->
-          <ComboBox Name="ThemeComboBox" Grid.Column="1" MinWidth="200"
+          <ComboBox Name="ThemeComboBox" Grid.Row="0" Grid.Column="1" MinWidth="200"
                     HorizontalAlignment="Left">
             <ComboBox.ItemTemplate>
               <DataTemplate x:DataType="s:OptionItem">
@@ -46,12 +48,10 @@
               </DataTemplate>
             </ComboBox.ItemTemplate>
           </ComboBox>
-        </Grid>
-        <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto" RowSpacing="10">
-          <TextBlock FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
-                     Text="{Binding LanguageLabel, Source={x:Static loc:Translations.Instance}}" />
           <!-- 选项顺序对应 AppLanguage：0 跟随系统 / 1 简体中文 / 2 English -->
-          <ComboBox Name="LanguageComboBox" Grid.Column="1" MinWidth="200"
+          <TextBlock Grid.Row="1" FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
+                     Text="{Binding LanguageLabel, Source={x:Static loc:Translations.Instance}}" />
+          <ComboBox Name="LanguageComboBox" Grid.Row="1" Grid.Column="1" MinWidth="200"
                     HorizontalAlignment="Left">
             <ComboBox.ItemTemplate>
               <DataTemplate x:DataType="s:OptionItem">
@@ -59,13 +59,20 @@
               </DataTemplate>
             </ComboBox.ItemTemplate>
           </ComboBox>
-        </Grid>
-        <Grid ColumnDefinitions="120,*">
-          <TextBlock Name="LaunchAtLoginLabel" FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
-                     Text="{Binding LaunchAtLoginLabel, Source={x:Static loc:Translations.Instance}}" />
           <!-- 即时生效（同主题/语言，非翻译页的 draft 模式）：勾选写共享设置并
                经可注入缝注册系统启动项，code-behind 先赋初值再订阅事件 -->
-          <CheckBox Name="LaunchAtLoginCheckBox" Grid.Column="1" HorizontalAlignment="Left" />
+          <TextBlock Name="LaunchAtLoginLabel" Grid.Row="2" FontSize="14" VerticalAlignment="Center"
+                     Foreground="{DynamicResource TextBody}"
+                     Text="{Binding LaunchAtLoginLabel, Source={x:Static loc:Translations.Instance}}" />
+          <CheckBox Name="LaunchAtLoginCheckBox" Grid.Row="2" Grid.Column="1"
+                    HorizontalAlignment="Left" />
+          <!-- 纯设置位：关闭语义在 MainWindow 读它，无需即时副作用。首次关闭
+               的询问会替用户打勾或留空；之后这里是唯一开关。勾/取消都算回答
+               了那次询问（code-behind 写 CloseToTrayAsked）。 -->
+          <TextBlock Grid.Row="3" FontSize="14" VerticalAlignment="Center" Foreground="{DynamicResource TextBody}"
+                     Text="{Binding MinimizeToTrayLabel, Source={x:Static loc:Translations.Instance}}" />
+          <CheckBox Name="MinimizeToTrayCheckBox" Grid.Row="3" Grid.Column="1"
+                    HorizontalAlignment="Left" />
         </Grid>
       </StackPanel>
     </TabItem>

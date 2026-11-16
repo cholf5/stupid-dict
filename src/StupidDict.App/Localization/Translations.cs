@@ -27,14 +27,14 @@ public sealed class Translations : INotifyPropertyChanged
     [
         "AboutBlurb", "AllSourcesFailed", "Antonyms", "AppName", "AssetInstalled", "AssetNotInstalled", "AudioPackCancelled",
         "AudioPackDataLabel", "AudioPackDownloadButton", "AudioPackFailedFormat", "AudioPackImportFailedFormat", "AuthorLabel", "AuthorName", "BrowserOpenFailed",
-        "Cancel", "Cancelling", "CheckUpdate", "CheckingUpdate", "ChecksumFailed", "ChecksumRedownloading", "ClearSearchTip",
+        "Cancel", "Cancelling", "CheckUpdate", "CheckingUpdate", "ChecksumFailed", "ChecksumRedownloading", "ClearSearchTip", "CloseToTrayPromptBody", "CloseToTrayPromptTitle",
         "Converting", "ConvertingFilesFormat", "CurrentLanguage", "DataDirectoryHint", "DictionaryDataLabel", "DidYouMean", "DownloadCancelled",
         "DownloadFailedFormat", "DownloadPrompt", "DownloadResumeFormat", "DownloadResumeUnsizedFormat", "DownloadingAudioPack", "DownloadingAudioPackFormat", "DownloadingAudioPackUnsizedFormat",
         "DownloadingDictionaryFormat", "DownloadingDictionaryUnsizedFormat", "EnglishDefinitions", "ExtractCorruptPurged", "ExtractFailedFormat", "Extracting", "ExtractingFilesFormat",
         "FileTypeAudioPack", "FileTypeDictionary", "FollowSystem", "ImportFailedFormat", "ImportInvalidDatabase", "ImportMissingDb", "ImportMissingPack",
         "ImportUnsupportedFormat", "Importing", "LangChinese", "LangEnglish", "LanguageLabel", "LaunchAtLoginLabel", "LicenseLabel",
-        "LookupErrorFormat", "NavBackTip", "NavForwardTip", "NoLocalPronunciation", "NoResultFormat", "OpenDataDirectory", "OpenDataDirectoryFailed",
-        "OpenDownloadPage", "OpenReleasePage", "OtherEntries", "PickLocalFile", "PickerFailedFormat", "PickerTitle", "PickerTitleAudioPack",
+        "LookupErrorFormat", "MinimizeToTray", "MinimizeToTrayLabel", "NavBackTip", "NavForwardTip", "NoLocalPronunciation", "NoResultFormat", "OpenDataDirectory", "OpenDataDirectoryFailed",
+        "OpenDownloadPage", "OpenReleasePage", "OtherEntries", "PickLocalFile", "PickerFailedFormat", "PickerTitle", "PickerTitleAudioPack", "QuitApplication",
         "Recent", "RelatedEntries", "RelatedWords", "RepoLabel", "Retry", "SearchWatermark", "SectionAbout",
         "SectionData", "SectionGeneral", "SectionShortcuts", "SectionTranslation", "SettingsTip", "SettingsTitle", "ShortcutArrows",
         "ShortcutBackForward", "ShortcutEscape", "ShortcutFocusSearch", "ShortcutLookup", "ShortcutSettings", "StartDownload", "Synonyms",
@@ -43,7 +43,7 @@ public sealed class Translations : INotifyPropertyChanged
         "TranslationCloudFormat", "TranslationEndpointFailed", "TranslationEndpointHint", "TranslationExamples", "TranslationFailedFormat", "TranslationInProgress", "TranslationIncomplete",
         "TranslationInvalidResponse", "TranslationInvalidUrl", "TranslationLocalFormat", "TranslationModelLabel", "TranslationModelPlaceholder", "TranslationNetworkFailed", "TranslationNotConfigured",
         "TranslationOpenSettings", "TranslationPrivacy", "TranslationRateLimited", "TranslationRefused", "TranslationSave", "TranslationSaved", "TranslationServerFailed",
-        "TranslationTest", "TranslationTestFailedFormat", "TranslationTestSucceeded", "TranslationTesting", "TranslationTimeout", "TranslationUrlAndModelRequired", "TryShorter",
+        "TranslationTest", "TranslationTestFailedFormat", "TranslationTestSucceeded", "TranslationTesting", "TranslationTimeout", "TranslationUrlAndModelRequired", "TrayExit", "TrayShowWindow", "TryShorter",
         "UkPhoneticPrefix", "UkTip", "UpToDateStatus", "UpdateAvailableStatus", "UpdateCheckFailed", "UsPhoneticPrefix", "UsTip",
         "Verifying", "ZipCrcMismatchFormat", "ZipSlipFormat",
     ];
@@ -126,6 +126,13 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(LangChinese)] = "简体中文",
         [nameof(LangEnglish)] = "English",
         [nameof(LaunchAtLoginLabel)] = "开机自启",
+        [nameof(MinimizeToTrayLabel)] = "关闭窗口时最小化到托盘",
+        [nameof(TrayShowWindow)] = "显示主窗口",
+        [nameof(TrayExit)] = "退出",
+        [nameof(CloseToTrayPromptTitle)] = "关闭窗口时最小化到托盘？",
+        [nameof(CloseToTrayPromptBody)] = "选「最小化到托盘」后，关闭窗口只是把应用收进托盘继续在后台运行，可以从托盘图标重新打开或退出。之后可以在设置里随时改回来。",
+        [nameof(MinimizeToTray)] = "最小化到托盘",
+        [nameof(QuitApplication)] = "退出应用",
         [nameof(SectionShortcuts)] = "快捷键",
         [nameof(ShortcutLookup)] = "查你输入的词；有选中候选时查该候选",
         [nameof(ShortcutEscape)] = "关闭候选列表；再按清空输入；设置窗口内关闭设置",
@@ -271,6 +278,13 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(LanguageLabel)] = "Language",
         [nameof(LangChinese)] = "Simplified Chinese",
         [nameof(LaunchAtLoginLabel)] = "Launch at login",
+        [nameof(MinimizeToTrayLabel)] = "Minimize to the tray when closing",
+        [nameof(TrayShowWindow)] = "Show window",
+        [nameof(TrayExit)] = "Quit",
+        [nameof(CloseToTrayPromptTitle)] = "Minimize to the tray when the window closes?",
+        [nameof(CloseToTrayPromptBody)] = "With “Minimize to tray”, closing the window keeps the app running in the notification area; the tray icon can reopen or quit it. You can change this later in Settings.",
+        [nameof(MinimizeToTray)] = "Minimize to tray",
+        [nameof(QuitApplication)] = "Quit",
         [nameof(SectionShortcuts)] = "Shortcuts",
         [nameof(ShortcutLookup)] = "Look up what you typed; the selected suggestion, if one is chosen",
         [nameof(ShortcutEscape)] = "Close the suggestion list; press again to clear the box; closes the settings window",
@@ -483,6 +497,16 @@ public sealed class Translations : INotifyPropertyChanged
     public string LangChinese => Get();
     public string LangEnglish => Get();
     public string LaunchAtLoginLabel => Get();
+    /// <summary>设置「通用」页签：关闭窗口时收进托盘（首次关闭会询问一次）。</summary>
+    public string MinimizeToTrayLabel => Get();
+    /// <summary>托盘图标菜单：显示主窗口 / 退出。</summary>
+    public string TrayShowWindow => Get();
+    public string TrayExit => Get();
+    /// <summary>首次关闭的询问对话框：标题、说明与两个按钮。</summary>
+    public string CloseToTrayPromptTitle => Get();
+    public string CloseToTrayPromptBody => Get();
+    public string MinimizeToTray => Get();
+    public string QuitApplication => Get();
     public string SectionShortcuts => Get();
     public string ShortcutLookup => Get();
     public string ShortcutEscape => Get();
