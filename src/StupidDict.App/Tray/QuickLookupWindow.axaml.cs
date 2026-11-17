@@ -372,6 +372,7 @@ public partial class QuickLookupWindow : Window
     private sealed class NullSpeechPlayer : ISpeechPlayer
     {
         public bool Play(string word, SpeechAccent accent) => false;
+        public void WarmUp() { }
         public void Stop() { }
     }
 }

@@ -15,6 +15,19 @@ public sealed class AudioPackPlayer(IAudioPackStore store, IAudioFilePlayer play
         return player.Play(file);
     }
 
+    public void WarmUp()
+    {
+        try
+        {
+            store.WarmUp();
+        }
+        catch
+        {
+            // warm-up is best-effort: a store that faults here is the same
+            // "no pack" the play path already tolerates
+        }
+    }
+
     public void Stop()
     {
         try
@@ -41,6 +54,22 @@ public sealed class CompositeSpeechPlayer(params ISpeechPlayer[] players) : ISpe
         foreach (var player in players)
             if (player.Play(word, accent)) return true;
         return false;
+    }
+
+    public void WarmUp()
+    {
+        foreach (var player in players)
+        {
+            try
+            {
+                player.WarmUp();
+            }
+            catch
+            {
+                // same containment as Stop: one broken player must not skip
+                // the others' warm-up nor fault the discarded startup task
+            }
+        }
     }
 
     public void Stop()

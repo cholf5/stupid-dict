@@ -19,6 +19,9 @@ public sealed class SpeechStopTests
 
         public bool Play(string word, SpeechAccent accent) => true;
 
+        // Warm-up is covered by SpeechWarmupTests; this fake only needs the member.
+        public void WarmUp() { }
+
         public void Stop()
         {
             Stops++;

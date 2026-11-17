@@ -28,6 +28,15 @@ public interface IAudioPackStore
     /// file for the OS temp directory to sweep.
     /// </summary>
     void Cleanup();
+
+    /// <summary>
+    /// Warms the pack's lookup path once at startup (B-016): opens a read-only
+    /// connection and reads one blob, so the first click does not pay the cold
+    /// page reads of a database this process has never touched. Writes no temp
+    /// file, opens no audio device, and leaves nothing behind — a missing or
+    /// broken pack is a silent no-op, never a throw.
+    /// </summary>
+    void WarmUp();
 }
 
 public sealed class AudioPackStore(string looseDirectory, string databasePath) : IAudioPackStore
@@ -38,9 +47,15 @@ public sealed class AudioPackStore(string looseDirectory, string databasePath) :
     private string? _currentTemp;
     private int _tempCounter;
 
+    // A headword every pack carries. Warm-up only needs the lookup path, so a
+    // pack without it (or without a pack at all) still warms the connection.
+    private const string WarmUpWord = "the";
+
     public bool TryGetAudioFile(string word, SpeechAccent accent, out string file) =>
         TryGetFromDatabase(word, accent, out file) ||
         TryGetFromLooseDirectory(word, accent, out file);
+
+    public void WarmUp() => ReadBlob(WarmUpWord, "us");
 
     public void Cleanup()
     {
@@ -51,10 +66,23 @@ public sealed class AudioPackStore(string looseDirectory, string databasePath) :
     private bool TryGetFromDatabase(string word, SpeechAccent accent, out string file)
     {
         file = "";
+        var blob = ReadBlob(word, accent == SpeechAccent.British ? "uk" : "us");
+        if (blob is null || blob.Length == 0) return false;
+        file = WriteTempFile(blob);
+        return true;
+    }
+
+    /// <summary>
+    /// The one read path: a fresh read-only connection per call (Pooling=false
+    /// keeps no handle past Dispose) and one primary-key lookup. Null for every
+    /// miss — no pack, no such word, unreadable database — so both the play
+    /// path and the warm-up treat a faulting pack as "nothing to say".
+    /// </summary>
+    private byte[]? ReadBlob(string word, string column)
+    {
         try
         {
-            if (!File.Exists(databasePath)) return false;
-            var column = accent == SpeechAccent.British ? "uk" : "us";
+            if (!File.Exists(databasePath)) return null;
             using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
             {
                 DataSource = databasePath,
@@ -67,16 +95,13 @@ public sealed class AudioPackStore(string looseDirectory, string databasePath) :
             using var command = connection.CreateCommand();
             command.CommandText = $"SELECT {column} FROM audio WHERE word = $word";
             command.Parameters.AddWithValue("$word", word.ToLowerInvariant());
-            var blob = command.ExecuteScalar() as byte[];
-            if (blob is null || blob.Length == 0) return false;
-            file = WriteTempFile(blob);
-            return true;
+            return command.ExecuteScalar() as byte[];
         }
         catch
         {
             // A database the app cannot read is a pack miss like any other:
             // system TTS takes over, same as an uninstalled pack.
-            return false;
+            return null;
         }
     }
 

@@ -1178,6 +1178,25 @@ public class HeadlessWindowTests
     }
 
     /// <summary>
+    /// B-016: the first pronunciation used to pay a cold open of the 700 MB+
+    /// pack database inside the click handler (0.78 s measured, 0.3 ms warm).
+    /// The window now pays it at construction on a pool thread — through the
+    /// injected player, which is the seam the real chain hangs off — and it must
+    /// stay silent: a warm-up that spoke would be a phantom pronunciation.
+    /// </summary>
+    [AvaloniaFact]
+    public void StartupWarmsThePronunciationPath()
+    {
+        using var service = CreateService();
+        var player = new RecordingSpeechPlayer();
+        var window = new MainWindow(service, player, autoDownload: false);
+        window.Show();
+
+        WaitUntil(() => player.WarmUps > 0);
+        Assert.Empty(player.Played);
+    }
+
+    /// <summary>
     /// B-012 TC-001: closing the window stops the injected player exactly once
     /// — the exit hook that keeps afplay/say from finishing their word as
     /// orphans after the app quits. Closed (not Closing) carries it, so the
@@ -1942,12 +1961,18 @@ public class HeadlessWindowTests
     {
         public List<(string Word, SpeechAccent Accent)> Played = [];
         public int Stops;
+        private int _warmUps;
+
+        /// <summary>Warm-up arrives from the startup pool thread, not the UI thread.</summary>
+        public int WarmUps => Volatile.Read(ref _warmUps);
 
         public bool Play(string word, SpeechAccent accent)
         {
             Played.Add((word, accent));
             return true;
         }
+
+        public void WarmUp() => Interlocked.Increment(ref _warmUps);
 
         public void Stop() => Stops++;
     }

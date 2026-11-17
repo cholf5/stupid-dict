@@ -24,4 +24,15 @@ public interface ISpeechPlayer
     /// usable for a later Play.
     /// </summary>
     void Stop();
+
+    /// <summary>
+    /// Pays the one-time costs of the first pronunciation before the user
+    /// clicks (B-016). The pack database is 700 MB+ and the first read of it
+    /// measured 0.78 s inside the click handler against 0.3 ms once warm, so
+    /// the startup path calls this on a pool thread. Silent by contract — no
+    /// audio device, no temp file — and best-effort like everything else in
+    /// the chain: implementations swallow faults, and one with nothing to
+    /// pre-warm (system TTS probes lazily on purpose, B-011) does nothing.
+    /// </summary>
+    void WarmUp();
 }

@@ -225,6 +225,13 @@ public partial class MainWindow : Window
 
         ShowEmptyState();
         UpdateNavButtons();
+        // The first pronunciation would otherwise pay a cold open of the 700 MB+
+        // pack database inside the click handler (B-016: measured 0.78 s cold,
+        // 0.3 ms once the file's pages are cached). Pay it here, off the UI
+        // thread, so the first click is as fast as the next — and independently
+        // of whether the dictionary is ready, since the pack can be installed
+        // without it.
+        _ = WarmUpSpeechQuietlyAsync(_speech);
         if (_dictionaryAvailable)
         {
             _ = WarmupQuietlyAsync(_service);
@@ -239,6 +246,26 @@ public partial class MainWindow : Window
                 StartDictionaryDownload();
         }
     }
+
+    /// <summary>
+    /// Fire-and-forget warm-up of the pronunciation path on a pool thread, so
+    /// the cold start of the pack never lands in a click handler. Like
+    /// <see cref="WarmupQuietlyAsync"/>, the exception is swallowed rather than
+    /// left for the discarded task to report as UnobservedTaskException: warm-up
+    /// is best-effort and the play path already tolerates a broken pack.
+    /// Internal static so a test can drive it against a recording player.
+    /// </summary>
+    internal static Task WarmUpSpeechQuietlyAsync(ISpeechPlayer speech) => Task.Run(() =>
+    {
+        try
+        {
+            speech.WarmUp();
+        }
+        catch
+        {
+            // nothing to act on: the first click simply warms itself
+        }
+    });
 
     /// <summary>
     /// Fire-and-forget wrapper that keeps the warm-up's exception observed: a

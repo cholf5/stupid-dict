@@ -166,5 +166,7 @@ public sealed class MciStateMachineTests
         }
 
         public void Stop() { }
+
+        public void WarmUp() { }
     }
 }

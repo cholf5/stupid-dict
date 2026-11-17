@@ -25,6 +25,10 @@ public sealed class AudioPackLookupTests
         }
 
         public void Cleanup() => Cleanups++;
+
+        public void WarmUp() => WarmUps++;
+
+        public int WarmUps;
     }
 
     private sealed class RecordingAudioFilePlayer : IAudioFilePlayer
@@ -45,6 +49,22 @@ public sealed class AudioPackLookupTests
 
         Assert.True(played);
         Assert.Equal("/tmp/audio.mp3", filePlayer.PlayedFile);
+    }
+
+    /// <summary>
+    /// B-016: warm-up reaches the store and stops there — it must not hand a
+    /// file to the player, or the startup warm-up would speak.
+    /// </summary>
+    [Fact]
+    public void WarmUpReachesTheStoreAndPlaysNothing()
+    {
+        var store = new FakeStore { Hit = true, HandedOutFile = "/tmp/audio.mp3" };
+        var filePlayer = new RecordingAudioFilePlayer();
+
+        new AudioPackPlayer(store, filePlayer).WarmUp();
+
+        Assert.Equal(1, store.WarmUps);
+        Assert.Null(filePlayer.PlayedFile);
     }
 
     [Fact]

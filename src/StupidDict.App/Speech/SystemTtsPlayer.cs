@@ -106,6 +106,16 @@ public sealed class SystemTtsPlayer : ISpeechPlayer
     }
 
     /// <summary>
+    /// Nothing to pre-warm: the voice enumeration deliberately stays lazy
+    /// (B-011) — it spawns a probe process and the first TTS fallback speaks
+    /// with the default voice while it runs, so paying it at startup would
+    /// cost every launch a process for a feature most clicks never reach.
+    /// </summary>
+    public void WarmUp()
+    {
+    }
+
+    /// <summary>
     /// Exit-time cleanup (B-012): kills an in-flight CLI voice (say, the
     /// powershell one-liner, espeak). Best-effort — every fault is swallowed
     /// so the window-close path never breaks.
