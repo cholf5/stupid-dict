@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform;
@@ -771,7 +772,8 @@ public class HeadlessWindowTests
         PressEnter(searchBox);
         WaitUntil(() => Headword(window) == "cat");
 
-        var title = (SelectableTextBlock)window.FindControl<StackPanel>("ResultsPanel")!.Children[0];
+        var title = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
+            .OfType<SelectableTextBlock>().First(b => b.Name == "ResultHeadword");
         var point = title.TranslatePoint(new Point(8, title.Bounds.Center.Y), window)!.Value;
         DoubleClick(window, point);
         PumpJobs(TimeSpan.FromMilliseconds(500));
@@ -958,6 +960,10 @@ public class HeadlessWindowTests
         var link = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
             .OfType<TextBlock>()
             .First(b => b.Classes.Contains("wordlink"));
+        // The words are SelectableTextBlock, and a plain `TextBlock` selector
+        // matches the exact type only — the link styling survived on the words
+        // only after the style moved to `:is(TextBlock).wordlink`.
+        Assert.NotNull(link.TextDecorations);
         var point = link.TranslatePoint(new Point(link.Bounds.Center.X, link.Bounds.Center.Y), window)!.Value;
         window.MouseDown(point, MouseButton.Left);
         window.MouseUp(point, MouseButton.Left);
@@ -966,6 +972,56 @@ public class HeadlessWindowTests
         Assert.Equal(link.Text, searchBox.Text);
         Assert.True(window.FindControl<Button>("NavBackButton")!.IsEnabled);
         SaveScreenshot(window, "stupiddict-thesaurus.png");
+    }
+
+    [AvaloniaFact]
+    public void EntryCopyChipCopiesTheWholeEntryAsPlainText()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "stupiddict-uitests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var dictionaryPath = Path.Combine(directory, "dictionary.db");
+        using (var db = DictionaryDatabase.Create(dictionaryPath))
+        {
+            db.BeginTransaction();
+            var cat = db.InsertWord("cat", "kæt", "kæt", "n:100", "n. 猫",
+                "a small animal", 1775, 0, "zk gk");
+            db.InsertSynGroup(cat, "syn", "n.", "tiger, lion");
+            db.InsertWord("tiger", "", "", "", "n. 老虎", "", 900, 0, "");
+            db.InsertWord("lion", "", "", "", "n. 狮子", "", 890, 0, "");
+            db.CommitTransaction();
+        }
+        using var service = new DictionaryService(dictionaryPath, Path.Combine(directory, "history.db"));
+        var window = new MainWindow(service, autoDownload: false);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "cat";
+        PressEnter(searchBox);
+        WaitUntil(() => Headword(window) == "cat");
+
+        // 复制的是屏幕上整条词条：词头、英美音标、中文释义、英文释义、
+        // 近义 / 反义 / 联想；没有反义词的页面整段省掉。纯文本，无 Markdown。
+        var expected = string.Join("\n",
+            "cat",
+            "英 /kæt/  美 /kæt/",
+            "n. 猫",
+            Translations.Instance.EnglishDefinitions,
+            "a small animal",
+            Translations.Instance.Synonyms,
+            "n. tiger, lion",
+            Translations.Instance.RelatedWords,
+            "lion 狮子; tiger 老虎");
+        var chip = window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
+            .OfType<Button>().Single(b => b.Content as string == Translations.Instance.Copy);
+        var clipboard = window.Clipboard!;
+        RaiseClick(chip);
+        string? copied = null;
+        WaitUntil(() => (copied = clipboard.TryGetTextAsync().GetAwaiter().GetResult()) is { Length: > 0 });
+        Assert.Equal(expected, copied);
+        Assert.Contains(Translations.Instance.Copied, chip.Content as string ?? "");
+        SaveScreenshot(window, "stupiddict-entry-copy.png");
+        window.Close();
     }
 
     [AvaloniaFact]
@@ -1004,10 +1060,10 @@ public class HeadlessWindowTests
             .Children.Cast<StackPanel>().ToList();
         Assert.Equal(2, entries.Count);
         Assert.Equal("n. ", Assert.IsType<SelectableTextBlock>(entries[0].Children[0]).Text);
-        Assert.Equal("tiger", Assert.IsType<TextBlock>(Assert.IsType<Border>(entries[0].Children[1]).Child!).Text);
+        Assert.Equal("tiger", Assert.IsType<SelectableTextBlock>(Assert.IsType<Border>(entries[0].Children[1]).Child!).Text);
         Assert.Equal(",", Assert.IsType<SelectableTextBlock>(entries[0].Children[2]).Text);
         Assert.True(((SelectableTextBlock)entries[0].Children[2]).Margin.Right > 0, "comma gap missing");
-        Assert.Equal("lion", Assert.IsType<TextBlock>(Assert.IsType<Border>(entries[1].Children[0]).Child!).Text);
+        Assert.Equal("lion", Assert.IsType<SelectableTextBlock>(Assert.IsType<Border>(entries[1].Children[0]).Child!).Text);
         Assert.Single(entries[1].Children);
     }
 
@@ -1034,7 +1090,7 @@ public class HeadlessWindowTests
             .Single(w => w.Classes.Contains("related-words"))
             .Children.Single();
         var link = Assert.IsType<Border>(entry.Children[0]);
-        Assert.Equal("tiger", Assert.IsType<TextBlock>(link.Child!).Text);
+        Assert.Equal("tiger", Assert.IsType<SelectableTextBlock>(link.Child!).Text);
         Assert.True(link.Margin.Right > 0, "word/gloss gap missing");
         Assert.Equal("老虎", Assert.IsType<SelectableTextBlock>(entry.Children[1]).Text);
         var separator = Assert.IsType<SelectableTextBlock>(entry.Children[2]);
@@ -1977,8 +2033,11 @@ public class HeadlessWindowTests
         public void Stop() => Stops++;
     }
 
+    // The headword lives inside the header grid (word left, copy chip right),
+    // so it is found by name rather than by position.
     private static string? Headword(Window window) =>
-        (window.FindControl<StackPanel>("ResultsPanel")!.Children.FirstOrDefault() as TextBlock)?.Text;
+        window.FindControl<StackPanel>("ResultsPanel")!.GetVisualDescendants()
+            .OfType<TextBlock>().FirstOrDefault(b => b.Name == "ResultHeadword")?.Text;
 
     private static void RaiseClick(Button button) =>
         button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

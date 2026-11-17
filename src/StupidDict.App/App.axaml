@@ -96,12 +96,15 @@
       <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
     </Style>
 
-    <Style Selector="TextBlock.wordlink">
+    <!-- :is(TextBlock), not TextBlock: the word links are SelectableTextBlock
+         (selectable + clickable), and a plain type selector matches the exact
+         type only — the words rendered as plain text until this changed. -->
+    <Style Selector=":is(TextBlock).wordlink">
       <Setter Property="Foreground" Value="{DynamicResource WordLink}" />
       <Setter Property="TextDecorations" Value="Underline" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <Style Selector="TextBlock.wordlink:pointerover">
+    <Style Selector=":is(TextBlock).wordlink:pointerover">
       <Setter Property="Foreground" Value="{DynamicResource WordLinkHover}" />
     </Style>
   </Application.Styles>

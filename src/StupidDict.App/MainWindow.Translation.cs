@@ -277,6 +277,13 @@ public partial class MainWindow
     private void OnTranslationSettingsClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
         OpenSettings(SettingsWindow.TranslationTabIndex);
 
+    private void OnCopyTranslationClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Button button) return;
+        if (_translationUi is not { Kind: TranslationUiKind.Success, Text: { Length: > 0 } text }) return;
+        _ = CopyWithFeedbackAsync(button, text, Translations.Instance.Copy);
+    }
+
     private void RenderTranslationSection(LookupResult result)
     {
         if (_translationUi.Kind == TranslationUiKind.None) return;
@@ -305,6 +312,9 @@ public partial class MainWindow
                 _translationPanel.Children.Add(Text(label, fontSize: 12, brushKey: Palette.TextMuted));
                 _translationPanel.Children.Add(Text(ui.Text ?? "", fontSize: 16,
                     brushKey: Palette.TextBody, lineHeight: 24));
+                // 一键复制译文：与取消 / 重试同为卡片底部的 chip。选择复制仍是
+                // SelectableTextBlock 的原生行为，这里只补「一次点击复制整段」。
+                _translationPanel.Children.Add(BuildChipButton(t.Copy, OnCopyTranslationClick));
                 break;
             case TranslationUiKind.Failure:
                 _translationPanel.Children.Add(Text(string.Format(

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -387,6 +388,31 @@ public class TranslationFlowTests
         searchBox.Text = "";
         PressEnter(searchBox);
         WaitUntil(() => fake.Tokens[0].IsCancellationRequested);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void TranslationCopyChipCopiesTranslationToClipboard()
+    {
+        using var service = CreateService();
+        var settings = ConfiguredSettings();
+        var fake = new FakeTranslationService();
+        var window = NewWindow(service, settings, fake);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var searchBox = window.FindControl<TextBox>("SearchBox")!;
+        searchBox.Text = "Hello world";
+        PressEnter(searchBox);
+        WaitUntil(() => ResultTexts(window).Contains("假译文：Hello world"));
+
+        RaiseClick(Chip(window, Translations.Instance.Copy));
+
+        var clipboard = window.Clipboard;
+        Assert.NotNull(clipboard);
+        WaitUntil(() => clipboard.TryGetTextAsync().GetAwaiter().GetResult() == "假译文：Hello world");
+        // 复制成功给一瞬确认文案（随后 1.5s 复原，不在测试里等）
+        Assert.Contains(Translations.Instance.Copied, ResultTexts(window));
         window.Close();
     }
 

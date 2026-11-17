@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -1874,7 +1875,24 @@ public partial class MainWindow : Window
             return;
         }
 
-        ResultsPanel.Children.Add(Text(entry.Word, 30, FontWeight.SemiBold, Palette.TextStrong, margin: new Thickness(2, 0, 0, 0)));
+        // 词头行：词头左、复制 chip 右。复制内容是这一页看到的整条词条
+        // （BuildEntryCopyText），文本在渲染时就固定下来，不依赖点击时的状态。
+        var headword = Text(entry.Word, 30, FontWeight.SemiBold, Palette.TextStrong,
+            margin: new Thickness(2, 0, 0, 0));
+        headword.Name = "ResultHeadword";
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        header.Children.Add(headword);
+        var copyText = BuildEntryCopyText(result);
+        var copyButton = BuildChipButton(Translations.Instance.Copy, (sender, e) =>
+        {
+            if (sender is Button button)
+                _ = CopyWithFeedbackAsync(button, copyText, Translations.Instance.Copy);
+        });
+        copyButton.VerticalAlignment = VerticalAlignment.Center;
+        copyButton.Margin = new Thickness(12, 0, 0, 0);
+        Grid.SetColumn(copyButton, 1);
+        header.Children.Add(copyButton);
+        ResultsPanel.Children.Add(header);
 
         if (result.WordFormNote is { } note)
             ResultsPanel.Children.Add(Text($"{result.Query} → {note}", fontSize: 13, brushKey: Palette.TextMuted, margin: new Thickness(2, 4, 0, 0)));
@@ -1896,6 +1914,61 @@ public partial class MainWindow : Window
         }
 
         RenderThesaurus(result);
+    }
+
+    /// <summary>
+    /// 词条页「复制」的纯文本：屏幕上能读到的内容，不带任何按钮与候选词。
+    /// 段落顺序与页面一致（词头 / 词形提示 / 音标 / 中文释义 / 英文释义 /
+    /// 近义 / 反义 / 联想），标签用当前界面语言，空段落整段省略。音标为空时
+    /// 连「英」「美」裸前缀也不留——页面上它保持对称，抄进笔记只是噪声。
+    /// </summary>
+    private static string BuildEntryCopyText(LookupResult result)
+    {
+        if (result.Primary is not { } entry) return string.Empty;
+        var t = Translations.Instance;
+        var lines = new List<string> { entry.Word };
+
+        if (result.WordFormNote is { } note)
+            lines.Add($"{result.Query} → {note}");
+
+        var phonetics = new List<string>(2);
+        if (entry.Phonetic.Trim().Length > 0)
+            phonetics.Add(string.Format(t.UkPhoneticPrefix, FormatPhonetic(entry.Phonetic)).Trim());
+        if (entry.UsPhonetic.Trim().Length > 0)
+            phonetics.Add(string.Format(t.UsPhoneticPrefix, FormatPhonetic(entry.UsPhonetic)).Trim());
+        if (phonetics.Count > 0)
+            lines.Add(string.Join("  ", phonetics));
+
+        lines.AddRange(SplitLines(entry.Chinese));
+
+        if (entry.English.Trim().Length > 0)
+        {
+            lines.Add(t.EnglishDefinitions);
+            lines.AddRange(SplitLines(entry.English));
+        }
+
+        AppendThesaurusCopy(lines, t.Synonyms, result.Synonyms);
+        AppendThesaurusCopy(lines, t.Antonyms, result.Antonyms);
+
+        if (result.RelatedWords.Count > 0)
+        {
+            lines.Add(t.RelatedWords);
+            lines.Add(string.Join("; ", result.RelatedWords.Select(r =>
+                r.Gloss.Length > 0 ? $"{r.Word} {r.Gloss}" : r.Word)));
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    /// <summary>近义 / 反义每组一行：「n. kitten, puss」。</summary>
+    private static void AppendThesaurusCopy(List<string> lines, string label, IReadOnlyList<SynonymLine> groups)
+    {
+        if (groups.Count == 0) return;
+        lines.Add(label);
+        foreach (var group in groups)
+            lines.Add(group.Words.Count == 0
+                ? group.Pos.Trim()
+                : $"{group.Pos} {string.Join(", ", group.Words)}");
     }
 
     private void RenderThesaurus(LookupResult result)
@@ -2184,10 +2257,15 @@ public partial class MainWindow : Window
     /// The Border is the click surface: hit testing on an inline TextBlock
     /// only covers its currently shaped glyphs (and desyncs inside
     /// InlineUIContainer), so clicks in glyph gaps used to fall through.
+    /// The word itself is a SelectableTextBlock: these used to be the only text
+    /// on a result page that could not be selected at all (chips are buttons).
+    /// Selection and click-to-look-up coexist because navigation fires on
+    /// release-without-drag instead of on press: pressing hands the gesture to
+    /// the text block (a drag selects), and only a clean click navigates.
     /// </summary>
     private Border CreateLinkSurface(string word, double fontSize, double? lineHeight = null)
     {
-        var link = new TextBlock { Text = word, FontSize = fontSize, Classes = { "wordlink" } };
+        var link = new SelectableTextBlock { Text = word, FontSize = fontSize, Classes = { "wordlink" } };
         if (lineHeight is { } height) link.LineHeight = height;
         var surface = new Border
         {
@@ -2195,13 +2273,53 @@ public partial class MainWindow : Window
             Child = link,
             Cursor = new Cursor(StandardCursorType.Hand),
         };
-        surface.PointerPressed += (_, e) =>
+        Point? pressed = null;
+        surface.AddHandler(InputElement.PointerPressedEvent, (_, e) =>
         {
-            e.Handled = true;
+            if (e.GetCurrentPoint(surface).Properties.IsLeftButtonPressed)
+                pressed = e.GetPosition(surface);
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
+        surface.AddHandler(InputElement.PointerReleasedEvent, (_, e) =>
+        {
+            if (pressed is not { } start) return;
+            pressed = null;
+            var end = e.GetPosition(surface);
+            // 超过几像素就当成拖选词，不导航。
+            if (Math.Abs(end.X - start.X) > 4 || Math.Abs(end.Y - start.Y) > 4) return;
             SetQueryText(word);
             RunSearch(word);
-        };
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
         return surface;
+    }
+
+    /// <summary>
+    /// 复制类 chip 的统一反馈：成功「已复制」、失败「复制失败」，1.5s 后复原
+    /// （与发音失败的 ✕ 闪烁同一手法）。剪贴板不可用（没有后端实现的平台）
+    /// 不能静默失败；异常绝不外抛——chip 点击从 async 回调逃出的异常会直接
+    /// 杀进程。
+    /// </summary>
+    private async Task CopyWithFeedbackAsync(Button button, string text, string idleLabel)
+    {
+        // 复原目标固定取 idleLabel，而不是点击前的当前内容——连点时上一轮的
+        // 「已复制」一旦被当成原文记下，chip 就会永远停在确认态。
+        button.Content = idleLabel;
+        string feedback;
+        try
+        {
+            var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+            if (clipboard is null) throw new InvalidOperationException("No clipboard available.");
+            await clipboard.SetTextAsync(text);
+            feedback = Translations.Instance.Copied;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
+            feedback = Translations.Instance.CopyFailed;
+        }
+
+        button.Content = feedback;
+        await Task.Delay(1500);
+        if (Equals(button.Content, feedback)) button.Content = idleLabel;
     }
 
     private SelectableTextBlock Text(string value, double fontSize, FontWeight weight = FontWeight.Normal,

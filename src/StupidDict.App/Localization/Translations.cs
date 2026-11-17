@@ -28,7 +28,7 @@ public sealed class Translations : INotifyPropertyChanged
         "AboutBlurb", "AllSourcesFailed", "Antonyms", "AppName", "AssetInstalled", "AssetNotInstalled", "AudioPackCancelled",
         "AudioPackDataLabel", "AudioPackDownloadButton", "AudioPackFailedFormat", "AudioPackImportFailedFormat", "AuthorLabel", "AuthorName", "BrowserOpenFailed",
         "Cancel", "Cancelling", "CheckUpdate", "CheckingUpdate", "ChecksumFailed", "ChecksumRedownloading", "ClearSearchTip", "CloseToTrayPromptBody", "CloseToTrayPromptTitle",
-        "Converting", "ConvertingFilesFormat", "CurrentLanguage", "DataDirectoryHint", "DictionaryDataLabel", "DidYouMean", "DownloadCancelled",
+        "Converting", "ConvertingFilesFormat", "Copied", "Copy", "CopyFailed", "CurrentLanguage", "DataDirectoryHint", "DictionaryDataLabel", "DidYouMean", "DownloadCancelled",
         "DownloadFailedFormat", "DownloadPrompt", "DownloadResumeFormat", "DownloadResumeUnsizedFormat", "DownloadingAudioPack", "DownloadingAudioPackFormat", "DownloadingAudioPackUnsizedFormat",
         "DownloadingDictionaryFormat", "DownloadingDictionaryUnsizedFormat", "EnglishDefinitions", "ExtractCorruptPurged", "ExtractFailedFormat", "Extracting", "ExtractingFilesFormat",
         "FileTypeAudioPack", "FileTypeDictionary", "FollowSystem", "ImportFailedFormat", "ImportInvalidDatabase", "ImportMissingDb", "ImportMissingPack",
@@ -64,6 +64,9 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(PickLocalFile)] = "选择本地文件…",
         [nameof(Cancel)] = "取消",
         [nameof(Recent)] = "最近",
+        [nameof(Copy)] = "复制",
+        [nameof(Copied)] = "已复制",
+        [nameof(CopyFailed)] = "复制失败",
         [nameof(Verifying)] = "校验中…",
         [nameof(Extracting)] = "解压中…",
         [nameof(ExtractingFilesFormat)] = "正在解压 {0:N0} / {1:N0} 个文件…",
@@ -244,6 +247,9 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(PickLocalFile)] = "Choose a local file…",
         [nameof(Cancel)] = "Cancel",
         [nameof(Recent)] = "Recent",
+        [nameof(Copy)] = "Copy",
+        [nameof(Copied)] = "Copied",
+        [nameof(CopyFailed)] = "Copy failed",
         [nameof(Verifying)] = "Verifying…",
         [nameof(Extracting)] = "Extracting…",
         [nameof(ExtractingFilesFormat)] = "Extracting {0:N0} of {1:N0} files…",
@@ -467,6 +473,14 @@ public sealed class Translations : INotifyPropertyChanged
     public string PickLocalFile => Get();
     public string Cancel => Get();
     public string Recent => Get();
+
+    // ---- 复制 chip（词条页与翻译卡共用）----
+
+    public string Copy => Get();
+    /// <summary>复制成功后 chip 的短暂确认文案（约 1.5s 后复原）。</summary>
+    public string Copied => Get();
+    /// <summary>剪贴板写入失败时 chip 的短暂提示文案。</summary>
+    public string CopyFailed => Get();
 
     // ---- 下载 / 导入状态行（瞬态：不随语言切换回溯刷新）----
 
