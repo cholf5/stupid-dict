@@ -59,11 +59,18 @@ sha256_file() {
 
 # NativeAOT output is the exe plus its native libraries beside it (Avalonia/
 # Skia/SQLite/HarfBuzz — the CoreCLR packaging's single-file self-extract does
-# not exist here). Stage everything except debug symbols (.pdb) and the dSYM
-# bundle; the stage layout below keys on the exe name.
+# not exist here). Stage everything except debug symbols: the Windows .pdb,
+# the Linux .dbg and the macOS dSYM bundle. The stage layout below keys on the
+# exe name.
+#
+# *.dbg is not cosmetic: the Linux AOT publish emits StupidDict.dbg, ~71 MB
+# uncompressed (vs a 27 MB executable), and the first version of this filter
+# only knew .pdb — the linux-x64 app zip shipped every byte of it (33.8 MB
+# compressed against ~13 MB without). It is debug info, never loaded at
+# runtime, and it matters twice over: the in-app updater downloads this zip.
 stage_publish_binaries() {
   local src="$1" dst="$2"
-  find "$src" -maxdepth 1 -type f ! -name '*.pdb' -exec cp {} "$dst/" \;
+  find "$src" -maxdepth 1 -type f ! -name '*.pdb' ! -name '*.dbg' -exec cp {} "$dst/" \;
 }
 
 # Ad-hoc sign the assembled .app: the single-file apphost's embedded signature
