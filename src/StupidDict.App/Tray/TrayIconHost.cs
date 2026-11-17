@@ -7,113 +7,140 @@ using StupidDict.App.Localization;
 namespace StupidDict.App.Tray;
 
 /// <summary>
-/// The notification-area icon used while the window is hidden. An interface so
-/// headless tests can record show/hide/exit without a real platform tray; the
-/// production implementation is <see cref="TrayIconHost"/>.
-/// </summary>
-internal interface ITrayHost : IDisposable
-{
-    /// <summary>
-    /// Shows the tray icon and wires its "show window" / "quit" actions.
-    /// Returns false when no tray can be shown — the caller must then quit
-    /// instead of hiding, otherwise the app would become unreachable.
-    /// </summary>
-    bool Show(Action restoreWindow, Action exitApplication);
-
-    /// <summary>Removes the icon (the window is visible again, or the app is exiting).</summary>
-    void Hide();
-}
-
-/// <summary>
-/// A real Avalonia <see cref="TrayIcon"/> with a two-item menu. The icon is
-/// created on demand and disposed on hide, so the app only occupies the
-/// notification area while its window is hidden.
+/// The real notification-area icon, present for the whole run (not only while
+/// the window is hidden): left click toggles the quick-lookup card, right click
+/// opens the menu "show window / settings / check for updates / quit".
+/// <para>
+/// Two backends. On macOS the icon is an <see cref="MacStatusItem"/> we own,
+/// because Avalonia's <c>TrayIcon.Clicked</c> never fires there and the menu
+/// would be the only reachable action. Everywhere else — and on macOS when the
+/// interop cannot install — a plain Avalonia <see cref="TrayIcon"/> provides the
+/// icon, the same menu, and (Windows/Linux) the left-click callback.
+/// </para>
+/// <para>
+/// Menu instances are never replaced: AppKit's menu exporter caches the first
+/// instance it mounted and replacing it at runtime throws. A language switch
+/// rewrites the existing headers instead.
+/// </para>
 /// </summary>
 internal sealed class TrayIconHost : ITrayHost
 {
-    // Tray images are tiny; the ico is Windows-only artwork, the png is the
-    // 1024px master every platform scales down. Use the png everywhere.
-    private const string IconUri = "avares://StupidDict/Assets/app-icon.png";
+    // The ico is Windows-only artwork; the png is the 1024px master. The
+    // template png is the flat menu-bar glyph AppKit recolours on its own.
+    private const string AppIconUri = "avares://StupidDict/Assets/app-icon.png";
+    private const string TemplateIconUri = "avares://StupidDict/Assets/tray-icon.png";
 
+    private TrayActions? _actions;
     private TrayIcon? _icon;
     private NativeMenuItem? _showItem;
+    private NativeMenuItem? _settingsItem;
+    private NativeMenuItem? _updateItem;
     private NativeMenuItem? _exitItem;
+    private MacStatusItem.Item[]? _macItems;
 
-    public bool Show(Action restoreWindow, Action exitApplication)
+    /// <summary>
+    /// Headless UI tests run on macOS too; creating a real status item there
+    /// would put a genuine icon in the developer's menu bar for the duration of
+    /// the test run. The tests never assert on the real backend's result (the
+    /// return value is platform-dependent), so skipping the native path is safe.
+    /// </summary>
+    private static bool IsHeadlessHost =>
+        AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name == "Avalonia.Headless");
+
+    public bool Show(TrayActions actions)
     {
-        if (_icon is not null) return true;
+        if (_actions is not null) return true;
+        var installed = !IsHeadlessHost && OperatingSystem.IsMacOS() && TryInstallMacTray(actions)
+            || TryInstallAvaloniaTray(actions);
+        if (!installed) return false;
+        SubscribeLanguage();
+        _actions = actions;
+        return true;
+    }
+
+    private bool TryInstallMacTray(TrayActions actions)
+    {
+        byte[] icon;
+        try
+        {
+            using var stream = AssetLoader.Open(new Uri(TemplateIconUri));
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+            icon = buffer.ToArray();
+        }
+        catch (Exception)
+        {
+            return false; // asset missing: fall back to the Avalonia tray
+        }
+
+        var items = BuildMacItems(actions);
+        if (!MacStatusItem.TryInstall(icon, Translations.Instance.AppName, items, actions.QuickLookup))
+            return false;
+        _macItems = items;
+        return true;
+    }
+
+    private static MacStatusItem.Item[] BuildMacItems(TrayActions actions) =>
+    [
+        new(() => Translations.Instance.TrayShowWindow, actions.ShowWindow),
+        new(() => Translations.Instance.TraySettings, actions.OpenSettings),
+        new(() => Translations.Instance.TrayCheckUpdate, actions.CheckUpdate),
+        new(() => Translations.Instance.TrayExit, actions.Exit),
+    ];
+
+    private bool TryInstallAvaloniaTray(TrayActions actions)
+    {
         var application = Application.Current;
         if (application is null) return false;
 
         try
         {
             var t = Translations.Instance;
-            var show = new NativeMenuItem { Header = t.TrayShowWindow };
-            show.Click += (_, _) => restoreWindow();
-            var exit = new NativeMenuItem { Header = t.TrayExit };
-            exit.Click += (_, _) => exitApplication();
+            _showItem = new NativeMenuItem { Header = t.TrayShowWindow };
+            _showItem.Click += (_, _) => actions.ShowWindow();
+            _settingsItem = new NativeMenuItem { Header = t.TraySettings };
+            _settingsItem.Click += (_, _) => actions.OpenSettings();
+            _updateItem = new NativeMenuItem { Header = t.TrayCheckUpdate };
+            _updateItem.Click += (_, _) => actions.CheckUpdate();
+            _exitItem = new NativeMenuItem { Header = t.TrayExit };
+            _exitItem.Click += (_, _) => actions.Exit();
+
             var menu = new NativeMenu();
-            menu.Items.Add(show);
-            menu.Items.Add(exit);
+            menu.Items.Add(_showItem);
+            menu.Items.Add(_settingsItem);
+            menu.Items.Add(_updateItem);
+            menu.Items.Add(_exitItem);
 
             var icon = new TrayIcon
             {
                 ToolTipText = t.AppName,
                 Menu = menu,
-                Icon = LoadIcon(),
+                Icon = LoadIcon(AppIconUri),
                 IsVisible = true,
             };
             // Win32 and some Linux DEs raise Clicked; macOS never does, which is
-            // why the menu above carries the same "show window" action.
-            icon.Clicked += (_, _) => restoreWindow();
+            // why the macOS path above installs its own status item instead.
+            icon.Clicked += (_, _) => actions.QuickLookup();
 
-            // The attached property owns attach/detach; Hide detaches it again.
+            // The attached property owns attach/detach; Dispose detaches it again.
             TrayIcon.SetIcons(application, new TrayIcons { icon });
-
             _icon = icon;
-            _showItem = show;
-            _exitItem = exit;
-            Translations.Instance.PropertyChanged += OnTranslationsChanged;
             return true;
         }
         catch (Exception)
         {
-            // No tray backend (headless / exotic desktop): report failure so
-            // the close path falls back to a real exit instead of hiding.
-            Hide();
+            // No tray backend (headless / exotic desktop): report failure so the
+            // close path falls back to a real exit instead of hiding.
+            DisposePlatformBits();
             return false;
         }
     }
 
-    public void Hide()
-    {
-        if (_icon is null) return;
-        Translations.Instance.PropertyChanged -= OnTranslationsChanged;
-        _icon.IsVisible = false;
-        if (Application.Current is { } application)
-            TrayIcon.SetIcons(application, null);
-        _icon.Dispose();
-        _icon = null;
-        _showItem = null;
-        _exitItem = null;
-    }
-
-    /// <summary>A language switch while hidden must not leave stale menu text behind.</summary>
-    private void OnTranslationsChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName != nameof(Translations.CurrentLanguage) || _icon is null)
-            return;
-        var t = Translations.Instance;
-        _icon.ToolTipText = t.AppName;
-        if (_showItem is not null) _showItem.Header = t.TrayShowWindow;
-        if (_exitItem is not null) _exitItem.Header = t.TrayExit;
-    }
-
-    private static WindowIcon? LoadIcon()
+    private static WindowIcon? LoadIcon(string uri)
     {
         try
         {
-            using var stream = AssetLoader.Open(new Uri(IconUri));
+            using var stream = AssetLoader.Open(new Uri(uri));
             return new WindowIcon(stream);
         }
         catch (Exception)
@@ -123,5 +150,55 @@ internal sealed class TrayIconHost : ITrayHost
         }
     }
 
-    public void Dispose() => Hide();
+    private void SubscribeLanguage() =>
+        Translations.Instance.PropertyChanged += OnTranslationsChanged;
+
+    /// <summary>A language switch must not leave stale menu text behind.</summary>
+    private void OnTranslationsChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(Translations.CurrentLanguage)) return;
+        if (_actions is not { } actions) return;
+        var t = Translations.Instance;
+        if (_macItems is not null)
+        {
+            MacStatusItem.SetTooltip(t.AppName);
+            _macItems = BuildMacItems(actions);
+            MacStatusItem.RefreshTitles(_macItems);
+            return;
+        }
+        if (_icon is null) return;
+        _icon.ToolTipText = t.AppName;
+        if (_showItem is not null) _showItem.Header = t.TrayShowWindow;
+        if (_settingsItem is not null) _settingsItem.Header = t.TraySettings;
+        if (_updateItem is not null) _updateItem.Header = t.TrayCheckUpdate;
+        if (_exitItem is not null) _exitItem.Header = t.TrayExit;
+    }
+
+    private void DisposePlatformBits()
+    {
+        if (_icon is { } icon)
+        {
+            icon.IsVisible = false;
+            if (Application.Current is { } application)
+                TrayIcon.SetIcons(application, null);
+            icon.Dispose();
+            _icon = null;
+        }
+        if (_macItems is not null)
+        {
+            MacStatusItem.Remove();
+            _macItems = null;
+        }
+        _showItem = null;
+        _settingsItem = null;
+        _updateItem = null;
+        _exitItem = null;
+    }
+
+    public void Dispose()
+    {
+        Translations.Instance.PropertyChanged -= OnTranslationsChanged;
+        DisposePlatformBits();
+        _actions = null;
+    }
 }

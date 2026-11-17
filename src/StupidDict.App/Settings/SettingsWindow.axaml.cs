@@ -14,6 +14,9 @@ public partial class SettingsWindow : Window
     /// <summary>翻译页签位置：通用之后、快捷键之前（MainWindow 错误卡直达用）。</summary>
     internal const int TranslationTabIndex = 1;
 
+    /// <summary>关于页签位置：托盘菜单「检查更新」直达用（更新检查的结果只在那里渲染）。</summary>
+    internal const int AboutTabIndex = 4;
+
     private readonly AppSettings _settings;
     private readonly UpdateChecker? _updateChecker;
     private readonly AppLocations _locations;
@@ -296,7 +299,14 @@ public partial class SettingsWindow : Window
     private static void OpenDirectoryInFileManager(string path) =>
         Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
 
-    private async void OnCheckUpdateClick(object? sender, RoutedEventArgs e)
+    private async void OnCheckUpdateClick(object? sender, RoutedEventArgs e) => await RunUpdateCheckAsync();
+
+    /// <summary>Starts a check from outside the dialog (tray menu opens the About
+    /// tab, then calls this): the status line, the button state and the release
+    /// link stay owned by the one handler below.</summary>
+    internal void BeginUpdateCheck() => _ = RunUpdateCheckAsync();
+
+    private async Task RunUpdateCheckAsync()
     {
         CheckUpdateButton.IsEnabled = false;
         OpenReleaseButton.IsVisible = false;

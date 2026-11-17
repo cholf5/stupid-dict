@@ -58,6 +58,15 @@ public partial class MainWindow : Window
     // Tray host: production shows a real notification-area icon, tests inject a
     // recorder (headless has no tray backend) through the internal seam below.
     private ITrayHost _tray = new TrayIconHost();
+    // Whether the platform accepted the tray icon. A false value turns every
+    // "close to tray" into a real exit, so the app can never hide into nowhere.
+    private bool _trayReady;
+    // The tray's left-click card, created on first use and reused afterwards.
+    private QuickLookupWindow? _quickLookup;
+    // How long after a focus-loss self-hide a tray click must not reopen the
+    // card: on Windows the focus hand-off to the taskbar happens on mouse-down
+    // and Clicked arrives on mouse-up, so "close me" and "open me" look alike.
+    private static readonly TimeSpan QuickLookupFocusLossGuard = TimeSpan.FromMilliseconds(400);
     // True only between HideToTray and the restore/quit that follows it. It
     // distinguishes "hidden to tray" from "closed / not shown yet", which both
     // look like IsVisible == false.
@@ -122,6 +131,19 @@ public partial class MainWindow : Window
         set => _tray = value;
     }
 
+    /// <summary>
+    /// Test seam (InternalsVisibleTo): the update checker the settings dialog
+    /// opened from the tray uses, so "check for updates" can be exercised
+    /// without hitting the network. Null in production.
+    /// </summary>
+    internal UpdateChecker? UpdateCheckerOverride;
+
+    /// <summary>
+    /// Test seam (InternalsVisibleTo): replaces the quick-lookup card factory.
+    /// Null in production.
+    /// </summary>
+    internal Func<QuickLookupWindow>? QuickLookupFactoryOverride;
+
     public MainWindow() : this(new DictionaryService(AppPaths.DictionaryDatabasePath, AppPaths.HistoryDatabasePath))
     {
     }
@@ -161,6 +183,7 @@ public partial class MainWindow : Window
             SearchBox.Focus();
             UpdateSearchBoxLineMetrics();
             ClampWindowToScreen();
+            ShowTrayIcon();
         };
         SearchBox.KeyDown += OnSearchBoxKeyDown;
         SearchBox.TextChanged += OnSearchTextChanged;
@@ -195,6 +218,10 @@ public partial class MainWindow : Window
         // OnWindowClosing), so this cannot block logout or Shutdown().
         Closing += OnWindowClosing;
         Closed += (_, _) => _tray.Dispose();
+        // The card is a second top-level window: leaving it open (even hidden)
+        // would make the default OnLastWindowClose lifetime believe the app is
+        // still busy, so quitting from the tray would never finish.
+        Closed += (_, _) => _quickLookup?.Close();
 
         ShowEmptyState();
         UpdateNavButtons();
@@ -352,14 +379,15 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Hides the window behind a tray icon. When the platform cannot show a
-    /// tray, the close proceeds as a real exit instead — hiding into nowhere
-    /// would leave the process with no visible way back.
+    /// Hides the window behind the (already running) tray icon. When the platform
+    /// could not create a tray at startup, the close proceeds as a real exit —
+    /// hiding into nowhere would leave the process with no visible way back.
     /// </summary>
     private void HideToTray()
     {
-        if (_tray.Show(RestoreFromTray, RequestExit))
+        if (_trayReady)
         {
+            _quickLookup?.HideQuickLookup();
             _trayHidden = true;
             // The window may never be closed again (killed from the tray, OS
             // reboot), so record the geometry now instead of losing it.
@@ -379,26 +407,141 @@ public partial class MainWindow : Window
     /// </summary>
     internal void RestoreFromTray()
     {
+        _quickLookup?.HideQuickLookup();
         if (!_trayHidden)
         {
             if (IsVisible) SingleInstanceGuard.BringToFront(this);
             return;
         }
         _trayHidden = false;
-        _tray.Hide();
         Show();
         if (WindowState == WindowState.Minimized)
             WindowState = WindowState.Normal;
         Activate();
     }
 
-    /// <summary>Quit from the tray menu: remove the icon and close the window for real.</summary>
+    /// <summary>Quit from the tray menu: the icon goes away with the window (Closed).</summary>
     private void RequestExit()
     {
+        _quickLookup?.HideQuickLookup();
         _trayHidden = false;
-        _tray.Hide();
         _allowClose = true;
         Close();
+    }
+
+    // ---- 托盘（常驻图标 + 左键迷你查词）----
+
+    /// <summary>
+    /// Creates the icon once the window exists. Its left click toggles the
+    /// quick-lookup card; the menu offers show/settings/check-updates/quit.
+    /// </summary>
+    private void ShowTrayIcon()
+    {
+        _trayReady = _tray.Show(new TrayActions(
+            QuickLookup: ToggleQuickLookup,
+            ShowWindow: RestoreFromTray,
+            OpenSettings: OpenSettingsFromTray,
+            CheckUpdate: CheckUpdateFromTray,
+            Exit: RequestExit));
+    }
+
+    /// <summary>
+    /// Tray left click. Without dictionary data the card would only be able to
+    /// report "not found", so the click goes straight to the main window, where
+    /// the download panel lives.
+    /// </summary>
+    internal void ToggleQuickLookup()
+    {
+        if (!_dictionaryAvailable)
+        {
+            RestoreFromTray();
+            return;
+        }
+        var window = EnsureQuickLookup();
+        if (window.IsVisible)
+        {
+            window.HideQuickLookup();
+            return;
+        }
+        // The focus hand-off caused by this very click may already have hidden
+        // the card (Windows: taskbar takes focus on mouse-down, Clicked arrives
+        // on mouse-up). Treat that as "the user closed it", not "open it".
+        if (DateTimeOffset.UtcNow - window.LastAutoHiddenUtc < QuickLookupFocusLossGuard)
+            return;
+        PlaceQuickLookup(window);
+        window.ShowQuickLookup(window.Position);
+    }
+
+    private QuickLookupWindow EnsureQuickLookup()
+    {
+        if (_quickLookup is { } existing) return existing;
+        var window = QuickLookupFactoryOverride?.Invoke() ?? new QuickLookupWindow(() => _service, _speech);
+        window.OpenInMainWindow = OpenWordFromQuickLookup;
+        _quickLookup = window;
+        return window;
+    }
+
+    /// <summary>
+    /// Anchors the card next to the tray icon. The probe gives either the macOS
+    /// status-item rect or the Windows cursor (parked on the icon at click time);
+    /// without one (Linux panels, probe failure) the working-area corner facing
+    /// the panel is good enough. All maths lives in PopoverPositioner (pure).
+    /// </summary>
+    private void PlaceQuickLookup(QuickLookupWindow window)
+    {
+        var probe = TrayAnchor.Probe();
+        var anchorPoint = probe.StatusItem is { } icon
+            ? new PixelPoint(icon.X + icon.Width / 2, icon.Y + icon.Height / 2)
+            : probe.Cursor ?? default;
+        var screen = (probe.StatusItem is null && probe.Cursor is null ? null : Screens.ScreenFromPoint(anchorPoint))
+            ?? Screens.Primary;
+        if (screen is null) return;
+
+        var scale = screen.Scaling;
+        var card = new PixelSize(
+            (int)Math.Ceiling(window.Width * scale),
+            (int)Math.Ceiling(window.Height * scale));
+        var gap = (int)Math.Round(8 * scale);
+        window.Position = probe switch
+        {
+            { StatusItem: { } statusItem } => PopoverPositioner.BelowAnchor(screen.WorkingArea, card, statusItem, gap),
+            { Cursor: { } cursor } => PopoverPositioner.AboveCursor(screen.WorkingArea, card, cursor, gap, 0),
+            _ => PopoverPositioner.InCorner(screen.Bounds, screen.WorkingArea, card, gap),
+        };
+    }
+
+    /// <summary>Enter in the card: the full entry, in the main window.</summary>
+    private void OpenWordFromQuickLookup(string word)
+    {
+        RestoreFromTray();
+        SetQueryText(word);
+        RunSearch(word);
+    }
+
+    /// <summary>
+    /// Settings from the tray. The dialog is modal to this window, so a hidden
+    /// (close-to-tray) window is restored first; opening is posted so the show
+    /// has landed before the dialog takes over.
+    /// </summary>
+    private void OpenSettingsFromTray()
+    {
+        RestoreFromTray();
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => OpenSettings());
+    }
+
+    /// <summary>
+    /// Check for updates from the tray: the only place the result can be read is
+    /// the settings dialog's About tab, so this opens it there and starts the
+    /// check (one source of truth for the status text).
+    /// </summary>
+    private void CheckUpdateFromTray()
+    {
+        RestoreFromTray();
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            OpenSettings(SettingsWindow.AboutTabIndex);
+            _settingsWindow?.BeginUpdateCheck();
+        });
     }
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
@@ -712,8 +855,9 @@ public partial class MainWindow : Window
             open.Activate();
             return;
         }
-        _settingsWindow = new SettingsWindow(_settings, locations: _locations,
-            translationServiceFactory: EnsureTranslationService, initialTabIndex: initialTabIndex);
+        _settingsWindow = new SettingsWindow(_settings, updateChecker: UpdateCheckerOverride,
+            locations: _locations, translationServiceFactory: EnsureTranslationService,
+            initialTabIndex: initialTabIndex);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _ = ShowSettingsDialogAsync(_settingsWindow, this);
     }
@@ -725,8 +869,8 @@ public partial class MainWindow : Window
             open.Activate();
             return;
         }
-        _settingsWindow = new SettingsWindow(_settings, locations: _locations,
-            translationServiceFactory: EnsureTranslationService);
+        _settingsWindow = new SettingsWindow(_settings, updateChecker: UpdateCheckerOverride,
+            locations: _locations, translationServiceFactory: EnsureTranslationService);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _ = ShowSettingsDialogAsync(_settingsWindow, this);
     }

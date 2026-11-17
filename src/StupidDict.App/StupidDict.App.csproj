@@ -34,6 +34,9 @@
        The icns is deliberately not embedded — it only travels via package.sh into the bundle. -->
   <ItemGroup>
     <AvaloniaResource Include="Assets/app-icon.png;Assets/app-icon.ico" />
+    <!-- Flat menu-bar glyph for the macOS status item (MacStatusItem), template
+         image: AppKit renders its alpha channel in the menu-bar foreground. -->
+    <AvaloniaResource Include="Assets/tray-icon.png" />
   </ItemGroup>
 
   <ItemGroup>

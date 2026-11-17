@@ -67,7 +67,6 @@ public class CloseToTrayTests
         WaitUntil(() => probe.Closed);
 
         Assert.Equal(1, asked);
-        Assert.Equal(0, tray.ShowCalls);
         Assert.True(settings.CloseToTrayAsked);
         Assert.False(settings.MinimizeToTrayOnClose);
     }
@@ -131,7 +130,7 @@ public class CloseToTrayTests
     }
 
     [AvaloniaFact]
-    public void TrayRestoreShowsTheWindowAndRemovesTheIcon()
+    public void TrayShowWindowRestoresTheHiddenWindow()
     {
         var settings = new AppSettings
         {
@@ -145,12 +144,13 @@ public class CloseToTrayTests
         window.TrayHost = tray;
         window.Show();
         window.Close();
-        WaitUntil(() => !window.IsVisible && tray.Restore is not null);
+        WaitUntil(() => !window.IsVisible && tray.Actions is not null);
 
-        tray.Restore!();
+        tray.Actions!.ShowWindow();
         WaitUntil(() => window.IsVisible);
 
-        Assert.False(tray.Shown);
+        // The tray icon is permanent now: restoring the window keeps it.
+        Assert.True(tray.Shown);
         Assert.False(probe.Closed);
         // Restore also puts the caret back in the search box (Activated handler).
         var searchBox = window.FindControl<TextBox>("SearchBox")!;
@@ -172,9 +172,9 @@ public class CloseToTrayTests
         window.TrayHost = tray;
         window.Show();
         window.Close();
-        WaitUntil(() => tray.Exit is not null);
+        WaitUntil(() => tray.Actions is not null);
 
-        tray.Exit!();
+        tray.Actions!.Exit();
         WaitUntil(() => probe.Closed);
 
         Assert.True(tray.Disposed);
@@ -311,9 +311,11 @@ public class CloseToTrayTests
         // platform-dependent; what must hold everywhere is that no exception
         // escapes into the close path and Repeat hide/dispose is safe.
         using var host = new TrayIconHost();
-        _ = host.Show(() => { }, () => { });
-        host.Hide();
-        host.Hide();
+        var actions = new TrayActions(() => { }, () => { }, () => { }, () => { }, () => { });
+        _ = host.Show(actions);
+        _ = host.Show(actions); // idempotent
+        host.Dispose();
+        host.Dispose();
     }
 
     [AvaloniaFact]
@@ -430,31 +432,23 @@ public class CloseToTrayTests
         public bool ShowResult { get; init; } = true;
         public bool Shown { get; private set; }
         public int ShowCalls { get; private set; }
-        public Action? Restore { get; private set; }
-        public Action? Exit { get; private set; }
+        public TrayActions? Actions { get; private set; }
         public bool Disposed { get; private set; }
 
-        public bool Show(Action restoreWindow, Action exitApplication)
+        public bool Show(TrayActions actions)
         {
             ShowCalls++;
             if (!ShowResult) return false;
             Shown = true;
-            Restore = restoreWindow;
-            Exit = exitApplication;
+            Actions = actions;
             return true;
-        }
-
-        public void Hide()
-        {
-            Shown = false;
-            Restore = null;
-            Exit = null;
         }
 
         public void Dispose()
         {
             Disposed = true;
             Shown = false;
+            Actions = null;
         }
     }
 }

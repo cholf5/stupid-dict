@@ -64,3 +64,11 @@
 - 真实 `TrayIconHost` 在 headless 下 Show/Hide/Dispose 不抛异常（返回值平台相关，不做断言）。
 
 既有用例的适配：`WindowBoundsTests` 三个关闭用例显式加 `CloseToTrayAsked = true`（它们测几何，不是在测询问）；`MainWindow` 在**不传 settings** 时的兜底实例同样预置该位——那是测试/设计器路径，生产永远传入从磁盘加载的 `AppSettings`，否则 headless 测试的 `Close()` 会弹一个没人应答的模态框而卡死。
+
+## 2026-11-17 后续：图标改为常驻
+
+用户随后点名「参考 tokenmetry 加托盘菜单 + 左键快速查词」，本文件里两条「不做」被推翻：
+**托盘图标改为常驻**（启动即建、退出才销毁，收托盘只是 `Hide()` 主窗），菜单从两项扩到四项
+（显示主窗口 / 设置 / 检查更新 / 退出），左键改为弹出迷你查词卡而不是恢复窗口。关闭语义本身
+（首次询问、答案记住、`MinimizeToTrayOnClose` 决定隐藏还是退出、无托盘后端按退出处理）全部不变。
+新设计与移植细节见 `docs/plans/2026-11-17-tray-quick-lookup-design.md`。

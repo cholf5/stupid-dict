@@ -1,0 +1,46 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="using:StupidDict.App.Localization"
+        x:Class="StupidDict.App.Tray.QuickLookupWindow"
+        Title="{Binding AppName, Source={x:Static loc:Translations.Instance}}"
+        Width="440" Height="320"
+        WindowDecorations="None" CanResize="False" ShowInTaskbar="False"
+        WindowStartupLocation="Manual" Topmost="True"
+        Background="{DynamicResource CardBackground}">
+
+  <Window.Styles>
+    <Style Selector="TextBox#QueryBox">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="Padding" Value="2,8" />
+      <Setter Property="CaretBrush" Value="{DynamicResource TextStrong}" />
+    </Style>
+    <!-- Same borderless-box treatment as the main search box: Fluent paints a
+         focused background/ring on the template border, which reads as a black
+         slab on the dark theme. Both states must be overridden. -->
+    <Style Selector="TextBox#QueryBox /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+    </Style>
+    <Style Selector="TextBox#QueryBox:focus /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+  </Window.Styles>
+
+  <Border BorderBrush="{DynamicResource CardBorder}" BorderThickness="1">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="14,10,14,8">
+      <TextBox Grid.Row="0" Name="QueryBox"
+               PlaceholderText="{Binding QuickLookupPlaceholder, Source={x:Static loc:Translations.Instance}}" />
+
+      <ScrollViewer Grid.Row="1" Name="ResultScroll" IsVisible="False" Margin="0,6,0,6">
+        <StackPanel Name="ResultPanel" Spacing="6" />
+      </ScrollViewer>
+
+      <TextBlock Grid.Row="2" Classes="hint" FontSize="11" TextWrapping="Wrap"
+                 Text="{Binding QuickLookupHint, Source={x:Static loc:Translations.Instance}}" />
+    </Grid>
+  </Border>
+</Window>
