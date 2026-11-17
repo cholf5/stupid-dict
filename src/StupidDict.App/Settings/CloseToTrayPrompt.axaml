@@ -1,0 +1,29 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="using:StupidDict.App.Localization"
+        x:Class="StupidDict.App.Settings.CloseToTrayPrompt"
+        Title="{Binding CloseToTrayPromptTitle, Source={x:Static loc:Translations.Instance}}"
+        Icon="avares://StupidDict/Assets/app-icon.ico"
+        Width="420" SizeToContent="Height"
+        CanResize="False" WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource WindowBackground}">
+
+  <!-- 首次关闭的询问：一次性决策，两个按钮各写一个设置位。Esc / 关闭按钮
+       只关掉对话框（Choice = Cancel），不消费询问——下次关闭再问。 -->
+  <StackPanel Margin="20" Spacing="14">
+    <TextBlock FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"
+               Text="{Binding CloseToTrayPromptTitle, Source={x:Static loc:Translations.Instance}}" />
+    <TextBlock TextWrapping="Wrap" Classes="hint"
+               Text="{Binding CloseToTrayPromptBody, Source={x:Static loc:Translations.Instance}}" />
+    <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right">
+      <!-- 默认按钮是「退出应用」：直接回车等于不做任何改变（原来的关闭行为），
+           不会在用户没注意时把应用留在后台。 -->
+      <Button Name="QuitButton" Classes="chip" IsDefault="True"
+              Content="{Binding QuitApplication, Source={x:Static loc:Translations.Instance}}"
+              Click="OnQuitClick" />
+      <Button Name="TrayButton" Classes="chip"
+              Content="{Binding MinimizeToTray, Source={x:Static loc:Translations.Instance}}"
+              Click="OnTrayClick" />
+    </StackPanel>
+  </StackPanel>
+</Window>

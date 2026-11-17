@@ -38,6 +38,8 @@ public sealed class AppSettings : INotifyPropertyChanged
     private string _translationModel = "";
     private bool _translationAutoOnMiss = true;
     private bool _launchAtLogin;
+    private bool _minimizeToTrayOnClose;
+    private bool _closeToTrayAsked;
 
     public AppTheme Theme
     {
@@ -154,6 +156,38 @@ public sealed class AppSettings : INotifyPropertyChanged
             if (_launchAtLogin == value) return;
             _launchAtLogin = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LaunchAtLogin)));
+        }
+    }
+
+    /// <summary>
+    /// Whether closing the main window hides it to the notification area
+    /// instead of exiting. Asked once at the first close; afterwards the
+    /// settings checkbox is the only switch.
+    /// </summary>
+    public bool MinimizeToTrayOnClose
+    {
+        get => _minimizeToTrayOnClose;
+        set
+        {
+            if (_minimizeToTrayOnClose == value) return;
+            _minimizeToTrayOnClose = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MinimizeToTrayOnClose)));
+        }
+    }
+
+    /// <summary>
+    /// Whether the one-time "minimize to tray?" close prompt has been answered
+    /// (either way). Cancelling the dialog answers nothing, so the next close
+    /// asks again.
+    /// </summary>
+    public bool CloseToTrayAsked
+    {
+        get => _closeToTrayAsked;
+        set
+        {
+            if (_closeToTrayAsked == value) return;
+            _closeToTrayAsked = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CloseToTrayAsked)));
         }
     }
 

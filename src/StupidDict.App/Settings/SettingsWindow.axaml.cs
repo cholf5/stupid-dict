@@ -67,6 +67,11 @@ public partial class SettingsWindow : Window
         LanguageComboBox.SelectionChanged += OnLanguageSelectionChanged;
         LaunchAtLoginCheckBox.IsChecked = settings.LaunchAtLogin;
         LaunchAtLoginCheckBox.IsCheckedChanged += OnLaunchAtLoginToggle;
+        // Close-to-tray is a pure setting bit: MainWindow reads it at close
+        // time, so wiring the shared instance (persisted by WireSettings) is
+        // the whole job. No system side effect, hence no injected seam.
+        MinimizeToTrayCheckBox.IsChecked = settings.MinimizeToTrayOnClose;
+        MinimizeToTrayCheckBox.IsCheckedChanged += OnMinimizeToTrayToggle;
         Translations.Instance.PropertyChanged += OnTranslationsPropertyChanged;
         DataDownloadPageButton.Tag = ReleaseAssets.DataReleasePageUrl;
         RefreshDataStatus();
@@ -158,6 +163,15 @@ public partial class SettingsWindow : Window
         // 设置——下次启动的收敛会重试。
         _settings.LaunchAtLogin = enabled;
         _applyLaunchAtLogin(enabled);
+    }
+
+    private void OnMinimizeToTrayToggle(object? sender, RoutedEventArgs e)
+    {
+        // An explicit settings choice answers the one-time close prompt: the
+        // user already said what they want, asking on the next close would only
+        // be noise (and could contradict the checkbox they just set).
+        _settings.MinimizeToTrayOnClose = MinimizeToTrayCheckBox.IsChecked == true;
+        _settings.CloseToTrayAsked = true;
     }
 
     // ---- 翻译页签：draft 加载/保存 + 测试连接 + 缓存 ----
