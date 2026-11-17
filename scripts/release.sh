@@ -164,12 +164,22 @@ if [ "$i" -eq 3 ]; then
   echo "请手动核对 ${REL_URL}：产物齐全则无需任何补救动作；确有缺失再 Re-run release job 或删 tag 重跑。" >&2
   exit 1
 fi
+APP_ASSETS="StupidDict-${VERSION}-osx-arm64.zip StupidDict-${VERSION}-osx-x64.zip \
+StupidDict-${VERSION}-win-x64.zip StupidDict-${VERSION}-win-x64-setup.exe \
+StupidDict-${VERSION}-linux-x64.zip"
 MISSING=
-for want in "StupidDict-$VERSION-osx-arm64.zip" "StupidDict-$VERSION-osx-x64.zip" \
-  "StupidDict-$VERSION-win-x64.zip" "StupidDict-$VERSION-win-x64-setup.exe" "StupidDict-$VERSION-linux-x64.zip"; do
+for want in $APP_ASSETS; do
   case ",$ASSETS," in
     *",$want,"*) ;;
     *) MISSING="$MISSING $want" ;;
+  esac
+done
+# 自更新要求每个应用包都有同名 .sha256 同伴（下载镜像前缀是第三方，没校验
+# 客户端就拒绝替换文件）；缺了这里就当场报出来，别等用户点「立即更新」才发现。
+for want in $APP_ASSETS; do
+  case ",$ASSETS," in
+    *",$want.sha256,"*) ;;
+    *) MISSING="$MISSING $want.sha256" ;;
   esac
 done
 if [ -n "$MISSING" ]; then

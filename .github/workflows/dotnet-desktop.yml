@@ -19,6 +19,17 @@
 # <Version> of StupidDict.App (the comparison base of the in-app update
 # check); scripts/release.sh bumps the csproj before tagging, and CI rejects
 # a tag that disagrees.
+#
+# Asset naming contract (five assets + five checksum sidecars):
+# StupidDict-{version}-{rid}.zip with rid ∈ {osx-arm64, osx-x64, win-x64,
+# linux-x64}, plus the Windows installer
+# StupidDict-{version}-win-x64-setup.exe, plus one <asset>.sha256 per asset
+# (sha256sum format). The in-app updater
+# (src/StupidDict.App/Update/UpdateAssets.cs) downloads by exactly these names
+# — renaming assets here breaks "下载更新" for every installed client, and
+# picking the wrong one for installed copies breaks silent upgrades. The
+# sidecars are mandatory: self-update refuses to replace files it cannot
+# verify, because the download mirrors are third-party proxies.
 name: CI
 
 on:
@@ -214,6 +225,18 @@ jobs:
           pattern: package-*
           merge-multiple: true
           path: dist
+      # 每个资产一份 <资产名>.sha256（sha256sum 的「hash  filename」格式）：应用内
+      # 自更新在替换文件之前必须校验它。三个镜像前缀都是第三方，只靠
+      # Content-Length + 魔数意味着「谁能换掉包，谁就能换掉用户的程序」。命名
+      # 契约见 UpdateAssets.ChecksumAssetFileName。
+      - name: Generate SHA-256 sidecars
+        run: |
+          cd dist
+          for f in *; do
+            case "$f" in *.sha256) continue ;; esac
+            sha256sum "$f" > "$f.sha256"
+          done
+          ls -l *.sha256
       - name: Create release and upload assets
         env:
           GH_TOKEN: ${{ github.token }}

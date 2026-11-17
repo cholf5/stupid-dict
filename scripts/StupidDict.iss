@@ -58,4 +58,8 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExe}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
+; 装完把应用拉起来——包括 /SILENT 静默升级：应用内「立即重启并更新」拉起本安装器，
+; 用户期待的是应用自己回来，而不是凭空消失。因此**不写 skipifsilent**（唯一代价：
+; 无人值守的静默安装也会启动一次应用）。CloseApplications=yes 先收掉旧实例，
+; 这个 [Run] 才会在旧实例退出后启动新版本。
+Filename: "{app}\{#MyAppExe}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall

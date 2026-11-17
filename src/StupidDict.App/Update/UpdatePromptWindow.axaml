@@ -1,0 +1,24 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="using:StupidDict.App.Localization"
+        x:Class="StupidDict.App.Update.UpdatePromptWindow"
+        Title="{Binding UpdateDialogTitle, Source={x:Static loc:Translations.Instance}}"
+        Icon="avares://StupidDict/Assets/app-icon.ico"
+        Width="440" SizeToContent="Height"
+        CanResize="False" WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource WindowBackground}">
+
+  <!-- 自更新的唯一界面：发现新版本 → 下载（带进度）→ 就绪 → 重启生效，
+       以及重启后的「已更新到 vX」与「上次更新未生效」两条收尾提示。
+       文案由 UpdatePromptWindow.Sync 按 UpdateService 的状态机算出，XAML 只
+       负责摆放；按钮显隐同理（不在这里做状态判断）。 -->
+  <StackPanel Margin="20" Spacing="12">
+    <TextBlock Name="TitleText" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+    <TextBlock Name="BodyText" TextWrapping="Wrap" Classes="hint" IsVisible="False" />
+    <ProgressBar Name="Progress" Minimum="0" Maximum="100" Height="4" IsVisible="False" />
+    <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right">
+      <Button Name="SecondaryButton" Classes="chip" IsVisible="False" Click="OnSecondaryClick" />
+      <Button Name="PrimaryButton" Classes="chip" IsDefault="True" IsVisible="False" Click="OnPrimaryClick" />
+    </StackPanel>
+  </StackPanel>
+</Window>

@@ -46,7 +46,7 @@ public sealed class Translations : INotifyPropertyChanged
         "TranslationOpenSettings", "TranslationPrivacy", "TranslationRateLimited", "TranslationRefused", "TranslationSave", "TranslationSaved", "TranslationServerFailed",
         "TranslationTest", "TranslationTestFailedFormat", "TranslationTestSucceeded", "TranslationTesting", "TranslationTimeout", "TranslationUrlAndModelRequired",
         "TrayCheckUpdate", "TrayExit", "TraySettings", "TrayShowWindow", "TryShorter",
-        "UkPhoneticPrefix", "UkTip", "UpToDateStatus", "UpdateAvailableStatus", "UpdateCheckFailed", "UsPhoneticPrefix", "UsTip",
+        "UkPhoneticPrefix", "UkTip", "UpToDateStatus", "UpdateApplyFailedFormat", "UpdateAvailableBodyFormat", "UpdateAvailableStatus", "UpdateAvailableTitleFormat", "UpdateBackupKeptBodyFormat", "UpdateCheckFailed", "UpdateDialogTitle", "UpdateDownloadFailedFormat", "UpdateDownloadNow", "UpdateDownloadingFormat", "UpdateDownloadingStatus", "UpdateLater", "UpdateNotAppliedTitle", "UpdateOk", "UpdateReadyBodyFormat", "UpdateReadyTitle", "UpdateRestartNow", "UpdateRestarting", "UpdateRolledBackBody", "UpdateStageUnavailableFormat", "UpdateStatusReadyFormat", "UpdateUpgradedBody", "UpdateUpgradedTitleFormat", "UsPhoneticPrefix", "UsTip",
         "Verifying", "ZipCrcMismatchFormat", "ZipSlipFormat",
     ];
 
@@ -148,7 +148,7 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(ShortcutSettings)] = "打开 / 关闭设置",
         [nameof(SectionData)] = "数据目录",
         [nameof(SectionAbout)] = "关于",
-        [nameof(AboutBlurb)] = "完全离线的英汉词典。查询不联网，联网只发生在首次下载词典与发音包的时候。",
+        [nameof(AboutBlurb)] = "完全离线的英汉词典。查询不联网，联网只发生在首次下载词典与发音包、检查更新和可选的在线翻译时。",
         [nameof(AuthorLabel)] = "作者",
         [nameof(AuthorName)] = "周尔复",
         [nameof(LicenseLabel)] = "开源许可",
@@ -167,6 +167,29 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(UpdateAvailableStatus)] = "发现新版本 {0}，当前 {1}",
         [nameof(UpdateCheckFailed)] = "检查失败：{0}",
         [nameof(BrowserOpenFailed)] = "无法打开浏览器：{0}",
+        // 自更新对话框（UpdatePromptWindow）：发现新版本 → 下载 → 就绪 → 重启，
+        // 以及重启后的两条收尾提示。
+        [nameof(UpdateDialogTitle)] = "软件更新",
+        [nameof(UpdateAvailableTitleFormat)] = "发现新版本 {0}",
+        [nameof(UpdateAvailableBodyFormat)] = "当前版本 {0}。更新会下载并校验新版本，完成后重启应用。",
+        [nameof(UpdateDownloadNow)] = "立即更新",
+        [nameof(UpdateLater)] = "稍后",
+        [nameof(UpdateDownloadingFormat)] = "正在下载 {0}…",
+        [nameof(UpdateDownloadingStatus)] = "正在下载更新…",
+        [nameof(UpdateStatusReadyFormat)] = "更新 {0} 已下载，重启后生效",
+        [nameof(UpdateDownloadFailedFormat)] = "下载失败：{0}",
+        [nameof(UpdateReadyTitle)] = "更新已就绪",
+        [nameof(UpdateReadyBodyFormat)] = "{0} 已下载并校验通过，重启后生效。",
+        [nameof(UpdateRestartNow)] = "立即重启并更新",
+        [nameof(UpdateRestarting)] = "正在重启…",
+        [nameof(UpdateApplyFailedFormat)] = "安装失败：{0}",
+        [nameof(UpdateStageUnavailableFormat)] = "更新包已下载（{0}），但安装目录不可写，已打开所在文件夹，请手动替换。",
+        [nameof(UpdateUpgradedTitleFormat)] = "已更新到 {0}",
+        [nameof(UpdateUpgradedBody)] = "本次更新已完成。",
+        [nameof(UpdateNotAppliedTitle)] = "上次更新未生效",
+        [nameof(UpdateRolledBackBody)] = "替换文件没有成功，已恢复到旧版本，可以稍后再试。",
+        [nameof(UpdateBackupKeptBodyFormat)] = "替换文件没有成功，备份仍在：{0}",
+        [nameof(UpdateOk)] = "好",
         [nameof(SectionTranslation)] = "翻译",
         [nameof(TranslationApiUrlLabel)] = "API 地址",
         [nameof(TranslationApiUrlPlaceholder)] = "例如 https://api.openai.com/v1",
@@ -304,7 +327,7 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(ShortcutSettings)] = "Open / close settings",
         [nameof(SectionData)] = "Data folder",
         [nameof(SectionAbout)] = "About",
-        [nameof(AboutBlurb)] = "A fully offline English-Chinese dictionary. Lookups never touch the network; the network is only used for the first dictionary and pronunciation pack download.",
+        [nameof(AboutBlurb)] = "A fully offline English-Chinese dictionary. Lookups never touch the network; the network is only used for the first dictionary and pronunciation pack download, update checks, and the optional online translation.",
         [nameof(AuthorLabel)] = "Author",
         [nameof(AuthorName)] = "Cholf",
         [nameof(LicenseLabel)] = "License",
@@ -323,6 +346,27 @@ public sealed class Translations : INotifyPropertyChanged
         [nameof(UpdateAvailableStatus)] = "New version {0} available, current {1}",
         [nameof(UpdateCheckFailed)] = "Check failed: {0}",
         [nameof(BrowserOpenFailed)] = "Could not open the browser: {0}",
+        [nameof(UpdateDialogTitle)] = "Software update",
+        [nameof(UpdateAvailableTitleFormat)] = "Version {0} is available",
+        [nameof(UpdateAvailableBodyFormat)] = "Current version {0}. The update downloads and verifies the new version, then restarts the app.",
+        [nameof(UpdateDownloadNow)] = "Update now",
+        [nameof(UpdateLater)] = "Later",
+        [nameof(UpdateDownloadingFormat)] = "Downloading {0}…",
+        [nameof(UpdateDownloadingStatus)] = "Downloading the update…",
+        [nameof(UpdateStatusReadyFormat)] = "Update {0} downloaded — restart to apply",
+        [nameof(UpdateDownloadFailedFormat)] = "Download failed: {0}",
+        [nameof(UpdateReadyTitle)] = "Update ready",
+        [nameof(UpdateReadyBodyFormat)] = "{0} downloaded and verified. It takes effect after a restart.",
+        [nameof(UpdateRestartNow)] = "Restart and update",
+        [nameof(UpdateRestarting)] = "Restarting…",
+        [nameof(UpdateApplyFailedFormat)] = "Install failed: {0}",
+        [nameof(UpdateStageUnavailableFormat)] = "The update package was downloaded ({0}) but the install folder is not writable; the folder was opened for a manual replacement.",
+        [nameof(UpdateUpgradedTitleFormat)] = "Updated to {0}",
+        [nameof(UpdateUpgradedBody)] = "The update is complete.",
+        [nameof(UpdateNotAppliedTitle)] = "The last update did not take effect",
+        [nameof(UpdateRolledBackBody)] = "Replacing the files failed and the previous version was restored. You can try again later.",
+        [nameof(UpdateBackupKeptBodyFormat)] = "Replacing the files failed; the backup is still at {0}",
+        [nameof(UpdateOk)] = "OK",
         [nameof(SectionTranslation)] = "Translation",
         [nameof(TranslationApiUrlLabel)] = "API URL",
         [nameof(TranslationApiUrlPlaceholder)] = "e.g. https://api.openai.com/v1",
@@ -557,6 +601,41 @@ public sealed class Translations : INotifyPropertyChanged
     public string UpdateAvailableStatus => Get();
     public string UpdateCheckFailed => Get();
     public string BrowserOpenFailed => Get();
+
+    // ---- 自更新（启动检查 / 下载 / 重启，UpdatePromptWindow）----
+
+    /// <summary>更新对话框的窗口标题。</summary>
+    public string UpdateDialogTitle => Get();
+    /// <summary>{0} 为新版本 tag。</summary>
+    public string UpdateAvailableTitleFormat => Get();
+    /// <summary>{0} 为当前版本。</summary>
+    public string UpdateAvailableBodyFormat => Get();
+    public string UpdateDownloadNow => Get();
+    public string UpdateLater => Get();
+    /// <summary>{0} 为新版本 tag。</summary>
+    public string UpdateDownloadingFormat => Get();
+    public string UpdateDownloadingStatus => Get();
+    /// <summary>{0} 为新版本 tag。</summary>
+    public string UpdateStatusReadyFormat => Get();
+    /// <summary>{0} 为失败原因。</summary>
+    public string UpdateDownloadFailedFormat => Get();
+    public string UpdateReadyTitle => Get();
+    /// <summary>{0} 为新版本 tag。</summary>
+    public string UpdateReadyBodyFormat => Get();
+    public string UpdateRestartNow => Get();
+    public string UpdateRestarting => Get();
+    /// <summary>{0} 为失败原因。</summary>
+    public string UpdateApplyFailedFormat => Get();
+    /// <summary>{0} 为已下载更新包的位置（安装目录不可写时的兜底）。</summary>
+    public string UpdateStageUnavailableFormat => Get();
+    /// <summary>{0} 为新版本 tag。</summary>
+    public string UpdateUpgradedTitleFormat => Get();
+    public string UpdateUpgradedBody => Get();
+    public string UpdateNotAppliedTitle => Get();
+    public string UpdateRolledBackBody => Get();
+    /// <summary>{0} 为备份位置（自动回滚失败时的兜底）。</summary>
+    public string UpdateBackupKeptBodyFormat => Get();
+    public string UpdateOk => Get();
 
     // ---- 翻译（BYO OpenAI 兼容 API）----
 

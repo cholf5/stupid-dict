@@ -233,13 +233,21 @@
                            Content="https://github.com/cholf5/stupid-dict"
                            NavigateUri="https://github.com/cholf5/stupid-dict" />
         </Grid>
-        <!-- 检查更新：结果写在状态行（瞬态，不随语言刷新）；发现新版本时才出现跳转按钮 -->
+        <!-- 检查更新：结果写在状态行（瞬态，不随语言刷新）；发现新版本时才出现下载入口。
+             设置是模态对话框，下载与重启的进度统一在自更新对话框里（点「下载并更新」
+             关掉设置并转交给它），所以这里只留入口与结果行。 -->
         <Separator />
         <StackPanel Spacing="8">
           <StackPanel Orientation="Horizontal" Spacing="10">
             <Button Name="CheckUpdateButton" Classes="chip"
                     Content="{Binding CheckUpdate, Source={x:Static loc:Translations.Instance}}"
                     Click="OnCheckUpdateClick" />
+            <Button Name="DownloadUpdateButton" Classes="chip" IsVisible="False"
+                    Content="{Binding UpdateDownloadNow, Source={x:Static loc:Translations.Instance}}"
+                    Click="OnDownloadUpdateClick" />
+            <Button Name="RestartUpdateButton" Classes="chip" IsVisible="False"
+                    Content="{Binding UpdateRestartNow, Source={x:Static loc:Translations.Instance}}"
+                    Click="OnRestartUpdateClick" />
             <Button Name="OpenReleaseButton" Classes="chip"
                     Content="{Binding OpenReleasePage, Source={x:Static loc:Translations.Instance}}"
                     Tag="{x:Static u:UpdateChecker.ReleasesPageUrl}"

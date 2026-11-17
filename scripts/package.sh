@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds every release asset into dist/:
 #   StupidDict-{rid}.zip                  — app only (small)
+#   StupidDict-{rid}.zip.sha256           — its checksum: the in-app updater verifies before replacing files
 #   StupidDict-{rid}-with-dictionary.zip  — app + dictionary.db (offline install)
 #   dictionary.zip + .sha256              — for the in-app first-run download
 #   audio-pack.zip + .sha256              — pronunciation pack, if one was built
@@ -162,6 +163,9 @@ PLIST
   # with new). Always start from a fresh archive.
   rm -f "$APP_ZIP"
   (cd "$STAGE" && zip -q -r -X "$APP_ZIP" .)
+  # 自更新靠这份校验和拒绝被替换过的包（镜像前缀是第三方）。CI 在发布 job 里
+  # 统一生成；本地打包（手动兜底）也必须产，否则客户端拒绝安装。
+  (cd "$DIST" && sha256_file "$(basename "$APP_ZIP")" > "$(basename "$APP_ZIP").sha256")
   echo "    $APP_ZIP"
 
   # 2) drop the dictionary in, then zip the full variant.
@@ -211,7 +215,8 @@ cat <<'NEXT'
 === 发布步骤（手动） ===
 1. 应用包进版本 Release。正常发版走 scripts/release.sh（CI 打包并建 Release，
    无需本步）；仅本地手动兜底时:
-     gh release create vX dist/StupidDict-*.zip --title "..." --notes "..."
+     gh release create vX dist/StupidDict-*.zip dist/StupidDict-*.zip.sha256 --title "..." --notes "..."
+   自更新要求每个应用包都有同名 .sha256 同伴（缺了就拒绝安装）；
    注意: 不能 gh release create vX dist/* —— dist/ 里还有 dictionary.zip /
    audio-pack.zip（含 .sha256），它们必须进独立 prerelease data-N；传进 App
    Release 会挤占 releases/latest 语义（应用内检查更新读的就是那个页面）。

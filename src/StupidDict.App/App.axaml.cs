@@ -5,6 +5,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using StupidDict.App.Localization;
 using StupidDict.App.Settings;
+using StupidDict.App.Update;
 using StupidDict.Core.Application;
 
 namespace StupidDict.App;
@@ -47,9 +48,28 @@ public partial class App : Application
             // tests never reach the classic-desktop branch, so this line is
             // production-only by construction.
             AutoStart.Apply(settings.LaunchAtLogin);
-            desktop.MainWindow = new MainWindow(
+            // Self-update: one service per process (App owns it, the window and
+            // the settings dialog borrow it). Constructing it also interprets
+            // the journal the previous update left behind — and only then does
+            // it clear leftover staging folders (a live journal still needs its
+            // backup for the rollback).
+            var updateService = new UpdateService(new UpdateChecker(), settings);
+            var mainWindow = new MainWindow(
                 new DictionaryService(AppPaths.DictionaryDatabasePath, AppPaths.HistoryDatabasePath),
-                settings: settings);
+                settings: settings, updateService: updateService);
+            desktop.MainWindow = mainWindow;
+            // Files are replaced (installer started / overlay applied) → this
+            // process must exit through the normal lifetime: the old instance
+            // holds the exe and the native libraries, and a late exit is what
+            // makes an installer report "file in use" or the new instance lose
+            // the single-instance lock. Posted because the request arrives from
+            // a button handler on the UI thread; Shutdown must not tear the UI
+            // down mid-command.
+            updateService.RestartRequested +=
+                () => Dispatcher.UIThread.Post(() => desktop.Shutdown());
+            // Startup update check (weekly throttle, silent unless there is
+            // something to say). Headless tests never reach this branch.
+            _ = RunStartupUpdateCheckAsync(updateService, mainWindow);
             // Second-launch activation: the guard raises it on its listener thread,
             // hence the dispatcher hop. RestoreFromTray also reopens a window that
             // was closed to the tray; a closed (invisible) window is still ignored,
@@ -62,6 +82,42 @@ public partial class App : Application
                 });
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>How long after startup the update check runs: far enough out that the first dictionary/audio-pack work owns the network and the UI.</summary>
+    internal static TimeSpan StartupUpdateCheckDelay { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>Startup check throttle: at most one automatic check per week (a manual check is never throttled).</summary>
+    internal static TimeSpan StartupUpdateCheckInterval { get; set; } = TimeSpan.FromDays(7);
+
+    /// <summary>
+    /// The background startup check. Silent on "up to date" and on failure (an
+    /// offline user must not be told anything); a new version brings the window
+    /// back and shows the update prompt. Every exception is swallowed — this is
+    /// a background nicety, never a startup dependency.
+    /// </summary>
+    private static async Task RunStartupUpdateCheckAsync(UpdateService updateService, MainWindow window)
+    {
+        try
+        {
+            await Task.Delay(StartupUpdateCheckDelay);
+            if (!updateService.ShouldAutoCheck(StartupUpdateCheckInterval))
+            {
+                return;
+            }
+
+            var result = await updateService.CheckNowAsync();
+            if (result.Outcome == UpdateCheckOutcome.UpdateAvailable)
+            {
+                // The window may be hidden to the tray by now; ShowUpdatePrompt
+                // restores it first.
+                Dispatcher.UIThread.Post(window.ShowUpdatePrompt);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[StupidDict] 启动期检查更新失败：{ex.Message}");
+        }
     }
 
     /// <summary>Maps the user's theme choice onto the Avalonia variant; Default follows the OS.</summary>
@@ -126,6 +182,9 @@ public partial class App : Application
                 // Tray behaviour is read at close time; the write is the job.
                 case nameof(AppSettings.MinimizeToTrayOnClose):
                 case nameof(AppSettings.CloseToTrayAsked):
+                // The update check's timestamp is bookkeeping (the startup
+                // throttle reads it next run); nothing to apply live.
+                case nameof(AppSettings.LastUpdateCheckUtc):
                     break;
                 default:
                     return;

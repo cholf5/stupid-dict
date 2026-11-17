@@ -4,6 +4,7 @@ using Avalonia.Interactivity;
 using StupidDict.App.Assets;
 using StupidDict.App.Localization;
 using StupidDict.App.Translation;
+using StupidDict.App.Update;
 using System.ComponentModel;
 using System.Diagnostics;
 
@@ -19,6 +20,10 @@ public partial class SettingsWindow : Window
 
     private readonly AppSettings _settings;
     private readonly UpdateChecker? _updateChecker;
+    // 自更新服务：手动检查与下载/重启的共享状态机（App 创建，MainWindow 传下来）。
+    // 测试注入 fake checker/downloader；null 时退回旧的「只检查」行为。
+    private readonly UpdateService? _updateService;
+    private readonly Action? _showUpdatePrompt;
     private readonly AppLocations _locations;
     private readonly Action<string> _openDataDirectory;
     private readonly Func<ITranslationService>? _translationServiceFactory;
@@ -45,7 +50,8 @@ public partial class SettingsWindow : Window
     public SettingsWindow(AppSettings settings, UpdateChecker? updateChecker = null,
         AppLocations? locations = null, Action<string>? openDataDirectory = null,
         Func<ITranslationService>? translationServiceFactory = null,
-        Action<bool>? applyLaunchAtLogin = null, int initialTabIndex = 0)
+        Action<bool>? applyLaunchAtLogin = null, int initialTabIndex = 0,
+        UpdateService? updateService = null, Action? showUpdatePrompt = null)
     {
         InitializeComponent();
         // Each window owns its HWND, so the settings dialog needs its own
@@ -53,6 +59,8 @@ public partial class SettingsWindow : Window
         WindowsCaptionTheme.Attach(this);
         _settings = settings;
         _updateChecker = updateChecker;
+        _updateService = updateService;
+        _showUpdatePrompt = showUpdatePrompt;
         // 数据区块对注入的布局对磁盘求值；测试注入临时副本，绝不碰真实数据。
         _locations = locations ?? AppLocations.Default;
         _openDataDirectory = openDataDirectory ?? OpenDirectoryInFileManager;
@@ -78,6 +86,8 @@ public partial class SettingsWindow : Window
         Translations.Instance.PropertyChanged += OnTranslationsPropertyChanged;
         DataDownloadPageButton.Tag = ReleaseAssets.DataReleasePageUrl;
         RefreshDataStatus();
+        // 已下载好的更新在打开设置时就露出来（用户可能刚在对话框里下载完又跑回来看版本）。
+        RefreshUpdateButtons();
         // 翻译页签是 draft：加载已保存值，点保存才写回共享 AppSettings（那里
         // 属性变更即落盘），避免每敲一个字符持久化一次密钥。
         LoadTranslationDraft();
@@ -310,12 +320,16 @@ public partial class SettingsWindow : Window
     {
         CheckUpdateButton.IsEnabled = false;
         OpenReleaseButton.IsVisible = false;
+        DownloadUpdateButton.IsVisible = false;
         UpdateStatusText.Text = Translations.Instance.CheckingUpdate;
-        var checker = _updateChecker ?? new UpdateChecker();
         UpdateCheckResult result;
         try
         {
-            result = await checker.CheckAsync();
+            // 手动检查走共享服务（结果同步给自更新对话框），没有服务时退回
+            // 纯检查器（只读的旧测试路径）。
+            result = _updateService is { } service
+                ? await service.CheckNowAsync()
+                : await (_updateChecker ?? new UpdateChecker()).CheckAsync();
         }
         catch (Exception ex)
         {
@@ -325,16 +339,59 @@ public partial class SettingsWindow : Window
             result = new UpdateCheckResult(UpdateCheckOutcome.Failed, Error: ex.Message,
                 ErrorKind: UpdateCheckErrorKind.Network);
         }
+        var version = _updateService?.CurrentVersion ?? (_updateChecker ?? new UpdateChecker()).Version;
         UpdateStatusText.Text = result.Outcome switch
         {
             UpdateCheckOutcome.UpToDate =>
-                string.Format(Translations.Instance.UpToDateStatus, checker.Version),
+                string.Format(Translations.Instance.UpToDateStatus, version),
             UpdateCheckOutcome.UpdateAvailable =>
-                string.Format(Translations.Instance.UpdateAvailableStatus, result.LatestVersion, checker.Version),
+                string.Format(Translations.Instance.UpdateAvailableStatus, result.LatestVersion, version),
             _ => string.Format(Translations.Instance.UpdateCheckFailed, result.Error),
         };
         OpenReleaseButton.IsVisible = result.Outcome == UpdateCheckOutcome.UpdateAvailable;
         CheckUpdateButton.IsEnabled = true;
+        RefreshUpdateButtons();
+    }
+
+    /// <summary>
+    /// 下载/重启入口的显隐：只在共享服务里确有新版本或已就绪时出现。
+    /// 下载与重启的进度、状态机都在自更新对话框里（设置是模态的，点下去就关掉
+    /// 自己把话筒交给它），这里不重复实现一套进度 UI。
+    /// </summary>
+    private void RefreshUpdateButtons()
+    {
+        var state = _updateService?.State;
+        DownloadUpdateButton.IsVisible = state is UpdateState.Available;
+        RestartUpdateButton.IsVisible = state is UpdateState.ReadyToRestart;
+        // 共享服务里已经有结论时，打开设置也要看得见（比如上次检查发现的版本还没下载）。
+        if (state is UpdateState.Available)
+        {
+            UpdateStatusText.Text = string.Format(Translations.Instance.UpdateAvailableStatus,
+                _updateService?.LastResult?.LatestVersion, _updateService?.CurrentVersion);
+        }
+        else if (state is UpdateState.ReadyToRestart)
+        {
+            UpdateStatusText.Text = string.Format(Translations.Instance.UpdateStatusReadyFormat,
+                _updateService?.LastResult?.LatestVersion);
+        }
+    }
+
+    private void OnDownloadUpdateClick(object? sender, RoutedEventArgs e) => HandOffToUpdatePrompt();
+
+    private void OnRestartUpdateClick(object? sender, RoutedEventArgs e) => HandOffToUpdatePrompt();
+
+    /// <summary>
+    /// 模态对话框会挡住主窗口上的自更新对话框：先关自己、再（Post 到关闭处理之后）
+    /// 把话筒交给它——同步 Invoke 时主窗口还处在模态禁用状态，弹窗会以禁用主窗为 owner。
+    /// </summary>
+    private void HandOffToUpdatePrompt()
+    {
+        var show = _showUpdatePrompt;
+        Close();
+        if (show is not null)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(show);
+        }
     }
 
     private void OnOpenLink(object? sender, RoutedEventArgs e)

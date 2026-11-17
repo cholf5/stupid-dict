@@ -15,6 +15,7 @@ using StupidDict.App.Settings;
 using StupidDict.App.Speech;
 using StupidDict.App.Tray;
 using StupidDict.App.Translation;
+using StupidDict.App.Update;
 using StupidDict.Core.Application;
 using StupidDict.Core.Dictionary;
 using StupidDict.Core.History;
@@ -28,6 +29,14 @@ public partial class MainWindow : Window
     private readonly ISpeechPlayer _speech;
     private readonly IAssetDownloader _downloader;
     private readonly AppLocations _locations;
+    // The process-wide update service (App creates it; tests inject a fake
+    // checker/downloader). Null in tests that do not exercise updates, which
+    // keeps them off the disk (the service reads/writes the journal).
+    private readonly UpdateService? _updateService;
+    // The single update prompt (created on demand; a closed window is recreated).
+    private UpdatePromptWindow? _updatePrompt;
+    // The startup verdict ("已更新到 vX" / "上次更新未生效") is shown once per run.
+    private bool _updateNoticeShown;
     private DictionaryService _service;
     private readonly LookupNavigator _navigator = new();
     private bool _dictionaryAvailable;
@@ -74,6 +83,9 @@ public partial class MainWindow : Window
     // Set when a close must go through unconditionally (tray Quit, prompt
     // answer, tray backend missing). Never reset: the window is gone after it.
     private bool _allowClose;
+    // Set in Closed: a late background update check must not try to show a
+    // prompt owned by a window that is already gone.
+    private bool _closed;
     // Guards against re-entering the one-time prompt (a second close click
     // while the modal dialog is up).
     private bool _closePromptOpen;
@@ -151,10 +163,11 @@ public partial class MainWindow : Window
     public MainWindow(DictionaryService service, ISpeechPlayer? speechPlayer = null,
         IAssetDownloader? downloader = null, AppLocations? locations = null, bool autoDownload = true,
         AppSettings? settings = null, string? downloadDirectory = null,
-        ITranslationService? translationService = null)
+        ITranslationService? translationService = null, UpdateService? updateService = null)
     {
         InitializeComponent();
         _service = service;
+        _updateService = updateService;
         _locations = locations ?? AppLocations.Default;
         _autoDownload = autoDownload;
         // Tests pass no settings: never read the user's real settings file, and
@@ -184,6 +197,14 @@ public partial class MainWindow : Window
             UpdateSearchBoxLineMetrics();
             ClampWindowToScreen();
             ShowTrayIcon();
+            // The previous update's verdict ("已更新到 vX" / "上次更新未生效")
+            // waits for the window to exist; posted so it lands after the first
+            // frame instead of inside the show path.
+            if (_updateService?.StartupNotice.Outcome is { } outcome
+                && outcome != UpdateStartupOutcome.None)
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(ShowUpdatePrompt);
+            }
         };
         SearchBox.KeyDown += OnSearchBoxKeyDown;
         SearchBox.TextChanged += OnSearchTextChanged;
@@ -217,7 +238,12 @@ public partial class MainWindow : Window
         // follow the saved answer. System/app shutdowns are never vetoed (see
         // OnWindowClosing), so this cannot block logout or Shutdown().
         Closing += OnWindowClosing;
+        Closed += (_, _) => _closed = true;
         Closed += (_, _) => _tray.Dispose();
+        // The prompt is a second top-level window: leaving it open (even
+        // hidden) would keep the default OnLastWindowClose lifetime from
+        // finishing when the app quits.
+        Closed += (_, _) => _updatePrompt?.Close();
         // The card is a second top-level window: leaving it open (even hidden)
         // would make the default OnLastWindowClose lifetime believe the app is
         // still busy, so quitting from the tray would never finish.
@@ -415,6 +441,10 @@ public partial class MainWindow : Window
         if (_trayReady)
         {
             _quickLookup?.HideQuickLookup();
+            // The prompt is owned by this window: hiding the main window would
+            // leave it floating over nothing, so it goes too (which cancels an
+            // in-flight download — the same contract as closing it directly).
+            _updatePrompt?.Close();
             _trayHidden = true;
             // The window may never be closed again (killed from the tray, OS
             // reboot), so record the geometry now instead of losing it.
@@ -569,6 +599,70 @@ public partial class MainWindow : Window
             OpenSettings(SettingsWindow.AboutTabIndex);
             _settingsWindow?.BeginUpdateCheck();
         });
+    }
+
+    /// <summary>
+    /// Shows the update prompt (new version / download progress / restart /
+    /// previous update's verdict). The window is non-modal and owned by this
+    /// window: a lookup can continue while the package downloads, and closing
+    /// the main window closes the prompt (which cancels the transfer).
+    /// </summary>
+    internal void ShowUpdatePrompt()
+    {
+        if (_updateService is null || _closed)
+        {
+            return;
+        }
+
+        // Only open the window when there is something to say: an update in
+        // progress/ready, or the previous run's verdict (once). A check that
+        // came back "up to date" must not flash an empty dialog.
+        var notice = _updateService.StartupNotice.Outcome != UpdateStartupOutcome.None && !_updateNoticeShown;
+        if (!notice && _updateService.State
+                is not (UpdateState.Available or UpdateState.Downloading or UpdateState.ReadyToRestart))
+        {
+            return;
+        }
+
+        _updateNoticeShown |= notice;
+        RestoreFromTray();
+        if (_updatePrompt is { } open)
+        {
+            open.Activate();
+            return;
+        }
+
+        var prompt = new UpdatePromptWindow(_updateService);
+        _updatePrompt = prompt;
+        prompt.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_updatePrompt, prompt))
+                _updatePrompt = null;
+        };
+        prompt.Show(this);
+    }
+
+    /// <summary>
+    /// The update prompt the settings dialog hands off to ("下载并更新"): open
+    /// the prompt and start the download there, so the progress and the restart
+    /// live in exactly one place.
+    /// </summary>
+    internal void StartUpdateFromSettings()
+    {
+        if (_updateService is null)
+        {
+            return;
+        }
+
+        ShowUpdatePrompt();
+        // Only a fresh "new version" starts downloading here; an already
+        // prepared update shows its "立即重启并更新" button instead — the
+        // restart is the one step that stays an explicit click, and re-running
+        // the download would only re-fetch the same package.
+        if (_updateService.State is UpdateState.Available)
+        {
+            _updatePrompt?.StartDownload();
+        }
     }
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
@@ -884,7 +978,8 @@ public partial class MainWindow : Window
         }
         _settingsWindow = new SettingsWindow(_settings, updateChecker: UpdateCheckerOverride,
             locations: _locations, translationServiceFactory: EnsureTranslationService,
-            initialTabIndex: initialTabIndex);
+            initialTabIndex: initialTabIndex, updateService: _updateService,
+            showUpdatePrompt: StartUpdateFromSettings);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _ = ShowSettingsDialogAsync(_settingsWindow, this);
     }
@@ -897,7 +992,8 @@ public partial class MainWindow : Window
             return;
         }
         _settingsWindow = new SettingsWindow(_settings, updateChecker: UpdateCheckerOverride,
-            locations: _locations, translationServiceFactory: EnsureTranslationService);
+            locations: _locations, translationServiceFactory: EnsureTranslationService,
+            updateService: _updateService, showUpdatePrompt: StartUpdateFromSettings);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _ = ShowSettingsDialogAsync(_settingsWindow, this);
     }

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-cholf5/stupid-dict：.NET 10 + Avalonia 桌面离线英汉词典（Windows / macOS / Linux）。定位是"傻瓜词典"——零配置、零账号、查询全离线；设置是主题、界面语言、开机自启、关闭到托盘和可选的云端翻译（BYO OpenAI 兼容 API），后三者是用户明确要求的例外，联网只发生在首次资产下载、设置里手动检查更新、以及用户自己配置的翻译请求。改功能前先读 README 的「明确不做的功能」，新增设置项原则上禁止（翻译、开机自启与关闭到托盘是用户点名要求的例外），优先自动决定。
+cholf5/stupid-dict：.NET 10 + Avalonia 桌面离线英汉词典（Windows / macOS / Linux）。定位是"傻瓜词典"——零配置、零账号、查询全离线；设置是主题、界面语言、开机自启、关闭到托盘和可选的云端翻译（BYO OpenAI 兼容 API），后三者是用户明确要求的例外，联网只发生在首次资产下载、启动时（约 7 天一次）与设置里手动检查更新、下载更新包本身、以及用户自己配置的翻译请求（自更新也是用户点名要求的例外）。改功能前先读 README 的「明确不做的功能」，新增设置项原则上禁止（翻译、开机自启与关闭到托盘是用户点名要求的例外），优先自动决定。
 
 ## 构建 / 运行
 
@@ -85,10 +85,19 @@ cholf5/stupid-dict：.NET 10 + Avalonia 桌面离线英汉词典（Windows / mac
 - 设置窗口 About 卡片的版本号与更新检查共用 `UpdateChecker.CurrentVersion`（= csproj `<Version>`，发版唯一改动点）。
 - `AvaloniaUseCompiledBindingsByDefault=true` 已开：XAML 绑定路径写错编译期就报。
 
-## 检查更新（UpdateChecker.cs）
+## 检查更新与自更新（Update/，2026-11-17 移植 Tokenmetry）
 
-- 请求 GitHub **网页端** `releases/latest`：关闭自动重定向、读 302 Location 抠 Release 页 tag。刻意不走 api.github.com——未认证 API 限流 60 次/小时且按 IP 计，代理/CGNAT 共享出口几乎必然 403。带 User-Agent `stupiddict-desktop/<ver>`；相对 Location 按请求地址补全。
-- 版本比较：tag 去 `v` 前缀按三段数值比（段尾非数字后缀忽略、超长数字串按无法识别），失败永不抛异常，统一 `UpdateCheckResult(Failed)` + `ErrorKind` 归类（HTTP 错误收敛成 "HTTP 403" 短诊断）。入口只有设置里手动「检查更新」——启动联网违反产品承诺，**不要加自动启动检查**。发现新版给「打开发布页」逃生门。测试经 `UpdateChecker(HttpMessageHandler, currentVersion)` 注入假响应（`FakeHandler`），零真实网络；handler 是同步的，UI 测试点击后状态行立即是终态文案。
+设计记录：`docs/plans/2026-11-17-self-update-design.md`（取舍与「评估过不做的」都在那里）。
+
+- **检查与版本比较（`UpdateChecker`，保留原设计）**：请求 GitHub **网页端** `releases/latest`：关闭自动重定向、读 302 Location 抠 Release 页 tag。刻意不走 api.github.com——未认证 API 限流 60 次/小时且按 IP 计，代理/CGNAT 共享出口几乎必然 403。带 User-Agent `stupiddict-desktop/<ver>`；相对 Location 按请求地址补全。版本比较：tag 去 `v` 前缀按三段数值比（段尾非数字后缀忽略、超长数字串按无法识别），失败永不抛异常，统一 `UpdateCheckResult(Failed)` + `ErrorKind` 归类（HTTP 错误收敛成 "HTTP 403" 短诊断）。测试经 `UpdateChecker(HttpMessageHandler, currentVersion)` 注入假响应（`FakeHandler`），零真实网络。
+- **入口有三处，状态机只有一个**：`App` 创建唯一 `UpdateService`（构造函数注入，测试用假 handler/stager/installer 全链路跑），`MainWindow` 持有弹窗并把它传给 `SettingsWindow`。启动检查在 `App.RunStartupUpdateCheckAsync`：延迟 30s、`ShouldAutoCheck(7 天)` 节流、结果只有「发现新版本」会把窗口从托盘叫回来弹窗；已是最新/失败一律静默。节流时间戳写 `AppSettings.LastUpdateCheckUtc`（属记账不属设置项，`WireSettings` 只加空 case 保证落盘）。托盘「检查更新」仍落在设置「关于」页（唯一结果行出处），那里的「立即更新 / 立即重启并更新」把自己关掉后把话筒交给弹窗。
+- **资产命名是硬契约**：`UpdateAssets` 的 `StupidDict-{version}-{rid}.zip` / `StupidDict-{version}-win-x64-setup.exe` 必须与 CI 产物严格一致，且每个资产必须有同名 `.sha256`（`sha256sum` 格式；CI 发布 job 统一生成，`scripts/package.sh` 本地打包也产，`scripts/release.sh` 核对时连同 sidecar 点名）。缺 sidecar 客户端会拒绝安装——镜像前缀是第三方，校验和是前提不是加强项。Windows 只出 win-x64，macOS 按进程架构分 arm64/x64。
+- **落地分两条路**，由「进程是否跑在 `%LOCALAPPDATA%\Programs\Stupid Dict`」决定（判据是可执行文件目录，不是注册表）：已安装副本 → 下 Inno 安装器 `/SILENT /CLOSEAPPLICATIONS /NORESTART /SUPPRESSMSGBOXES` 静默升级；绿色版 / macOS / Linux → `UpdateStager` 自己换文件再重启。**`scripts/StupidDict.iss` 的 `[Run]` 不能写 `skipifsilent`**——静默升级后应用要自己回来，代价是无人值守静默安装也会启动一次应用。
+- **两种换文件形态不能混用**（AOT 产物是 exe + 原生库，macOS 是 .app，都不是单文件）：①macOS **整包换**（旧 `.app` rename 进备分区 → 新包 rename 进位 → 把 zip 不带的 `Contents/Resources/dictionary.db`、遗留 `audio/` 拷回 → 拷了东西才 `codesign --force -s -` 重新封签）——逐文件覆盖会把旧版残留二进制留在包内、封签必然对不上，就是 Gatekeeper 的「已损坏」；②Windows 绿色版 / Linux **逐文件覆盖**（每个被替换文件先挪进备分区、可执行文件放最后、失败反向回滚）——整目录换会把同目录的 `dictionary.db`、遗留 `audio/` 一起挪走。macOS 包**不允许**暂存区回落临时目录（跨卷拷贝会删掉正在运行的旧包文件），不可写就直接走「已下载 + 文件管理器里打开」的手动兜底；普通目录允许回落，move 降级成 copy+delete。
+- **重启交接**（`UpdateRelaunchHandshake`）：新进程带 `--wait-for-exit <pid>`，`Program.Main` 在建 App / 抢单实例守卫之前先等旧进程退出（20s 上限、永不抛）。不等的话新实例抢不到守卫的锁 → 给旧实例发 activate → 自己退出，用户看到「更新完应用不见了」。替换前写 `update-state.json`（`UpdateJournal`，源生成 JSON）：重启后版本号对上一律按成功处理（清日志、删备份、弹「已更新到 vX」）；对不上先 `UpdateStager.TryRollback` 把备份挪回去（多文件半替换比单文件更需要自动回滚），再报「上次更新未生效」。清理残留暂存区的时机在**解读日志之后**（`UpdateService.ReconcileStartup`），提前清理会毁掉回滚凭据。
+- **弹窗（`UpdatePromptWindow`）是非模态的**，`Show(this)`：下载期间还能查词；关窗 / 收托盘 / 主窗关闭都取消下载（没有 UI 的下载完成了也没人点重启）。失败留在对话框里可重试（按钮变回「立即更新」）；`UpdateStageUnavailableException` 的文案指向已下载的包。
+- **`RestartRequested` → `Dispatcher.Post(() => desktop.Shutdown())`**：走正常生命周期退出，跳过则新实例抢不到锁、安装器报「文件正在使用」。别换成 `Environment.Exit`（跳过 MCI/播放器停止、窗口尺寸落盘与安装器需要的文件锁释放）。
+- 测试：`tests/StupidDict.App.Tests/UpdateFlowTests.cs`（资产命名/校验和/journal/交接参数/暂存+覆盖+回滚/服务状态机/启动日志解读）与 `UpdatePromptTests.cs`（headless 弹窗三态）。全部用临时目录与假 handler，零真实网络、不写真实数据目录；`UpdateService` 的 `saveSettings` 必须注入 recorder，否则会改用户的 `settings.json`。
 
 ## 已知平台坑
 

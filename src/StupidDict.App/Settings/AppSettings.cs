@@ -40,6 +40,7 @@ public sealed class AppSettings : INotifyPropertyChanged
     private bool _launchAtLogin;
     private bool _minimizeToTrayOnClose;
     private bool _closeToTrayAsked;
+    private DateTimeOffset? _lastUpdateCheckUtc;
 
     public AppTheme Theme
     {
@@ -188,6 +189,23 @@ public sealed class AppSettings : INotifyPropertyChanged
             if (_closeToTrayAsked == value) return;
             _closeToTrayAsked = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CloseToTrayAsked)));
+        }
+    }
+
+    /// <summary>
+    /// When the update check last ran (success or failure alike). Records the
+    /// fact so the startup check can keep its weekly throttle without asking
+    /// the network on every launch. No settings UI: it is bookkeeping, not a
+    /// user choice.
+    /// </summary>
+    public DateTimeOffset? LastUpdateCheckUtc
+    {
+        get => _lastUpdateCheckUtc;
+        set
+        {
+            if (_lastUpdateCheckUtc == value) return;
+            _lastUpdateCheckUtc = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LastUpdateCheckUtc)));
         }
     }
 
