@@ -257,6 +257,54 @@ public class CloseToTrayTests
     }
 
     [AvaloniaFact]
+    public void ThePromptReportsItsAnswerThroughShowDialog()
+    {
+        // Regression: ShowDialog<TResult> returns whatever was passed to
+        // Close(result). Setting Choice and calling the parameterless Close()
+        // reports null, which MainWindow reads as Cancel — every button of the
+        // real prompt then did nothing while the Choice-only tests stayed green.
+        var owner = new Window();
+        owner.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var prompt = new CloseToTrayPrompt();
+        var task = prompt.ShowDialog<CloseToTrayChoice?>(owner);
+        Dispatcher.UIThread.RunJobs();
+
+        prompt.FindControl<Button>("TrayButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(task.IsCompleted);
+        Assert.Equal(CloseToTrayChoice.MinimizeToTray, task.Result);
+        owner.Close();
+    }
+
+    [AvaloniaFact]
+    public void FirstCloseThroughTheRealPromptHidesTheWindow()
+    {
+        // End-to-end over the real dialog (no override): answering "minimize to
+        // tray" must consume the prompt, remember the choice and hide.
+        var settings = new AppSettings { Language = AppLanguage.SimplifiedChinese };
+        var tray = new FakeTrayHost();
+        var window = NewWindow(settings);
+        var probe = new WindowProbe(window);
+        window.TrayHost = tray;
+        window.Show();
+
+        window.Close();
+        WaitUntil(() => window.OwnedWindows.OfType<CloseToTrayPrompt>().Any());
+
+        var prompt = window.OwnedWindows.OfType<CloseToTrayPrompt>().Single();
+        prompt.FindControl<Button>("TrayButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        WaitUntil(() => !window.IsVisible);
+
+        Assert.True(settings.CloseToTrayAsked);
+        Assert.True(settings.MinimizeToTrayOnClose);
+        Assert.True(tray.Shown);
+        Assert.False(probe.Closed);
+    }
+
+    [AvaloniaFact]
     public void RealTrayHostNeverThrows()
     {
         // Headless has no notification area, so the return value is

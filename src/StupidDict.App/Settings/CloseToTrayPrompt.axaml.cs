@@ -47,19 +47,21 @@ public partial class CloseToTrayPrompt : Window
         {
             e.Handled = true;
             Choice = CloseToTrayChoice.Cancel;
-            Close();
+            // Close(result) — the result is what ShowDialog<TResult> returns;
+            // a parameterless Close() reports null and reads as Cancel.
+            Close(Choice);
         }
     }
 
     private void OnTrayClick(object? sender, RoutedEventArgs e)
     {
         Choice = CloseToTrayChoice.MinimizeToTray;
-        Close();
+        Close(Choice);
     }
 
     private void OnQuitClick(object? sender, RoutedEventArgs e)
     {
         Choice = CloseToTrayChoice.Quit;
-        Close();
+        Close(Choice);
     }
 }

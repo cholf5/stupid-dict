@@ -59,6 +59,7 @@
 - 托盘恢复（窗口回来、图标消失、焦点回搜索框）；托盘退出（真关闭、图标 Dispose）。
 - 无托盘后端：直接收托盘与首次选托盘两条路径都回退为真关闭。
 - 真对话框：两个按钮各自上报选择、直接关闭/Esc 读作 Cancel。
+- **真对话框经 `ShowDialog` 的接线**（两个用例）：直接把答案写在 `Choice` 上再调无参 `Close()`，`ShowDialog<TResult>` 收到的是 `null`（读作 Cancel），按钮在真机上等于没反应——`ThePromptReportsItsAnswerThroughShowDialog` 钉住回传值，`FirstCloseThroughTheRealPromptHidesTheWindow` 走完整链路（首次关闭 → 真对话框 → 点「最小化到托盘」→ 隐藏 + 两个设置位）。只断言 `Choice` 的用例测不到这一层，别再退回去。
 - 设置开关：勾/取消写共享设置并落盘、重开回显、**开关即回答询问**；`WireSettings` 收编两个新字段（选托盘后 `settings.json` 里两个位都在）。
 - 真实 `TrayIconHost` 在 headless 下 Show/Hide/Dispose 不抛异常（返回值平台相关，不做断言）。
 
