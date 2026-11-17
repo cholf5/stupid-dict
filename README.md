@@ -188,7 +188,7 @@ scripts/release.sh 1.0.1 --watch    # bump 版本 → 打 tag → CI 三平台�
 
 每个应用包都附一份同名 `.sha256`（`sha256sum` 格式）。这不是可选项：应用内自更新在替换文件前必须校验它（下载走三个第三方镜像前缀，没有校验等于谁能换掉包谁就能换掉用户的程序），缺了它客户端会拒绝安装。安装版升级走 Inno Setup 的 `/SILENT` 静默安装，安装脚本末尾会把应用重新拉起来（因此 `[Run]` 不能带 `skipifsilent`）。更新链的取舍见 `docs/plans/2026-11-17-self-update-design.md`。
 
-发布产物默认 **NativeAOT** 编译：单原生可执行文件 + 随行图形/数据库原生库，启动无 JIT 预热、app-only 包体积约为 CoreCLR 打包的两成；`scripts/package.sh --no-aot` 可临时回退 CoreCLR 单文件打包（仅本地排障用，Release 不出双轨）。
+发布产物默认 **NativeAOT** 编译：单原生可执行文件 + 随行图形/数据库原生库，启动无 JIT 预热。app-only zip 实测（2026-11-17，1.2.0 代码）：osx-arm64 42.8→18.1MB、linux-x64 41.9→18.1MB，Windows 因 `av_libglesv2`/`libSkiaSharp` 等原生库本就要随行而基本持平（45.9→45.3MB）——「体积减半」只在 macOS/Linux 成立，Windows 的收益是启动不再 JIT。`scripts/package.sh --no-aot` 可临时回退 CoreCLR 单文件打包（仅本地排障用，Release 不出双轨）。
 
 数据资产（`dictionary.zip` / `audio-pack.db`）与 App 版本解耦：它们放在独立的 **prerelease**（现为 `data-3`，对应代码里的 `ReleaseAssets.DataTag`），一次发布、基本不再动，应用内下载 URL 钉在该 tag 上（加速镜像前缀对其同样适用）。打 prerelease 标记是刻意的：prerelease 永远不参与 `releases/latest` 竞争，而应用内「检查更新」读的正是那个页面，必须始终指向 App 版本。App 发版不携带、也不需要这两件资产。数据要更新时：发布下一个 `data-N`，把 `ReleaseAssets.DataTag` 提到新 tag，随下一个 App 版本生效。
 
