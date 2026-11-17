@@ -25,7 +25,11 @@ public sealed class SpeechWarmupTests
     private static string CreatePackDb(string directory)
     {
         var path = Path.Combine(directory, "audio-pack.db");
-        using var connection = new SqliteConnection($"Data Source={path}");
+        // Pooling=False matches the product (Core/SqliteConnections): a pooled
+        // handle outlives Dispose, and on Windows it blocks the File.Move in
+        // WarmUpLeavesTheDatabaseReplaceable with "being used by another
+        // process". The helper's own pool was the only handle there.
+        using var connection = new SqliteConnection($"Data Source={path};Pooling=False");
         connection.Open();
         using var create = connection.CreateCommand();
         create.CommandText = "CREATE TABLE audio(word TEXT PRIMARY KEY, uk BLOB, us BLOB) WITHOUT ROWID";

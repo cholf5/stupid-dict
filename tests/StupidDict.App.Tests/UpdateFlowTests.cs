@@ -216,13 +216,21 @@ public class UpdateStagerTests
 {
     private static readonly byte[] PeExecutable = [(byte)'M', (byte)'Z', 1, 2, 3, 4];
 
+    /// <summary>
+    /// The walk-up is pure path arithmetic, so it must hold on every OS — paths
+    /// are built with Path.Combine rather than hard-coded POSIX literals, which
+    /// used to become "D:\\Applications\\…" on the windows test job.
+    /// </summary>
     [Fact]
-    public void ResolveTargetRoot_WalksUpToTheBundleOnMacOs()
+    public void ResolveTargetRoot_WalksUpToTheBundle()
     {
-        Assert.Equal("/Applications/Stupid Dict.app",
-            UpdateStager.ResolveTargetRoot("/Applications/Stupid Dict.app/Contents/MacOS/StupidDict"));
-        Assert.Equal("/opt/stupiddict",
-            UpdateStager.ResolveTargetRoot("/opt/stupiddict/StupidDict"));
+        var bundle = Path.Combine(Path.GetTempPath(), "Applications", "Stupid Dict.app");
+        Assert.Equal(bundle,
+            UpdateStager.ResolveTargetRoot(Path.Combine(bundle, "Contents", "MacOS", "StupidDict")));
+
+        var plain = Path.Combine(Path.GetTempPath(), "stupiddict");
+        Assert.Equal(plain,
+            UpdateStager.ResolveTargetRoot(Path.Combine(plain, "StupidDict")));
     }
 
     [Fact]
