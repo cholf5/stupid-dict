@@ -11,6 +11,13 @@
 #   --watch      poll CI after push and verify the release assets are complete
 #                (requires gh and a login)
 #
+# Before running: write the target version's `## [x.y.z]` section in
+# CHANGELOG.md and commit it. The section is the GitHub Release body (CI's
+# release job extracts it); this script refuses to tag without it. Do not
+# expect `--generate-notes` to fill the gap: that list only counts merged PRs,
+# so commits pushed straight to main vanish from the notes (v1.3.0 shipped a
+# one-line body that way).
+#
 # Recovery: if CI fails the tag is already pushed. After fixing:
 #   git push origin :refs/tags/vX.Y.Z && git tag -d vX.Y.Z
 # then rerun this script (a csproj already at the target version skips the
@@ -66,6 +73,15 @@ git rev-parse -q --verify "refs/tags/$TAG" >/dev/null && { echo "本地已存在
 
 CUR=$(sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p' "$PROJECT" | head -1 | tr -d '[:space:]')
 [ -n "$CUR" ] || { echo "无法从 $PROJECT 读取 <Version>" >&2; exit 1; }
+
+# Release notes come from CHANGELOG.md, not from GitHub's generated list (that
+# one only knows merged PRs). Checked before the version bump so a forgotten
+# section cannot reach a tag: CI would fall back to the generated list and the
+# release would ship thin notes again.
+grep -qF "## [$VERSION]" CHANGELOG.md 2>/dev/null || {
+  echo "CHANGELOG.md 缺少「## [${VERSION}]」段：Release 说明由 CI 从这里取，请先写好并提交。" >&2
+  exit 1
+}
 
 if [ "$SKIP_TEST" != true ]; then
   echo "本地跑测试（--skip-test 可跳过）..."

@@ -184,6 +184,8 @@ dotnet run --project src/StupidDict.AudioPackBuilder -c Release -- \
 scripts/release.sh 1.0.1 --watch    # bump 版本 → 打 tag → CI 三平台打包并建 Release
 ```
 
+发版前先在 `CHANGELOG.md` 写目标版本的 `## [x.y.z]` 段并提交——Release 说明就是它（脚本会校验，缺了直接拒绝打 tag），新版本在上、只记用户能感知的变化。不再用 GitHub 的自动生成说明：那条路只统计合并的 PR，直推 main 的提交会整段丢失（v1.3.0 的说明里只剩一条就是因此）。
+
 发版脚本把 `StupidDict.App.csproj` 的 `<Version>` 提升到目标版本并打 `v` tag，CI（`.github/workflows/dotnet-desktop.yml`）随后测试、打包 macOS（.app，arm64/x64）/ Windows（绿色 zip + Inno Setup 安装包）/ Linux 应用包并创建 Release；`--watch` 会等 CI 跑完并核对产物齐全。版本必须与 csproj 一致，CI 在 tag 时强制校验，in-app 更新检查也以它为比较基准。安装包为 per-user 安装（免管理员权限，装到 `%LOCALAPPDATA%\Programs\Stupid Dict`，数据本就在 `%APPDATA%\StupidDict`），与绿色 zip 并存：想免安装的用 zip，普通用户双击 Setup 即可。
 
 每个应用包都附一份同名 `.sha256`（`sha256sum` 格式）。这不是可选项：应用内自更新在替换文件前必须校验它（下载走三个第三方镜像前缀，没有校验等于谁能换掉包谁就能换掉用户的程序），缺了它客户端会拒绝安装。安装版升级走 Inno Setup 的 `/SILENT` 静默安装，安装脚本末尾会把应用重新拉起来（因此 `[Run]` 不能带 `skipifsilent`）。更新链的取舍见 `docs/plans/2026-11-17-self-update-design.md`。

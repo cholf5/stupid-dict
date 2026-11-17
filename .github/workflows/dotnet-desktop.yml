@@ -220,6 +220,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Release notes live in the repo: the notes step below reads CHANGELOG.md
+      # at the tag, so this job needs a checkout (it used to only collect
+      # artifacts).
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: package-*
@@ -237,11 +241,34 @@ jobs:
             sha256sum "$f" > "$f.sha256"
           done
           ls -l *.sha256
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # 段落 = `## [x.y.z]` 到下一个 `## [` 之前。release.sh 在打 tag 前已校验
+          # 它存在；这里的回退只是不让漏段把已经打好的包挡在门外。
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { inside = 1; next }
+            inside && /^## \[/ { exit }
+            inside { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ -s release-notes.md ]; then
+            echo "使用 CHANGELOG.md 的 [${VERSION}] 段（$(wc -l < release-notes.md) 行）"
+          else
+            echo "::warning::CHANGELOG.md 没有 [${VERSION}] 段，回退到自动生成（只含合并的 PR）"
+            rm -f release-notes.md
+          fi
       - name: Create release and upload assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+          # --generate-notes 只统计合并的 PR，直推 main 的提交会整段丢失，所以
+          # Release 说明以 CHANGELOG.md 为准（v1.3.0 的碎片说明就是那条路留下的）。
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            : # 已有 Release（重跑 / 人工先建）：不覆盖已有说明
+          elif [ -f release-notes.md ]; then
+            gh release create "$GITHUB_REF_NAME" --verify-tag --notes-file release-notes.md
+          else
             gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+          fi
           gh release upload "$GITHUB_REF_NAME" dist/* --clobber
